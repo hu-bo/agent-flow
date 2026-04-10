@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm --filter @agent-flow/console build)",
+      "Bash(pnpm --filter @agent-flow/cli build)",
+      "Bash(pnpm --filter @agent-flow/chat-ui build)",
+      "Bash(pnpm --filter @agent-flow/chat-ui clean)",
+      "Bash(ls /Users/hubo/Work/Coding/MyProject/agent-flow/packages/chat-ui/dist/*.d.ts /Users/hubo/Work/Coding/MyProject/agent-flow/packages/chat-ui/dist/*.css)",
+      "WebFetch(domain:openroute.cn)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && cat {}')",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:echo.labstack.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(go mod:*)",
+      "Bash(go build:*)",
+      "Bash(cat /Users/hubo/Work/Coding/MyProject/agent-flow/apps/api-gateway/internal/router/*.go)"
+    ]
+  }
+}

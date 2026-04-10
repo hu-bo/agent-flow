@@ -1,0 +1,19 @@
+{
+  "name": "@agent-flow/checkpoint",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Checkpoint and recovery: local file checkpoint + remote WAL",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-flow/model-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@agent-flow/model-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Model gateway: routing, fallback, rate limiting",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-flow/model-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

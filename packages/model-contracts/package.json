@@ -1,0 +1,16 @@
+{
+  "name": "@agent-flow/model-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure type definitions for agent-flow: UnifiedMessage, ProviderAdapter, ModelCapabilities",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

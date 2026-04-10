@@ -1,0 +1,25 @@
+{
+  "name": "@agent-flow/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Programmatic SDK for agent-flow",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-flow/core": "workspace:*",
+    "@agent-flow/model-contracts": "workspace:*",
+    "@agent-flow/model-gateway": "workspace:*",
+    "@agent-flow/model-adapter-ai-sdk": "workspace:*",
+    "@agent-flow/context-store": "workspace:*",
+    "@agent-flow/context-compressor": "workspace:*",
+    "@agent-flow/checkpoint": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

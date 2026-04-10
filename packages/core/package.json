@@ -1,0 +1,23 @@
+{
+  "name": "@agent-flow/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Core runtime: Agent loop, query engine, tool execution",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-flow/model-contracts": "workspace:*",
+    "@agent-flow/model-gateway": "workspace:*",
+    "@agent-flow/context-store": "workspace:*",
+    "@agent-flow/context-compressor": "workspace:*",
+    "@agent-flow/checkpoint": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

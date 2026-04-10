@@ -1,11 +1,13 @@
 {
-  "extends": "./tsconfig.node.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib":["es2018"],
-    "strictNullChecks": false,
-    "moduleResolution": "node",
-    "baseUrl": "./",
-    "types": ["node"],
-    "typeRoots": ["./typings", "./node_modules/@types"],
-  }
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": [
+    "packages/**/*.ts",
+    "apps/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "claude-code-main"]
 }

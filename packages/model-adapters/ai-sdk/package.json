@@ -1,0 +1,22 @@
+{
+  "name": "@agent-flow/model-adapter-ai-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vercel AI SDK adapter for agent-flow (primary adapter)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-flow/model-contracts": "workspace:*",
+    "ai": "^4.3.0",
+    "@ai-sdk/openai": "^1.3.0",
+    "@ai-sdk/anthropic": "^1.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
