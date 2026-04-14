@@ -5,7 +5,7 @@ coverage
 
 # build artifacts
 dist
-
+.env
 # local caches
 .vscode
 .DS_Store
