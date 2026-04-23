@@ -11,6 +11,30 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./messages": {
+      "types": "./dist/messages/index.d.ts",
+      "import": "./dist/messages/index.js"
+    },
+    "./gateway": {
+      "types": "./dist/gateway/index.d.ts",
+      "import": "./dist/gateway/index.js"
+    },
+    "./store": {
+      "types": "./dist/store/index.d.ts",
+      "import": "./dist/store/index.js"
+    },
+    "./compressor": {
+      "types": "./dist/compressor/index.d.ts",
+      "import": "./dist/compressor/index.js"
+    },
+    "./checkpoint": {
+      "types": "./dist/checkpoint/index.d.ts",
+      "import": "./dist/checkpoint/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/sdk/index.d.ts",
+      "import": "./dist/sdk/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": ["dist"],
@@ -19,13 +43,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@agent-flow/model-contracts": "workspace:*",
-    "@agent-flow/model-gateway": "workspace:*",
-    "@agent-flow/context-store": "workspace:*",
-    "@agent-flow/context-compressor": "workspace:*",
-    "@agent-flow/checkpoint": "workspace:*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "typescript": "^5.8.3"
   }

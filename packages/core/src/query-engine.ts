@@ -3,10 +3,10 @@ import type {
   ChatResponse,
   StreamChunk,
   ToolDefinition,
-} from '@agent-flow/model-contracts';
-import type { ModelGateway } from '@agent-flow/model-gateway';
-import type { ContextStore } from '@agent-flow/context-store';
-import type { ContextCompressor } from '@agent-flow/context-compressor';
+} from './messages/index.js';
+import type { ModelGateway } from './gateway/index.js';
+import type { ContextStore } from './store/index.js';
+import type { ContextCompressor } from './compressor/index.js';
 
 export interface QueryEngineConfig {
   systemPrompt?: string;
@@ -14,7 +14,7 @@ export interface QueryEngineConfig {
   temperature?: number;
 }
 
-/** QueryEngine â€” manages message assembly and model invocation */
+/** QueryEngine â€?manages message assembly and model invocation */
 export class QueryEngine {
   constructor(
     private gateway: ModelGateway,
@@ -61,3 +61,4 @@ export class QueryEngine {
     this.config.systemPrompt = prompt;
   }
 }
+

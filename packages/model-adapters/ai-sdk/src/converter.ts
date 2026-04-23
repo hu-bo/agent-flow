@@ -3,7 +3,7 @@ import type {
   MessageConverter,
   ContentPart,
   ToolDefinition,
-} from '@agent-flow/model-contracts';
+} from '@agent-flow/core/messages';
 import { jsonSchema } from 'ai';
 
 export class AiSdkMessageConverter implements MessageConverter {
@@ -142,3 +142,4 @@ export class AiSdkMessageConverter implements MessageConverter {
     }
   }
 }
+

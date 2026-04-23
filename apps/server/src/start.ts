@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { ModelGateway } from '@agent-flow/model-gateway';
+import { ModelGateway } from '@agent-flow/core/gateway';
 import { AiSdkAdapter } from '@agent-flow/model-adapter-ai-sdk';
 import { AgentFlowServer } from './index.js';
 import type { LanguageModel } from 'ai';
@@ -89,4 +89,5 @@ main().catch(err => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
+
 

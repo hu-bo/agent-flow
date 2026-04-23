@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agent-flow/model-contracts": "workspace:*",
+    "@agent-flow/core": "workspace:*",
     "ai": "^4.3.0",
     "@ai-sdk/openai": "^1.3.0",
     "@ai-sdk/anthropic": "^1.2.0"

@@ -1,4 +1,4 @@
-import type { UnifiedMessage } from '@agent-flow/model-contracts';
+import type { UnifiedMessage } from './messages/index.js';
 
 export interface WorkflowNode {
   id: string;
@@ -202,3 +202,4 @@ export class WorkflowEngine {
     return edge.condition(context);
   }
 }
+

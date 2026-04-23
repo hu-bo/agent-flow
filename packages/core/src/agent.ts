@@ -7,12 +7,12 @@ import type {
   ToolCallPart,
   ToolResultPart,
   TokenUsage,
-} from '@agent-flow/model-contracts';
+} from './messages/index.js';
 import { QueryEngine } from './query-engine.js';
-import type { ContextStore } from '@agent-flow/context-store';
-import type { ContextCompressor, CompactionResult } from '@agent-flow/context-compressor';
-import { shouldAutoCompact } from '@agent-flow/context-compressor';
-import type { LocalCheckpointManager, Checkpoint } from '@agent-flow/checkpoint';
+import type { ContextStore } from './store/index.js';
+import type { ContextCompressor, CompactionResult } from './compressor/index.js';
+import { shouldAutoCompact } from './compressor/index.js';
+import type { LocalCheckpointManager, Checkpoint } from './checkpoint/index.js';
 import { ToolRegistry } from './tool-registry.js';
 import { PermissionManager } from './permission.js';
 
@@ -31,7 +31,7 @@ export interface AgentDependencies {
   permissionManager: PermissionManager;
 }
 
-/** Agent éˆ¥?orchestrates the main conversation loop */
+/** Agent éˆ?orchestrates the main conversation loop */
 export class Agent {
   private queryEngine: QueryEngine;
   private config: AgentConfig;
@@ -141,7 +141,7 @@ export class Agent {
         continue;
       }
 
-      // No tool calls éˆ¥?conversation turn complete
+      // No tool calls éˆ?conversation turn complete
       break;
     }
 
@@ -221,4 +221,5 @@ export class Agent {
     };
   }
 }
+
 

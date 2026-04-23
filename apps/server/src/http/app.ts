@@ -21,8 +21,16 @@ export function createServerApp(runtime: ServerRuntime, config: ServerConfig): H
     '/api/*',
     cors({
       origin: config.corsOrigins ?? ['*'],
-      allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization'],
+      allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowHeaders: [
+        'Content-Type',
+        'Authorization',
+        'X-User-ID',
+        'X-Device-ID',
+        'X-Session-ID',
+        'X-Request-ID',
+        'X-Source',
+      ],
     }),
   );
 

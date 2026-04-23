@@ -1,4 +1,4 @@
-import type { ToolDefinition, ToolResult } from '@agent-flow/model-contracts';
+import type { ToolDefinition, ToolResult } from './messages/index.js';
 
 export type ToolExecutor = (input: unknown) => Promise<unknown>;
 
@@ -7,7 +7,7 @@ interface RegisteredTool {
   execute: ToolExecutor;
 }
 
-/** ToolRegistry â€” manages tool registration and execution */
+/** ToolRegistry â€?manages tool registration and execution */
 export class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
 
@@ -39,3 +39,4 @@ export class ToolRegistry {
     }
   }
 }
+

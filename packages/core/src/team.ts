@@ -1,11 +1,11 @@
 import * as crypto from 'crypto';
-import type { UnifiedMessage } from '@agent-flow/model-contracts';
+import type { UnifiedMessage } from './messages/index.js';
 import { Agent } from './agent.js';
 import type { AgentConfig } from './agent.js';
 import type { QueryEngine } from './query-engine.js';
-import type { ContextStore } from '@agent-flow/context-store';
-import type { ContextCompressor } from '@agent-flow/context-compressor';
-import type { LocalCheckpointManager } from '@agent-flow/checkpoint';
+import type { ContextStore } from './store/index.js';
+import type { ContextCompressor } from './compressor/index.js';
+import type { LocalCheckpointManager } from './checkpoint/index.js';
 import { ToolRegistry } from './tool-registry.js';
 import { PermissionManager } from './permission.js';
 
@@ -136,4 +136,5 @@ export class AgentTeam {
     return this.agents[0]; // default to first agent
   }
 }
+
 

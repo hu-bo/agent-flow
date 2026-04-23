@@ -10,9 +10,11 @@ import {
 import { runChat } from '../services/chat-service.js';
 import { compactSession } from '../services/compact-service.js';
 import { createTask, getTask } from '../services/task-service.js';
+import type { SessionPrincipal } from '../services/session-service.js';
 import {
   createSession,
   deleteSession,
+  listSessionMessages,
   loadSession,
   listSessions,
 } from '../services/session-service.js';
@@ -33,19 +35,18 @@ export function createApiRoutes(runtime: ServerRuntime): Hono {
     const reasoningEffortRaw = optionalString(body, 'reasoningEffort');
     const sessionId = optionalString(body, 'sessionId');
     const stream = optionalBoolean(body, 'stream') ?? false;
-    if (
-      reasoningEffortRaw &&
-      reasoningEffortRaw !== 'low' &&
-      reasoningEffortRaw !== 'medium' &&
-      reasoningEffortRaw !== 'high'
-    ) {
-      throw new HttpError(400, 'reasoningEffort must be low, medium, or high', 'VALIDATION_ERROR');
-    }
-    const reasoningEffort = reasoningEffortRaw as 'low' | 'medium' | 'high' | undefined;
+    const principal = resolvePrincipal(c);
+    const reasoningEffort = parseReasoningEffort(reasoningEffortRaw);
 
     if (!stream) {
       const messages = [];
-      for await (const msg of runChat(runtime, { message, model, reasoningEffort, sessionId })) {
+      for await (const msg of runChat(runtime, {
+        message,
+        model,
+        reasoningEffort,
+        sessionId,
+        principal: sessionId ? principal : undefined,
+      })) {
         messages.push(msg);
       }
       return c.json({ messages });
@@ -54,7 +55,13 @@ export function createApiRoutes(runtime: ServerRuntime): Hono {
     return createSseResponse(
       c,
       async (sse) => {
-        for await (const msg of runChat(runtime, { message, model, reasoningEffort, sessionId })) {
+        for await (const msg of runChat(runtime, {
+          message,
+          model,
+          reasoningEffort,
+          sessionId,
+          principal: sessionId ? principal : undefined,
+        })) {
           if (sse.isClosed()) break;
           const sent = await sse.sendJson(msg);
           if (!sent) break;
@@ -68,25 +75,94 @@ export function createApiRoutes(runtime: ServerRuntime): Hono {
     );
   });
 
-  api.get('/sessions', (c) => {
-    return c.json({ sessions: listSessions(runtime) });
+  api.get('/sessions', async (c) => {
+    const principal = resolvePrincipal(c);
+    const userId = c.req.query('user_id')?.trim() || principal.userId;
+    const limit = parsePositiveInt(c.req.query('limit'));
+    const offset = parseNonNegativeInt(c.req.query('offset'));
+    const sessions = await listSessions(runtime, { userId, limit, offset });
+    return c.json({ sessions });
   });
 
   api.post('/sessions', async (c) => {
     const body = await parseJsonBody(c);
+    const principal = resolvePrincipal(c);
     const modelId = optionalString(body, 'modelId') ?? optionalString(body, 'model');
+    const title = optionalString(body, 'title', { trim: false });
     const systemPrompt = optionalString(body, 'systemPrompt', { trim: false });
-    const session = createSession(runtime, { modelId, systemPrompt });
+    const session = await createSession(runtime, { principal, modelId, title, systemPrompt });
     return c.json({ session }, 201);
   });
 
-  api.get('/sessions/:id', (c) => {
-    const session = loadSession(runtime, c.req.param('id'));
-    return c.json({ session: session.info, messages: session.messages });
+  api.get('/sessions/:id', async (c) => {
+    const principal = resolvePrincipal(c);
+    const session = await loadSession(runtime, principal, c.req.param('id'));
+    return c.json({ session: session.metadata, messages: session.messages });
   });
 
-  api.delete('/sessions/:id', (c) => {
-    deleteSession(runtime, c.req.param('id'));
+  api.get('/sessions/:id/messages', async (c) => {
+    const principal = resolvePrincipal(c);
+    const afterUuid = c.req.query('after')?.trim();
+    const limit = parsePositiveInt(c.req.query('limit'));
+    const messages = await listSessionMessages(runtime, {
+      sessionId: c.req.param('id'),
+      principal,
+      afterUuid,
+      limit,
+    });
+    return c.json({ messages });
+  });
+
+  api.post('/sessions/:id/chat', async (c) => {
+    const body = await parseJsonBody(c);
+    const principal = resolvePrincipal(c);
+    const message = requiredString(body, 'message');
+    const model = optionalString(body, 'model');
+    const stream = optionalBoolean(body, 'stream') ?? true;
+    const reasoningEffortRaw = optionalString(body, 'reasoningEffort');
+    const reasoningEffort = parseReasoningEffort(reasoningEffortRaw);
+    const sessionId = c.req.param('id');
+
+    if (!stream) {
+      const messages = [];
+      for await (const msg of runChat(runtime, {
+        message,
+        model,
+        reasoningEffort,
+        sessionId,
+        principal,
+      })) {
+        messages.push(msg);
+      }
+      return c.json({ messages });
+    }
+
+    return createSseResponse(
+      c,
+      async (sse) => {
+        for await (const msg of runChat(runtime, {
+          message,
+          model,
+          reasoningEffort,
+          sessionId,
+          principal,
+        })) {
+          if (sse.isClosed()) break;
+          const sent = await sse.sendJson(msg);
+          if (!sent) break;
+        }
+        await sse.sendDone();
+      },
+      {
+        heartbeatMs: 12_000,
+        retryMs: 3_000,
+      },
+    );
+  });
+
+  api.delete('/sessions/:id', async (c) => {
+    const principal = resolvePrincipal(c);
+    await deleteSession(runtime, principal, c.req.param('id'));
     return c.newResponse(null, 204);
   });
 
@@ -119,7 +195,8 @@ export function createApiRoutes(runtime: ServerRuntime): Hono {
       throw new HttpError(400, 'trigger must be manual or auto', 'VALIDATION_ERROR');
     }
 
-    const result = await compactSession(runtime, { sessionId, trigger });
+    const principal = resolvePrincipal(c);
+    const result = await compactSession(runtime, { sessionId, principal, trigger });
     return c.json(result);
   });
 
@@ -135,3 +212,36 @@ export function createApiRoutes(runtime: ServerRuntime): Hono {
 
   return api;
 }
+
+function resolvePrincipal(c: { req: { header: (name: string) => string | undefined } }): SessionPrincipal {
+  const userId = c.req.header('X-User-ID')?.trim() || 'anonymous';
+  const deviceId = c.req.header('X-Device-ID')?.trim() || 'unknown-device';
+  return { userId, deviceId };
+}
+
+function parseReasoningEffort(value?: string): 'low' | 'medium' | 'high' | undefined {
+  if (!value) return undefined;
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value;
+  }
+  throw new HttpError(400, 'reasoningEffort must be low, medium, or high', 'VALIDATION_ERROR');
+}
+
+function parsePositiveInt(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new HttpError(400, 'query parameter must be a positive integer', 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
+
+function parseNonNegativeInt(value?: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new HttpError(400, 'query parameter must be a non-negative integer', 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
+

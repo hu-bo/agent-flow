@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
-import { TaskStateMachine } from '@agent-flow/checkpoint';
-import type { TaskState } from '@agent-flow/checkpoint';
+import { TaskStateMachine } from '@agent-flow/core/checkpoint';
+import type { TaskState } from '@agent-flow/core/checkpoint';
 import type { ServerRuntime } from '../runtime.js';
 import { createAgent } from './agent-factory.js';
 
@@ -57,4 +57,5 @@ async function runTaskInBackground(
     runtime.tasks.set(taskId, next);
   }
 }
+
 

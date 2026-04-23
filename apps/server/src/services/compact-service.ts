@@ -1,10 +1,12 @@
-import { ContextCompressor } from '@agent-flow/context-compressor';
+import { ContextCompressor } from '@agent-flow/core/compressor';
 import type { ServerRuntime } from '../runtime.js';
 import { HttpError } from '../errors.js';
-import { appendSessionMessage, loadSession } from './session-service.js';
+import type { SessionPrincipal } from './session-service.js';
+import { loadSession, writeCompactedMessages } from './session-service.js';
 
 export interface CompactInput {
   sessionId: string;
+  principal: SessionPrincipal;
   trigger?: 'manual' | 'auto';
 }
 
@@ -12,7 +14,7 @@ export async function compactSession(
   runtime: ServerRuntime,
   input: CompactInput,
 ): Promise<{ sessionId: string; stats: unknown }> {
-  const session = loadSession(runtime, input.sessionId);
+  const session = await loadSession(runtime, input.principal, input.sessionId);
   if (!session.messages.length) {
     throw new HttpError(400, 'Session has no messages to compact', 'EMPTY_SESSION');
   }
@@ -23,13 +25,21 @@ export async function compactSession(
     trigger: input.trigger ?? 'manual',
   });
 
-  for (const msg of result.messages) {
-    appendSessionMessage(runtime, input.sessionId, msg, session.info.cwd);
-  }
+  const compactBoundaryUuid =
+    result.messages.find((msg) => !!msg.metadata.compactBoundary)?.uuid ?? null;
+  const allMessages = [...session.messages, ...result.messages];
+  await writeCompactedMessages(
+    runtime,
+    input.principal,
+    input.sessionId,
+    allMessages,
+    compactBoundaryUuid,
+  );
 
   return {
     sessionId: input.sessionId,
     stats: result.stats,
   };
 }
+
 

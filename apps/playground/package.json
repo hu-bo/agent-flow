@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@agent-flow/chat-ui": "workspace:*",
-    "@agent-flow/model-contracts": "workspace:*",
+    "@agent-flow/core": "workspace:*",
     "lucide-react": "^1.8.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

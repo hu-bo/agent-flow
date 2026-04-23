@@ -1,4 +1,4 @@
-import type { FilePart, UnifiedMessage } from '@agent-flow/model-contracts';
+import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 
 interface ApiErrorPayload {
   error?: string;
@@ -196,3 +196,4 @@ export async function streamChat({
   buffer += decoder.decode();
   consumeSseBuffer(buffer, handleData);
 }
+

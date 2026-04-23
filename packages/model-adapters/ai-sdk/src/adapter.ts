@@ -4,7 +4,7 @@ import type {
   ChatResponse,
   StreamChunk,
   UnifiedMessage,
-} from '@agent-flow/model-contracts';
+} from '@agent-flow/core/messages';
 import type { LanguageModel } from 'ai';
 import { generateText, streamText } from 'ai';
 import { AiSdkMessageConverter } from './converter.js';
@@ -139,4 +139,5 @@ export class AiSdkAdapter implements ProviderAdapter {
     }
   }
 }
+
 

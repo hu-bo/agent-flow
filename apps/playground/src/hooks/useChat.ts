@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
-import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/model-contracts';
+import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import { fetchSession, streamChat } from '../api';
 
 interface SendMessageInput {
@@ -160,3 +160,4 @@ export function useChat(): UseChatReturn {
     isStreaming,
   };
 }
+

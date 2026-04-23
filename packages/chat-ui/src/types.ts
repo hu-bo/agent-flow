@@ -10,7 +10,7 @@ import type {
   UnifiedMessage,
   MessageMetadata,
   TokenUsage,
-} from '@agent-flow/model-contracts';
+} from '@agent-flow/core/messages';
 
 // Re-export base types
 export type {
@@ -75,3 +75,4 @@ export interface TokenUsageSummary {
   remainingTokens: number | null;
   tokenBudget: number | null;
 }
+

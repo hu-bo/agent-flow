@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '@agent-flow/model-contracts';
+import type { ToolDefinition } from './messages/index.js';
 
 export type PermissionDecision = 'allow' | 'deny' | 'ask';
 
@@ -71,3 +71,4 @@ export class PermissionManager {
     return allow;
   }
 }
+

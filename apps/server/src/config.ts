@@ -1,4 +1,4 @@
-import type { ModelGateway } from '@agent-flow/model-gateway';
+import type { ModelGateway } from '@agent-flow/core/gateway';
 
 export interface ServerConfig {
   port: number;
@@ -10,4 +10,5 @@ export interface ServerConfig {
   /** Path to static files directory (e.g. playground dist/) to serve in production */
   staticDir?: string;
 }
+
 

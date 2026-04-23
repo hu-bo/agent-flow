@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/apprail/apprail.tsx","./src/components/modelselector/modelselector.tsx","./src/components/sidebar/sidebar.tsx","./src/components/workspace/workspace.tsx","./src/hooks/usechat.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/components/apprail/apprail.tsx","./src/components/sidebar/sidebar.tsx","./src/components/workspace/workspace.tsx","./src/hooks/usechat.ts"],"version":"5.9.3"}

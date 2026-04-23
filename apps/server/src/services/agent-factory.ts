@@ -1,7 +1,7 @@
-import { ContextStore } from '@agent-flow/context-store';
-import { ContextCompressor } from '@agent-flow/context-compressor';
+import { ContextStore } from '@agent-flow/core/store';
+import { ContextCompressor } from '@agent-flow/core/compressor';
 import { Agent, QueryEngine } from '@agent-flow/core';
-import type { UnifiedMessage } from '@agent-flow/model-contracts';
+import type { UnifiedMessage } from '@agent-flow/core/messages';
 import type { ServerRuntime } from '../runtime.js';
 
 export interface CreateAgentOptions {
@@ -56,3 +56,4 @@ export function createAgent(runtime: ServerRuntime, options: CreateAgentOptions 
 
   return { agent, contextStore };
 }
+
