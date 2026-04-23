@@ -1,12 +1,12 @@
-export { Agent } from './agent';
-export type { AgentConfig, AgentDependencies } from './agent';
-export { QueryEngine } from './query-engine';
-export type { QueryEngineConfig } from './query-engine';
-export { ToolRegistry } from './tool-registry';
-export type { ToolExecutor } from './tool-registry';
-export { PermissionManager, DefaultPermissionPolicy } from './permission';
-export type { PermissionPolicy, PermissionDecision } from './permission';
-export { WorkflowEngine } from './workflow';
+export { Agent } from './agent.js';
+export type { AgentConfig, AgentDependencies } from './agent.js';
+export { QueryEngine } from './query-engine.js';
+export type { QueryEngineConfig } from './query-engine.js';
+export { ToolRegistry } from './tool-registry.js';
+export type { ToolExecutor } from './tool-registry.js';
+export { PermissionManager, DefaultPermissionPolicy } from './permission.js';
+export type { PermissionPolicy, PermissionDecision } from './permission.js';
+export { WorkflowEngine } from './workflow.js';
 export type {
   WorkflowNode,
   WorkflowEdge,
@@ -14,6 +14,7 @@ export type {
   WorkflowContext,
   WorkflowEvent,
   NodeExecutor,
-} from './workflow';
-export { AgentTeam } from './team';
-export type { TeamConfig, TeamAgentConfig, TeamDependencies, CoordinationStrategy } from './team';
+} from './workflow.js';
+export { AgentTeam } from './team.js';
+export type { TeamConfig, TeamAgentConfig, TeamDependencies, CoordinationStrategy } from './team.js';
+

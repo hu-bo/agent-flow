@@ -26,7 +26,7 @@ CLI 内置命令：`/model <id>` 切换模型、`/compact` 压缩上下文、`/s
 ### Server
 
 ```bash
-# 启动 HTTP/WebSocket 服务（默认端口 3000）
+# 启动 HTTP 服务（默认端口 3000）
 pnpm --filter @agent-flow/server dev
 ```
 
@@ -48,7 +48,7 @@ pnpm --filter @agent-flow/playground dev
 
 支持参数：`--port 3001`（server 端口）、`--no-open`（不自动打开浏览器）。
 
-通过 WebSocket 连接 server 实现实时对话，支持流式输出、工具调用展示、会话管理和模型切换。
+通过 SSE（`/api/chat`）实现实时流式对话，支持工具调用展示、会话管理和模型切换。
 
 ### Console（管理后台）
 
@@ -90,7 +90,7 @@ packages/
   core                 # 核心运行时（Agent 主循环、工具执行、工作流引擎、团队协作）
   cli                  # CLI 入口
   sdk                  # 编程 SDK
-  server               # HTTP/WebSocket 服务
+  server               # HTTP 服务（Hono + SSE）
 apps/
   playground           # Web 对话界面（React + Vite，端口 5173）
   console              # 管理后台（React + Vite，端口 5174）
@@ -109,7 +109,7 @@ apps/
 | GET | `/api/tasks/:id` | 查询任务状态 |
 | POST | `/api/compact` | 手动压缩上下文 |
 | POST | `/api/model` | 切换模型 |
-| WebSocket | `ws://host:port` | 实时对话流 |
+| SSE | `POST /api/chat` + `stream: true` | 实时对话流 |
 
 ## 环境变量
 
@@ -125,5 +125,5 @@ apps/
 
 - TypeScript 5.8 + pnpm + Turborepo
 - Vercel AI SDK（模型适配主力）
-- Express 5 + WebSocket（server）
+- Hono + SSE（server）
 - React 19 + Vite 7（前端应用）

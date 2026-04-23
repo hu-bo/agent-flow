@@ -1,2 +1,3 @@
-export { AiSdkAdapter } from './adapter';
-export { AiSdkMessageConverter } from './converter';
+export { AiSdkAdapter } from './adapter.js';
+export { AiSdkMessageConverter } from './converter.js';
+

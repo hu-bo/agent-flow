@@ -1,0 +1,84 @@
+.chat-ui-markdown {
+  font-size: 0.92rem;
+  color: inherit;
+}
+
+.chat-ui-markdown > :first-child {
+  margin-top: 0;
+}
+
+.chat-ui-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-ui-markdown p,
+.chat-ui-markdown ul,
+.chat-ui-markdown ol,
+.chat-ui-markdown pre,
+.chat-ui-markdown blockquote {
+  margin: 0.45rem 0;
+}
+
+.chat-ui-markdown ul,
+.chat-ui-markdown ol {
+  padding-left: 1.2rem;
+}
+
+.chat-ui-markdown li {
+  margin: 0.2rem 0;
+}
+
+.chat-ui-markdown h1,
+.chat-ui-markdown h2,
+.chat-ui-markdown h3 {
+  margin: 0.8rem 0 0.45rem;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.chat-ui-markdown h1 {
+  font-size: 1.2rem;
+}
+
+.chat-ui-markdown h2 {
+  font-size: 1.08rem;
+}
+
+.chat-ui-markdown h3 {
+  font-size: 1rem;
+}
+
+.chat-ui-markdown a {
+  color: var(--chat-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.chat-ui-markdown blockquote {
+  border-left: 2px solid var(--chat-brand-400);
+  padding-left: 0.7rem;
+  color: var(--chat-text-muted);
+}
+
+.chat-ui-markdown pre {
+  border: 1px solid var(--chat-code-border);
+  background: var(--chat-code-bg);
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  overflow-x: auto;
+  color: var(--chat-code-text);
+}
+
+.chat-ui-markdown code {
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.82em;
+}
+
+.chat-ui-markdown :not(pre) > code {
+  border: 1px solid var(--chat-border-subtle);
+  background: #eef2ff;
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.32rem;
+  color: #4338ca;
+}

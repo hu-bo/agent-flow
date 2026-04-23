@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import type { UnifiedMessage, ProviderAdapter, CompactBoundaryInfo } from '@agent-flow/model-contracts';
-import { COMPACT_SYSTEM_PROMPT } from './prompt';
+import { COMPACT_SYSTEM_PROMPT } from './prompt.js';
 
 export interface CompactionResult {
   messages: UnifiedMessage[];
@@ -107,3 +107,4 @@ export class ContextCompressor {
     };
   }
 }
+

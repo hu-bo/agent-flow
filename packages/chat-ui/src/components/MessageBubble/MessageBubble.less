@@ -1,0 +1,60 @@
+.chat-ui-message-row {
+  display: flex;
+  margin-bottom: 0.75rem;
+}
+
+.chat-ui-message-row.is-user {
+  justify-content: flex-end;
+}
+
+.chat-ui-message-row.is-assistant,
+.chat-ui-message-row.is-tool {
+  justify-content: flex-start;
+}
+
+.chat-ui-bubble {
+  max-width: min(80%, 52rem);
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.85rem;
+  line-height: 1.55;
+  word-break: break-word;
+  border: 1px solid transparent;
+  backdrop-filter: blur(2px);
+}
+
+.chat-ui-bubble.is-user {
+  background: linear-gradient(135deg, var(--chat-brand-600), var(--chat-brand-500));
+  color: #ffffff;
+  border-color: color-mix(in srgb, var(--chat-brand-500) 50%, white);
+  border-bottom-right-radius: 0.35rem;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--chat-brand-500) 24%, white), 0 10px 24px -16px var(--chat-brand-glow);
+}
+
+.chat-ui-bubble.is-assistant {
+  background: var(--chat-overlay-panel);
+  border-color: var(--chat-border);
+  border-bottom-left-radius: 0.35rem;
+}
+
+.chat-ui-bubble.is-tool {
+  background: var(--chat-panel-soft);
+  border-color: var(--chat-border-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+}
+
+.chat-ui-model-meta {
+  margin-top: 0.35rem;
+  color: var(--chat-text-subtle);
+  font-size: 0.65rem;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chat-ui-fallback-pre {
+  margin-top: 0.3rem;
+  color: var(--chat-text-muted);
+  font-size: 0.73rem;
+  white-space: pre-wrap;
+}

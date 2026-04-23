@@ -8,13 +8,13 @@ import type {
   ToolResultPart,
   TokenUsage,
 } from '@agent-flow/model-contracts';
-import { QueryEngine } from './query-engine';
+import { QueryEngine } from './query-engine.js';
 import type { ContextStore } from '@agent-flow/context-store';
 import type { ContextCompressor, CompactionResult } from '@agent-flow/context-compressor';
 import { shouldAutoCompact } from '@agent-flow/context-compressor';
 import type { LocalCheckpointManager, Checkpoint } from '@agent-flow/checkpoint';
-import { ToolRegistry } from './tool-registry';
-import { PermissionManager } from './permission';
+import { ToolRegistry } from './tool-registry.js';
+import { PermissionManager } from './permission.js';
 
 export interface AgentConfig {
   modelId: string;
@@ -31,7 +31,7 @@ export interface AgentDependencies {
   permissionManager: PermissionManager;
 }
 
-/** Agent — orchestrates the main conversation loop */
+/** Agent 鈥?orchestrates the main conversation loop */
 export class Agent {
   private queryEngine: QueryEngine;
   private config: AgentConfig;
@@ -68,6 +68,7 @@ export class Agent {
       // Query model
       const response = await this.queryEngine.query(tools);
       const assistantMsg = response.message;
+      assistantMsg.metadata.tokenUsage = response.usage;
 
       // Track usage
       if (response.usage) {
@@ -140,7 +141,7 @@ export class Agent {
         continue;
       }
 
-      // No tool calls — conversation turn complete
+      // No tool calls 鈥?conversation turn complete
       break;
     }
 
@@ -220,3 +221,4 @@ export class Agent {
     };
   }
 }
+

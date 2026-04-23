@@ -1,12 +1,11 @@
-import './styles.css';
 import 'highlight.js/styles/github.css';
 
 // Components
-export { ChatPanel } from './components/ChatPanel';
-export type { ChatPanelProps } from './components/ChatPanel';
-export { MessageList } from './components/MessageList';
-export { MessageBubble } from './components/MessageBubble';
-export { InputArea } from './components/InputArea';
+export { ChatPanel } from './components/ChatPanel/ChatPanel';
+export type { ChatPanelProps } from './components/ChatPanel/ChatPanel';
+export { MessageList } from './components/MessageList/MessageList';
+export { MessageBubble } from './components/MessageBubble/MessageBubble';
+export { InputArea } from './components/InputArea/InputArea';
 
 // Registry
 export { ContentRendererRegistry, createDefaultRegistry } from './registry';
@@ -26,6 +25,9 @@ export type {
   ChatContentPart,
   ChatMessage,
   FileAttachment,
+  ChatModelOption,
+  ReasoningEffort,
+  TokenUsageSummary,
   ThinkingPart,
   CodeDiffPart,
   // Re-exports from model-contracts

@@ -1,0 +1,56 @@
+.chat-ui-diff {
+  margin: 0.35rem 0;
+  overflow: hidden;
+  border: 1px solid var(--chat-border);
+  border-radius: 0.75rem;
+  background: #f8fbff;
+}
+
+.chat-ui-diff-header {
+  border-bottom: 1px solid var(--chat-border);
+  background: #eef4ff;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.72rem;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  color: var(--chat-text-muted);
+}
+
+.chat-ui-diff-language {
+  margin-left: 0.5rem;
+  color: var(--chat-text-subtle);
+}
+
+.chat-ui-diff-body {
+  margin: 0;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.chat-ui-diff-block.is-added {
+  background: var(--chat-success-surface);
+  color: var(--chat-success-text);
+}
+
+.chat-ui-diff-block.is-removed {
+  background: var(--chat-danger-surface);
+  color: var(--chat-danger-text);
+}
+
+.chat-ui-diff-block.is-common {
+  color: var(--chat-text-muted);
+}
+
+.chat-ui-diff-line {
+  display: block;
+  padding: 0 0.65rem;
+  white-space: pre;
+}
+
+.chat-ui-diff-prefix {
+  display: inline-block;
+  width: 1.1rem;
+  color: var(--chat-text-subtle);
+  user-select: none;
+}

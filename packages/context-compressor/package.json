@@ -2,9 +2,18 @@
   "name": "@agent-flow/context-compressor",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Context compression engine: auto-compact, micro-compact, summary generation",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
@@ -18,3 +27,5 @@
     "typescript": "^5.8.3"
   }
 }
+
+

@@ -1,0 +1,49 @@
+.chat-ui-thinking {
+  margin: 0.3rem 0;
+  border: 1px solid var(--chat-border);
+  border-radius: 0.7rem;
+  background: var(--chat-overlay-panel);
+}
+
+.chat-ui-thinking-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  padding: 0.48rem 0.65rem;
+  font-size: 0.74rem;
+  color: var(--chat-text-muted);
+  user-select: none;
+  list-style: none;
+}
+
+.chat-ui-thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-ui-thinking-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.05rem;
+  padding: 0 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--chat-brand-500) 36%, white);
+  border-radius: 999px;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  color: var(--chat-brand-600);
+}
+
+.chat-ui-thinking-duration {
+  color: var(--chat-text-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.chat-ui-thinking-body {
+  border-top: 1px solid var(--chat-border);
+  padding: 0.45rem 0.65rem 0.65rem;
+  color: var(--chat-text-muted);
+  font-size: 0.85rem;
+}

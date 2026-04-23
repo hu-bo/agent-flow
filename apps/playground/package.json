@@ -7,18 +7,25 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "preview": "vite preview",
-    "clean": "rm -rf dist"
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\""
   },
   "dependencies": {
     "@agent-flow/chat-ui": "workspace:*",
+    "@agent-flow/model-contracts": "workspace:*",
+    "lucide-react": "^1.8.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.14.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "4.2.2",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
+    "less": "^4.4.1",
+    "tailwindcss": "4.2.2",
     "typescript": "^5.8.3",
     "vite": "^7.0.0"
   }

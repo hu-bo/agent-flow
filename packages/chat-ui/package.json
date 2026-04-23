@@ -9,12 +9,14 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": "./dist/index.css",
+    "./index.css": "./dist/index.css"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
+    "dev": "vite build --watch --emitDeclarationOnly",
     "build": "vite build && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit"
@@ -37,6 +39,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
+    "less": "^4.4.0",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
     "vite": "^7.0.0"

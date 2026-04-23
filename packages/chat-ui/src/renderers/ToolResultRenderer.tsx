@@ -1,3 +1,4 @@
+import './ToolResultRenderer.less';
 import { useState } from 'react';
 import type { ContentRendererProps } from '../registry';
 import type { ToolResultPart } from '../types';
@@ -18,28 +19,19 @@ export function ToolResultRenderer({ part }: ContentRendererProps) {
   const isLong = text.length > 200;
 
   return (
-    <div className="my-1">
+    <div className="chat-ui-tool-block">
       <button
         onClick={() => setOpen(!open)}
-        className={`flex items-center gap-1 text-xs font-mono ${
-          isError ? 'text-red-500 hover:text-red-700' : 'text-gray-500 hover:text-gray-800'
-        }`}
+        className={`chat-ui-tool-toggle ${isError ? 'is-error' : ''}`}
+        type="button"
       >
-        <span>{open ? '▾' : '▸'}</span>
+        <span className="chat-ui-tool-arrow">{open ? 'v' : '>'}</span>
         <span>Result{isError ? ' (error)' : ''}</span>
       </button>
-      {(open || !isLong) && (
-        <pre className={`mt-1 rounded p-2 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all ${
-          isError ? 'bg-red-50 text-red-700' : 'bg-gray-100'
-        }`}>
-          {text}
-        </pre>
-      )}
-      {!open && isLong && (
-        <span className="text-xs text-gray-400 ml-1">
-          ({text.length} chars — click to expand)
-        </span>
-      )}
+
+      {(open || !isLong) && <pre className={`chat-ui-tool-payload ${isError ? 'is-error' : ''}`}>{text}</pre>}
+
+      {!open && isLong && <span className="chat-ui-tool-hint">({text.length} chars - click to expand)</span>}
     </div>
   );
 }

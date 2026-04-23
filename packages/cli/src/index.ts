@@ -3,6 +3,7 @@
 import * as readline from 'readline';
 import * as path from 'path';
 import { spawn, execSync, type ChildProcess } from 'child_process';
+import { fileURLToPath } from 'url';
 import { ModelGateway } from '@agent-flow/model-gateway';
 import { AiSdkAdapter } from '@agent-flow/model-adapter-ai-sdk';
 import { ContextStore } from '@agent-flow/context-store';
@@ -143,6 +144,8 @@ const COMMANDS: Array<{ name: string; description: string; args?: string }> = [
 ];
 
 const COMMAND_NAMES = COMMANDS.map(c => c.name);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function completer(line: string): [string[], string] {
   if (line.startsWith('/')) {

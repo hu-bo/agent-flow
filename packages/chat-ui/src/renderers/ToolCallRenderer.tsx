@@ -1,3 +1,4 @@
+import './ToolCallRenderer.less';
 import { useState } from 'react';
 import type { ContentRendererProps } from '../registry';
 import type { ToolCallPart } from '../types';
@@ -16,19 +17,12 @@ export function ToolCallRenderer({ part }: ContentRendererProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="my-1">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-xs font-mono text-gray-500 hover:text-gray-800"
-      >
-        <span>{open ? '▾' : '▸'}</span>
+    <div className="chat-ui-tool-block">
+      <button onClick={() => setOpen(!open)} className="chat-ui-tool-toggle" type="button">
+        <span className="chat-ui-tool-arrow">{open ? 'v' : '>'}</span>
         <span>Tool: {toolName}</span>
       </button>
-      {open && (
-        <pre className="mt-1 rounded bg-gray-100 p-2 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">
-          {formatOutput(input)}
-        </pre>
-      )}
+      {open && <pre className="chat-ui-tool-payload">{formatOutput(input)}</pre>}
     </div>
   );
 }

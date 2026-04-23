@@ -7,7 +7,7 @@ import type {
 } from '@agent-flow/model-contracts';
 import type { LanguageModel } from 'ai';
 import { generateText, streamText } from 'ai';
-import { AiSdkMessageConverter } from './converter';
+import { AiSdkMessageConverter } from './converter.js';
 
 export class AiSdkAdapter implements ProviderAdapter {
   readonly providerId: string;
@@ -139,3 +139,4 @@ export class AiSdkAdapter implements ProviderAdapter {
     }
   }
 }
+

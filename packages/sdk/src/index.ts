@@ -96,7 +96,7 @@ export class AgentFlow {
     }
   }
 
-  listSessions() {
+  listSessions(): ReturnType<SessionManager['listSessions']> {
     return this.sessionManager.listSessions();
   }
 

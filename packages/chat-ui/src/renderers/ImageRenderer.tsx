@@ -1,3 +1,4 @@
+import './ImageRenderer.less';
 import type { ContentRendererProps } from '../registry';
 import type { ImagePart } from '../types';
 
@@ -13,7 +14,7 @@ export function ImageRenderer({ part }: ContentRendererProps) {
     <img
       src={src}
       alt="message image"
-      className="my-1 max-h-80 max-w-full rounded-lg object-contain"
+      className="chat-ui-inline-image"
       loading="lazy"
     />
   );

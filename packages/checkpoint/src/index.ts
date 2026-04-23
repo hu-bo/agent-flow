@@ -1,6 +1,7 @@
-export type { Checkpoint, ToolExecutionState, FileHistoryEntry, TodoItem } from './checkpoint';
-export { LocalCheckpointManager } from './local';
-export type { TaskStatus, TaskState, TaskEvent } from './state-machine';
-export { TaskStateMachine } from './state-machine';
-export type { WALEntry } from './remote';
-export { LocalWALStore, RemoteCheckpointManager } from './remote';
+export type { Checkpoint, ToolExecutionState, FileHistoryEntry, TodoItem } from './checkpoint.js';
+export { LocalCheckpointManager } from './local.js';
+export type { TaskStatus, TaskState, TaskEvent } from './state-machine.js';
+export { TaskStateMachine } from './state-machine.js';
+export type { WALEntry } from './remote.js';
+export { LocalWALStore, RemoteCheckpointManager } from './remote.js';
+

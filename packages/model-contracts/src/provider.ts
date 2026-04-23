@@ -1,5 +1,5 @@
-import type { UnifiedMessage, TokenUsage } from './message';
-import type { ToolDefinition } from './tool';
+import type { UnifiedMessage, TokenUsage } from './message.js';
+import type { ToolDefinition } from './tool.js';
 
 export interface ChatRequest {
   messages: UnifiedMessage[];
@@ -41,3 +41,4 @@ export interface ProviderAdapter {
   streamChat(request: ChatRequest): AsyncIterable<StreamChunk>;
   countTokens(messages: UnifiedMessage[]): Promise<number>;
 }
+

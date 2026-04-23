@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+.chat-ui-root {
+  --chat-canvas: #f6f9ff;
+  --chat-panel: #ffffff;
+  --chat-panel-soft: #f8fbff;
+  --chat-panel-hover: #eef4ff;
+  --chat-border: #dbe5f2;
+  --chat-border-subtle: #c8d7ea;
+  --chat-brand-400: #818cf8;
+  --chat-brand-500: #6366f1;
+  --chat-brand-600: #4f46e5;
+  --chat-brand-glow: rgba(99, 102, 241, 0.22);
+  --chat-text-primary: #0f172a;
+  --chat-text-muted: #334155;
+  --chat-text-subtle: #64748b;
+  --chat-success: #34d399;
+  --chat-error: #f87171;
+  --chat-link: #2563eb;
+  --chat-code-bg: #0f172a;
+  --chat-code-border: #1e293b;
+  --chat-code-text: #dbeafe;
+  --chat-danger-surface: #fff1f2;
+  --chat-danger-border: #fecdd3;
+  --chat-danger-text: #be123c;
+  --chat-success-surface: #ecfdf5;
+  --chat-success-border: #a7f3d0;
+  --chat-success-text: #047857;
+  --chat-overlay-soft: rgba(255, 255, 255, 0.75);
+  --chat-overlay-panel: rgba(255, 255, 255, 0.9);
+  --chat-grid-dot: rgba(148, 163, 184, 0.35);
+  background: var(--chat-canvas);
+  color: var(--chat-text-primary);
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  min-height: 0;
+}
+
+.chat-ui-root[data-theme='dark'] {
+  --chat-canvas: #09090b;
+  --chat-panel: #0f172a;
+  --chat-panel-soft: #111827;
+  --chat-panel-hover: #1e293b;
+  --chat-border: #1e293b;
+  --chat-border-subtle: #334155;
+  --chat-text-primary: #e2e8f0;
+  --chat-text-muted: #94a3b8;
+  --chat-text-subtle: #64748b;
+  --chat-link: #93c5fd;
+  --chat-overlay-soft: rgba(15, 23, 42, 0.55);
+  --chat-overlay-panel: rgba(15, 23, 42, 0.72);
+  --chat-grid-dot: rgba(51, 65, 85, 0.35);
+}
+
+.chat-ui-root * {
+  box-sizing: border-box;
+}

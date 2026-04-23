@@ -1,9 +1,9 @@
 import type { ProviderAdapter, ModelInfo, ChatRequest, ChatResponse } from '@agent-flow/model-contracts';
-import { ModelRouter } from './router';
-import { FallbackChain } from './fallback';
-import type { FallbackChainConfig } from './fallback';
-import { RateLimiter } from './rate-limit';
-import type { RateLimitConfig } from './rate-limit';
+import { ModelRouter } from './router.js';
+import { FallbackChain } from './fallback.js';
+import type { FallbackChainConfig } from './fallback.js';
+import { RateLimiter } from './rate-limit.js';
+import type { RateLimitConfig } from './rate-limit.js';
 
 export interface ModelOverrideChain {
   runtime?: string;
@@ -96,4 +96,12 @@ export class ModelGateway {
   listModels(): ModelInfo[] {
     return this.router.listModels();
   }
+
+  listRegisteredModels(): Array<{ modelId: string; provider: string }> {
+    return Array.from(this.adapters.entries()).map(([modelId, adapter]) => ({
+      modelId,
+      provider: adapter.providerId,
+    }));
+  }
 }
+

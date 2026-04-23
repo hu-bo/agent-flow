@@ -1,165 +1,162 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createWebSocket } from '../api';
-import type { UnifiedMessage, WsServerMessage } from '../types';
+import type { FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
+import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/model-contracts';
+import { fetchSession, streamChat } from '../api';
+
+interface SendMessageInput {
+  text: string;
+  sessionId: string;
+  model?: string;
+  reasoningEffort?: ReasoningEffort;
+  attachments?: FileAttachment[];
+}
 
 interface UseChatReturn {
   messages: UnifiedMessage[];
-  sendMessage: (text: string) => void;
+  sendMessage: (input: SendMessageInput) => Promise<void>;
+  loadSessionMessages: (sessionId: string | null) => Promise<void>;
+  refreshSessionMessages: (sessionId: string | null) => Promise<void>;
   isConnecting: boolean;
   isStreaming: boolean;
 }
 
+function attachmentToFilePart(attachment: FileAttachment): FilePart | null {
+  if (!attachment.url) return null;
+  const matched = /^data:(.*?);base64,(.*)$/i.exec(attachment.url);
+  if (!matched) return null;
+  const [, mimeType, data] = matched;
+  return {
+    type: 'file',
+    mimeType: mimeType || attachment.type || 'application/octet-stream',
+    data,
+  };
+}
+
+function createUserContent(text: string, attachments?: FileAttachment[]): ContentPart[] {
+  const content: ContentPart[] = [{ type: 'text', text }];
+  const fileParts = (attachments ?? [])
+    .map(attachmentToFilePart)
+    .filter((part): part is FilePart => part !== null);
+  return fileParts.length ? [...content, ...fileParts] : content;
+}
+
 export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
-  const [isConnecting, setIsConnecting] = useState(true);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const connect = useCallback(() => {
-    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) return;
-
-    setIsConnecting(true);
-    const ws = createWebSocket();
-
-    ws.addEventListener('open', () => {
-      setIsConnecting(false);
-    });
-
-    ws.addEventListener('message', (event) => {
-      const msg: WsServerMessage = JSON.parse(event.data);
-
-      switch (msg.type) {
-        case 'message':
-          setMessages((prev) => [...prev, msg.data]);
-          break;
-
-        case 'text-delta':
-          // Accumulate text delta into the last assistant message
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last && last.role === 'assistant') {
-              const updated = { ...last, content: [...last.content] };
-              const lastPart = updated.content[updated.content.length - 1];
-              if (lastPart && lastPart.type === 'text') {
-                updated.content[updated.content.length - 1] = {
-                  ...lastPart,
-                  text: lastPart.text + msg.textDelta,
-                };
-              } else {
-                updated.content.push({ type: 'text', text: msg.textDelta });
-              }
-              return [...prev.slice(0, -1), updated];
-            }
-            // Create a new assistant message for the delta
-            const newMsg: UnifiedMessage = {
-              uuid: crypto.randomUUID(),
-              parentUuid: null,
-              role: 'assistant',
-              content: [{ type: 'text', text: msg.textDelta }],
-              timestamp: new Date().toISOString(),
-              metadata: {},
-            };
-            return [...prev, newMsg];
-          });
-          break;
-
-        case 'tool-call':
-          setMessages((prev) => {
-            const toolMsg: UnifiedMessage = {
-              uuid: crypto.randomUUID(),
-              parentUuid: null,
-              role: 'assistant',
-              content: [
-                {
-                  type: 'tool-call',
-                  toolCallId: msg.toolCallId,
-                  toolName: msg.toolName,
-                  input: {},
-                },
-              ],
-              timestamp: new Date().toISOString(),
-              metadata: {},
-            };
-            return [...prev, toolMsg];
-          });
-          break;
-
-        case 'tool-result':
-          setMessages((prev) => {
-            const resultMsg: UnifiedMessage = {
-              uuid: crypto.randomUUID(),
-              parentUuid: null,
-              role: 'tool',
-              content: [
-                {
-                  type: 'tool-result',
-                  toolCallId: msg.toolCallId,
-                  toolName: '',
-                  output: msg.output,
-                },
-              ],
-              timestamp: new Date().toISOString(),
-              metadata: {},
-            };
-            return [...prev, resultMsg];
-          });
-          break;
-
-        case 'done':
-          setIsStreaming(false);
-          break;
-
-        case 'error':
-          setIsStreaming(false);
-          console.error('Server error:', msg.error);
-          break;
-      }
-    });
-
-    ws.addEventListener('close', () => {
-      setIsConnecting(true);
-      wsRef.current = null;
-      reconnectTimer.current = setTimeout(connect, 2000);
-    });
-
-    ws.addEventListener('error', () => {
-      ws.close();
-    });
-
-    wsRef.current = ws;
-  }, []);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const activeSessionRef = useRef<string | null>(null);
+  const loadSequenceRef = useRef(0);
 
   useEffect(() => {
-    connect();
     return () => {
-      clearTimeout(reconnectTimer.current);
-      wsRef.current?.close();
+      streamAbortRef.current?.abort();
     };
-  }, [connect]);
+  }, []);
+
+  const loadSessionMessages = useCallback(async (sessionId: string | null) => {
+    activeSessionRef.current = sessionId;
+    loadSequenceRef.current += 1;
+    const currentLoad = loadSequenceRef.current;
+
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setIsStreaming(false);
+
+    if (!sessionId) {
+      setMessages([]);
+      setIsConnecting(false);
+      return;
+    }
+
+    setIsConnecting(true);
+    try {
+      const payload = await fetchSession(sessionId);
+      if (loadSequenceRef.current !== currentLoad || activeSessionRef.current !== sessionId) {
+        return;
+      }
+      // Avoid overriding optimistic stream state while a response is still in flight.
+      if (streamAbortRef.current) return;
+      setMessages(payload.messages);
+    } finally {
+      if (loadSequenceRef.current === currentLoad) {
+        setIsConnecting(false);
+      }
+    }
+  }, []);
+
+  const refreshSessionMessages = useCallback(async (sessionId: string | null) => {
+    if (!sessionId) {
+      setMessages([]);
+      return;
+    }
+
+    const payload = await fetchSession(sessionId);
+    if (activeSessionRef.current === sessionId && !streamAbortRef.current) {
+      setMessages(payload.messages);
+    }
+  }, []);
 
   const sendMessage = useCallback(
-    (text: string) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    async ({ text, sessionId, model, reasoningEffort, attachments }: SendMessageInput) => {
+      const userInput = text.trim();
+      if (!userInput) return;
+      if (streamAbortRef.current) {
+        throw new Error('Current response is still streaming');
+      }
 
-      // Add user message locally
+      activeSessionRef.current = sessionId;
       const userMsg: UnifiedMessage = {
         uuid: crypto.randomUUID(),
         parentUuid: null,
         role: 'user',
-        content: [{ type: 'text', text }],
+        content: createUserContent(userInput, attachments),
         timestamp: new Date().toISOString(),
-        metadata: {},
+        metadata: model ? { modelId: model } : {},
       };
+
       setMessages((prev) => [...prev, userMsg]);
       setIsStreaming(true);
+      setIsConnecting(false);
 
-      wsRef.current.send(
-        JSON.stringify({ type: 'chat', message: text })
-      );
+      const controller = new AbortController();
+      streamAbortRef.current = controller;
+
+      const attachmentParts = (attachments ?? [])
+        .map(attachmentToFilePart)
+        .filter((part): part is FilePart => part !== null);
+
+      try {
+        await streamChat({
+          message: userInput,
+          model,
+          reasoningEffort,
+          sessionId,
+          attachments: attachmentParts.length ? attachmentParts : undefined,
+          signal: controller.signal,
+          onMessage: (msg) => {
+            if (activeSessionRef.current !== sessionId) return;
+            // Server stream includes the user message; skip it to avoid duplicates.
+            if (msg.role === 'user') return;
+            setMessages((prev) => [...prev, msg]);
+          },
+        });
+      } finally {
+        if (streamAbortRef.current === controller) {
+          streamAbortRef.current = null;
+        }
+        setIsStreaming(false);
+      }
     },
-    []
+    [],
   );
 
-  return { messages, sendMessage, isConnecting, isStreaming };
+  return {
+    messages,
+    sendMessage,
+    loadSessionMessages,
+    refreshSessionMessages,
+    isConnecting,
+    isStreaming,
+  };
 }

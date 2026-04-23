@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Checkpoint } from './checkpoint';
+import type { Checkpoint } from './checkpoint.js';
 
 /** Local file-based checkpoint manager */
 export class LocalCheckpointManager {
@@ -48,3 +48,4 @@ export class LocalCheckpointManager {
     }
   }
 }
+

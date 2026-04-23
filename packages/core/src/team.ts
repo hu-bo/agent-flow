@@ -1,13 +1,13 @@
 import * as crypto from 'crypto';
 import type { UnifiedMessage } from '@agent-flow/model-contracts';
-import { Agent } from './agent';
-import type { AgentConfig } from './agent';
-import type { QueryEngine } from './query-engine';
+import { Agent } from './agent.js';
+import type { AgentConfig } from './agent.js';
+import type { QueryEngine } from './query-engine.js';
 import type { ContextStore } from '@agent-flow/context-store';
 import type { ContextCompressor } from '@agent-flow/context-compressor';
 import type { LocalCheckpointManager } from '@agent-flow/checkpoint';
-import { ToolRegistry } from './tool-registry';
-import { PermissionManager } from './permission';
+import { ToolRegistry } from './tool-registry.js';
+import { PermissionManager } from './permission.js';
 
 export type CoordinationStrategy = 'round-robin' | 'router' | 'hierarchical';
 
@@ -136,3 +136,4 @@ export class AgentTeam {
     return this.agents[0]; // default to first agent
   }
 }
+

@@ -60,3 +60,18 @@ export interface FileAttachment {
   url?: string;
   previewUrl?: string;
 }
+
+export type ReasoningEffort = 'low' | 'medium' | 'high';
+
+export interface ChatModelOption {
+  modelId: string;
+  label: string;
+  provider?: string;
+  maxInputTokens?: number;
+}
+
+export interface TokenUsageSummary {
+  usedTokens: number;
+  remainingTokens: number | null;
+  tokenBudget: number | null;
+}

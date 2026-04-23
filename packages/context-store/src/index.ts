@@ -1,4 +1,6 @@
-export { ContextStore } from './store';
-export { SessionManager } from './session';
-export { JsonlSerializer } from './serializer';
-export { MemoryStore } from './memory-store';
+export { ContextStore } from './store.js';
+export { SessionManager } from './session.js';
+export type { SessionInfo } from './session.js';
+export { JsonlSerializer } from './serializer.js';
+export { MemoryStore } from './memory-store.js';
+

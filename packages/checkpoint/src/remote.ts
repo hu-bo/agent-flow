@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Checkpoint } from './checkpoint';
-import type { TaskState, TaskStatus } from './state-machine';
-import { LocalCheckpointManager } from './local';
+import type { Checkpoint } from './checkpoint.js';
+import type { TaskState, TaskStatus } from './state-machine.js';
+import { LocalCheckpointManager } from './local.js';
 
 export interface WALEntry {
   seqId: number;
@@ -126,3 +126,4 @@ export class RemoteCheckpointManager {
     }
   }
 }
+

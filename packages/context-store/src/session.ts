@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { JsonlSerializer } from './serializer';
+import { JsonlSerializer } from './serializer.js';
 import type { UnifiedMessage, SerializedMessage } from '@agent-flow/model-contracts';
 
 export interface SessionInfo {
@@ -96,3 +96,4 @@ export class SessionManager {
     fs.writeFileSync(metaPath, JSON.stringify(info, null, 2));
   }
 }
+

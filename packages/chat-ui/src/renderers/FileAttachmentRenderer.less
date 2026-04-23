@@ -1,0 +1,43 @@
+.chat-ui-file-card {
+  margin: 0.35rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-overlay-panel);
+  padding: 0.5rem 0.65rem;
+}
+
+.chat-ui-file-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.2rem;
+  height: 1.35rem;
+  border-radius: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--chat-brand-500) 45%, white);
+  color: var(--chat-brand-600);
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.chat-ui-file-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-ui-file-type {
+  color: var(--chat-text-primary);
+  font-size: 0.77rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chat-ui-file-size {
+  color: var(--chat-text-subtle);
+  font-size: 0.68rem;
+  margin-top: 0.1rem;
+}
