@@ -13,7 +13,7 @@ export interface Session {
 export interface TaskState {
   taskId: string;
   sessionId: string;
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
   createdAt: string;
   updatedAt: string;
   latestCheckpointId: string;
@@ -44,20 +44,26 @@ export function fetchHealth(): Promise<HealthResponse> {
   return request('/api/health');
 }
 
-export function fetchSessions(): Promise<Session[]> {
-  return request('/api/sessions');
+export async function fetchSessions(): Promise<Session[]> {
+  const payload = await request<{ sessions: Session[] }>('/api/sessions');
+  return payload.sessions;
 }
 
-export function createSession(opts?: Record<string, unknown>): Promise<Session> {
-  return request('/api/sessions', { method: 'POST', body: JSON.stringify(opts ?? {}) });
+export async function createSession(opts?: Record<string, unknown>): Promise<Session> {
+  const payload = await request<{ session: Session }>('/api/sessions', {
+    method: 'POST',
+    body: JSON.stringify(opts ?? {}),
+  });
+  return payload.session;
 }
 
 export function deleteSession(id: string): Promise<void> {
   return request(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export function fetchTask(id: string): Promise<TaskState> {
-  return request(`/api/tasks/${encodeURIComponent(id)}`);
+export async function fetchTask(id: string): Promise<TaskState> {
+  const payload = await request<{ task: TaskState }>(`/api/tasks/${encodeURIComponent(id)}`);
+  return payload.task;
 }
 
 export function createTask(opts: { prompt: string; model?: string; config?: Record<string, unknown> }): Promise<CreateTaskResult> {

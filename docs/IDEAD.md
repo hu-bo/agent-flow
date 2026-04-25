@@ -133,6 +133,7 @@ agent-flow/
 │   ├── api-gateway-web/           # api中转管理页面(不用改动)
 │   ├── web-ui/                    # Next.js 前端（IDE/UI）
 │   ├── web-server/                # BFF（Fastify）统一入口
+│   ├── console/                   # 查看本应用相关数据的管理前端(不用改动)
 │   └── cli/                       # CLI（类似 codex/claude code）
 │
 ├── packages/

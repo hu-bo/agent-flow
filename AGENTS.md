@@ -58,13 +58,13 @@ pnpm test
 # Run CLI in dev mode
 pnpm dev
 # or with specific model
-pnpm --filter @agent-flow/cli dev -- --model Codex-sonnet-4-20250514
+pnpm --filter @agent-flow/cli dev -- --model claude-sonnet-4-20250514
 
 # Start server (port 3000)
-pnpm --filter @agent-flow/server dev
+pnpm --filter @agent-flow/web-server dev
 
-# Start playground (port 5173)
-pnpm --filter @agent-flow/playground dev
+# Start webui (port 5173)
+pnpm --filter @agent-flow/webui dev
 
 # Start console (port 5174)
 pnpm --filter @agent-flow/console dev
@@ -91,34 +91,7 @@ make dev      # run with hot reload
 make gen-key  # generate ENCRYPTION_KEY
 ```
 
-## Project Structure
 
-```
-packages/
-  model-contracts/       # Pure types — UnifiedMessage, ProviderAdapter, ModelCapabilities
-  model-adapters/
-    ai-sdk/              # Vercel AI SDK adapter (primary)
-    openai/              # Native OpenAI adapter
-    anthropic/           # Native Anthropic adapter
-    google/              # Gemini adapter
-    deepseek/            # DeepSeek adapter
-  model-gateway/         # Model routing, fallback, rate limiting
-  context-store/         # Context storage (memory + JSONL persistence)
-  context-compressor/    # Context compression (auto-compact + micro-compact)
-  checkpoint/            # Checkpoint & recovery (local file + remote WAL)
-  core/                  # Core runtime — Agent loop, tool execution, workflow engine, teams
-  cli/                   # CLI entry (bin: agent-flow)
-  sdk/                   # Programmatic SDK
-  server/                # HTTP/WebSocket server (Express 5)
-  chat-ui/               # React chat panel component
-apps/
-  playground/            # Web chat UI (React + Vite, port 5173)
-  console/               # Admin dashboard (React + Vite, port 5174)
-  api-gateway/           # Go LLM API proxy (Echo v4, PostgreSQL, port 8080)
-  api-gateway-web/       # API Gateway console (React + Vite + Ant Design, port 5175)
-tests/
-  golden/                # Golden test fixtures
-```
 
 ## Code Conventions
 

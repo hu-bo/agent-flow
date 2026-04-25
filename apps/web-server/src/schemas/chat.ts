@@ -1,0 +1,18 @@
+import { z } from 'zod';
+import { modelIdSchema, reasoningEffortSchema, sessionIdSchema } from './common.js';
+
+export const fileAttachmentSchema = z.object({
+  type: z.literal('file'),
+  mimeType: z.string().min(1),
+  data: z.string().min(1),
+});
+
+export const createChatBodySchema = z.object({
+  sessionId: sessionIdSchema.optional(),
+  message: z.string().trim().min(1),
+  model: modelIdSchema.optional(),
+  reasoningEffort: reasoningEffortSchema.optional(),
+  attachments: z.array(fileAttachmentSchema).max(10).optional(),
+  stream: z.boolean().default(false),
+  backgroundTask: z.boolean().default(false),
+});
