@@ -1,176 +1,198 @@
-你现在这套已经不是普通应用了，本质是一个 LLM 执行平台内核。结构设计的关键不是“全”，而是边界清晰 + 不过度细分 + 能支撑演进。
 
-你提到的这些核心模块：
+## 目标
+长任务 LLM 编码框架
 
-model-adapters
-context-store
-checkpoint
-compact（上下文压缩）
+## 🧭 1. 任务编排与执行（核心）
+- 支持多阶段任务规划（Plan / ReAct / Tree）
+- 支持 Task Graph（DAG），非线性任务依赖与并发执行
+- 支持 step-by-step 执行与动态重规划（replan）
+- 支持多 Agent 协作（planner / executor / reviewer）
 
-👉 我帮你收敛成4个核心子系统 + 3个支撑层，然后给一个不过度拆分的 monorepo 结构。
+---
 
-一、先统一抽象（避免目录失控）
-四大核心域（必须稳定）
-1. orchestration   → 调度 / agent / plan
-2. model           → LLM 适配层
-3. context         → 上下文系统（含 compact）
-4. state           → checkpoint / session
-三个基础支撑域
-5. runner          → 执行层（Go）
-6. protocol        → 跨语言协议
-7. infra           → 部署 / sandbox
-二、收敛后的项目结构（不过度拆分）
+## 🧾 2. Prompt / 指令系统
+- 支持 .md 文件作为 system prompt（项目级 / 任务级）
+- 支持 prompt 模板化（variables / context injection）
+- 支持多层 prompt 叠加（system / task / tool）
 
-👉 控制在7~9 个顶级目录，这是比较健康的规模
+---
 
-ai-system/
-├── apps/
-│   ├── web/                 # 前端（Next.js）
-│   └── api/                 # BFF / 控制入口（Node）
+## ⚙️ 3. 执行系统（Runner）
+- 支持本地执行（文件 / shell / git）
+- 支持远程执行（agent / sandbox）
+- 支持多 runner 调度（负载均衡 / failover）
+- 支持流式执行输出（stdout / stderr / progress）
+- 支持安全沙箱（仅限制rm 操作 + 白名单）
+
+---
+
+## 🔄 4. 任务控制与状态管理
+- 支持后台任务执行（异步）
+- 支持 checkpoint（步骤级快照）
+- 支持断点续传（resume / replay）
+- 支持任务控制（pause / resume / cancel / retry）
+- 支持任务幂等与重试机制
+
+---
+
+## 📦 5. 上下文管理（Context System）
+- 支持上下文构建（代码 / 文件 / 历史）
+- 支持上下文选择（相关性检索）
+- 支持 token window 管理（模型上下文窗口）
+- 支持上下文生命周期（创建 / 扩展 / 过期 / 清理）
+
+---
+
+## ✂️ 6. 上下文压缩（Auto-Compact）
+- 支持自动触发压缩（接近 token 上限）
+- 支持多策略压缩：
+  - 摘要压缩（summarization）
+  - 差量压缩（diff）
+  - 语义裁剪（embedding-based）
+  - 重写压缩（rewrite）
+- 支持压缩质量评估与回退机制
+
+---
+
+## 🧠 7. 记忆系统（Memory / RAG）
+- 支持短期记忆（session 内上下文）
+- 支持长期记忆（向量存储 / RAG）
+- 支持 embedding 与索引管理
+- 支持语义检索与上下文增强
+- 支持记忆写入策略（何时写 / 写什么）
+
+---
+
+## 🔧 8. 工具系统（Tooling）
+- 支持标准化 Tool 调用协议（ToolCall / ToolResult）
+- 支持工具注册与动态扩展
+- 支持内置工具（fs / git / http）
+- 支持工具执行追踪（trace / log）
+- 支持工具失败重试与回滚
+
+---
+
+## 🔗 9. 通信与执行协议（Protocol）
+- core ⇄ runner 使用双向流协议（gRPC / WS）
+- 支持任务流（TaskRequest / TaskEvent）
+- 支持流式事件（log / progress / result）
+- 支持任务取消 / 心跳 / 超时控制
+- 支持跨语言（Node ⇄ Go）通信
+
+---
+
+## 📡 10. Streaming 全链路
+- 支持 LLM → core → runner → UI 全链路流式输出
+- 支持多事件类型：
+  - token stream（LLM输出）
+  - tool stream（工具执行）
+  - runner stream（执行日志）
+- 支持 backpressure 与流控
+
+
+---
+
+## 🔌 11. 插件与扩展系统（Plugin System）
+- 支持工具插件（tools）
+- 支持 memory 插件（不同向量库）
+- 支持模型插件（多 LLM 接入）
+- 支持 planner / executor 扩展
+- 支持按需加载（lazy load）
+
+---
+
+## 📊 12. 可观测性与评估（Observability）
+- 支持执行日志（structured log）
+- 支持调用链追踪（tracing）
+- 支持指标统计：
+  - token 使用量
+  - tool 调用次数
+  - 成功率 / 失败率
+- 支持调试模式（debug replay）
+
+---
+
+## ⚙️ 13. 配置系统（apps/console）
+- 支持配置tools、model
+- 支持限流 / 配额控制
+
+---
+
+## 🧩 14. 架构目标
+- 支持 CLI / Web / API 多入口统一能力
+- 支持多 runner 横向扩展
+- 支持模块化（packages 拆分）
+- 支持低耦合（core 最小化）
+- 支持未来演进（multi-agent / 自动化开发）
+
+
+## 项目结构
+agent-flow/
+├── apps/                          # 🧩 应用层（入口）
+│   ├── api-gateway/               # api中转服务，只负责中转(不用改动)
+│   ├── api-gateway-web/           # api中转管理页面(不用改动)
+│   ├── web-ui/                    # Next.js 前端（IDE/UI）
+│   ├── web-server/                # BFF（Fastify）统一入口
+│   └── cli/                       # CLI（类似 codex/claude code）
 │
-├── core/                    # 🧠 核心（Node，重点）
-│   ├── orchestration/       # Agent / Planner / Tool调度
-│   ├── model/               # model-adapters（统一封装）
-│   ├── context/             # context-store + retrieval
-│   ├── state/               # checkpoint / session
-│   └── compact/             # 上下文压缩（独立出来很关键）
+├── packages/
+│   ├── core/                     # 🧠 最小运行时（对外唯一入口）
+│   │   ├── orchestration/
+│   │   │   ├── planner/           # 任务规划（Plan / ReAct / Tree）
+│   │   │   ├── executor/          
+│   │   │   ├── scheduler/
+│   │   │   ├── graph/
+│   │   │   └── guardrails/
+│   │   │
+│   │   ├── context/
+│   │   │   ├── builder/
+│   │   │   ├── loader/
+│   │   │   ├── selector/
+│   │   │   └── window/
+│   │   │
+│   │   ├── tools/                 # 仅抽象（无具体 fs/git 实现）
+│   │   │   ├── registry/
+│   │   │   ├── schema/
+│   │   │   └── executor/
+│   │   │
+│   │   ├── prompt/
+│   │   │   ├── system-loader/
+│   │   │   └── variables/
+│   │   │
+│   │   ├── state/                 # checkpoint（建议保留）
+│   │   │   ├── session/
+│   │   │   ├── checkpoint/
+│   │   │   └── replay/
+│   │   │
+│   │   ├── types/                 # 核心类型（强制所有包依赖它）
+│   │   └── index.ts               # createAgent / run / resume
+│   │
+│   ├── memory/                   # 🧠 RAG（长短记忆、向量库等）
+│   ├── compact/                  # ✂️ 压缩算法（摘要压缩、代码差量压缩、语义压缩）
+│   ├── model-adapters/           # 🤖 模型接入(local、openai、anthropic、ai-sdk)
+│   ├── tools-impl/               # 🔧 fs/git/http 等实现
+│   ├── events/                   # 📡 logging/tracing
+│   ├── storage/                  # 💾 Redis/qdrant 适配
 │
-├── runner/                  # ⚙️ 执行层（Go）
-│   ├── local/               # 本地 runner
-│   ├── remote/              # 远程 runner
-│   └── sandbox/             # 容器执行
+├── runner/                        # ⚙️ 执行层（Go，强隔离）
+│   ├── local/                     # 本地执行器(文件操作)
+│   ├── remote/                    # 远程agent(需要鉴权)
+│   ├── sandbox/                   # 沙箱执行（安全）
 │
-├── protocol/                # 📡 通信协议（强约束）
-│   ├── proto/               # gRPC 定义
-│   └── types/               # TS 类型（自动生成）
+├── protocol/                      # 📡 通信协议（强约束）
+│   ├── proto/                     # gRPC定义
+│   │   ├── runner.proto
+│   ├── types/                     # TS类型（自动生成）
 │
-├── engine/                  # 🚀 高性能模块（Rust 可选）
-│   ├── diff/                # 文件 diff / patch
-│   └── sandbox/             # 安全执行（可选）
-│
-├── sdk/                     # 对外 SDK（可选）
-│   ├── js/
-│   ├── go/
-│   └── python/
-│
-├── infra/                   # 部署 & 运行环境
-│   ├── docker/
-│   ├── k8s/
-│   └── scripts/
-│
+├── scripts/                       # 🛠️ 脚本（构建/部署/protocol 生成）
+├── docker-compose.yaml           
+├── docker-compose.dev.yaml        # 包含依赖的reids、qdrant、MinIO
+├── docs/                          # 📚 文档（架构/协议/开发指南）
 └── README.md
-三、核心模块职责（重点讲你提的4个）
-1️⃣ model-adapters（core/model）
 
-👉 不只是 SDK 封装，而是统一语义层
-
-interface ModelAdapter {
-  chat(req: ChatRequest): Promise<ChatResponse>
-
-  stream(req): AsyncIterable<Token>
-
-  // 关键：工具调用统一
-  callTools?(tools, messages): Promise<ToolCall[]>
-
-  // checkpoint 恢复
-  resume?(state): void
-}
-子结构建议（不要再细分）
-model/
-├── adapters/        # openai / anthropic / 本地模型
-├── router.ts        # 模型选择策略（成本 / latency）
-└── types.ts
-2️⃣ context-store（core/context）
-
-👉 统一三类 context：
-
-- 短期：对话上下文（messages）
-- 长期：向量库（你已有 Qdrant）
-- 环境：文件 / repo / runtime
-结构
-context/
-├── manager.ts       # 统一入口（最重要）
-├── retriever.ts     # 向量 / 关键词检索
-├── providers/       # file / vector / memory
-└── ranking.ts       # rerank（可选）
-
-👉 核心接口：
-
-getContext(query, opts): ContextChunk[]
-3️⃣ checkpoint（core/state）
-
-👉 不要拆太细，保持一个入口
-
-state/
-├── checkpoint.ts    # 核心逻辑
-├── store.ts         # 持久化（redis / db / s3）
-└── session.ts       # session 管理
-
-👉 核心能力：
-
-save()
-load()
-resume()
-branch()（建议预留）
-4️⃣ compact（core/compact）
-
-👉 这是很多系统忽略但你必须做的模块
-
-作用：
-
-减少 token / 控制上下文窗口
-结构
-compact/
-├── summarizer.ts    # LLM 压缩
-├── truncator.ts     # 截断策略
-├── memory.ts        # 长期记忆抽取
-└── policy.ts        # 何时触发
-
-👉 示例策略：
-
-if (tokens > limit) {
-  summarize(oldMessages)
-}
-四、模块之间的关系（非常关键）
-            orchestration
-          /      |      \
-       model   context   state
-                   |
-                compact
-                   |
-                 runner
-
-解释：
-
-orchestration 是大脑
-model 是“思考接口”
-context 提供信息
-compact 控制成本
-state 提供恢复能力
-runner 执行现实操作
-五、最小闭环调用链（你可以直接实现）
-User Input
-   ↓
-orchestration.plan()
-   ↓
-context.get()
-   ↓
-compact.process()
-   ↓
-model.chat()
-   ↓
-tool call?
-   ↓
-runner.exec()
-   ↓
-state.checkpoint()
-   ↓
-返回结果
-六、避免过度设计的关键原则
-1. 每个域只暴露一个入口
-
-例如：
-
-context.getContext()
-state.saveCheckpoint()
-model.chat()
+## 架构通信
+[ Web UI ]
+     ⇅ (SSE / WS)
+[ core (Node) ]
+     ⇅ (gRPC 双向流)
+[ runner x N (Go) ]
