@@ -44,6 +44,7 @@ export interface ModelDescriptor {
 export interface TaskRecord {
   taskId: string;
   sessionId: string;
+  profileId?: string;
   type: TaskType;
   status: TaskStatus;
   createdAt: string;

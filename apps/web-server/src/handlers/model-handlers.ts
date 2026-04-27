@@ -11,7 +11,10 @@ export async function listModelsHandler(request: FastifyRequest, reply: FastifyR
 
 export async function switchModelHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(switchModelBodySchema, request.body, 'body');
-  const descriptor = request.server.services.modelService.switchModel(body.modelId);
+  const descriptor = await request.server.services.modelService.switchModel(body.modelId, {
+    actorId: request.requestContext.actorId,
+    requestId: request.requestContext.requestId,
+  });
   reply.send({
     model: descriptor.modelId,
     descriptor,

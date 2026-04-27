@@ -23,6 +23,7 @@ export const taskEventsQuerySchema = z.object({
 export const taskRecordSchema = z.object({
   taskId: taskIdSchema,
   sessionId: sessionIdSchema,
+  profileId: z.string().min(1).optional(),
   type: z.enum(['chat', 'workflow', 'compact']),
   status: taskStatusSchema,
   createdAt: isoDateTimeSchema,
@@ -38,6 +39,7 @@ export const taskRecordSchema = z.object({
 
 export const createTaskBodySchema = z.object({
   prompt: z.string().trim().min(1),
+  profileId: z.string().trim().min(1).max(64).optional(),
   model: modelIdSchema.optional(),
   sessionId: sessionIdSchema.optional(),
   type: z.enum(['chat', 'workflow', 'compact']).default('chat'),

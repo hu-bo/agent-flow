@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerAdminRoutes } from './admin.js';
 import { registerChatRoutes } from './chat.js';
 import { registerCompactRoutes } from './compact.js';
 import { registerHealthRoutes } from './health.js';
@@ -15,6 +16,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   await app.register(async (api) => {
     await registerHealthRoutes(api);
+    await registerAdminRoutes(api);
     await registerModelRoutes(api);
     await registerSessionRoutes(api);
     await registerCompactRoutes(api);

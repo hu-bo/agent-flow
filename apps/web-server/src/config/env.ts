@@ -6,6 +6,10 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   AGENT_FLOW_MODEL: z.string().min(1).default('gpt-4o'),
   AGENT_FLOW_CORS_ORIGIN: z.string().optional(),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .default('postgres://aflow_user:aflow_pass123@localhost:15000/aflow?sslmode=disable'),
 });
 
 export interface AppEnv {
@@ -14,6 +18,7 @@ export interface AppEnv {
   nodeEnv: 'development' | 'test' | 'production';
   defaultModel: string;
   corsOrigin: true | string | RegExp | Array<string | RegExp>;
+  databaseUrl: string;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -25,6 +30,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     nodeEnv: parsed.NODE_ENV,
     defaultModel: parsed.AGENT_FLOW_MODEL,
     corsOrigin: parseCorsOrigin(parsed.AGENT_FLOW_CORS_ORIGIN),
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 

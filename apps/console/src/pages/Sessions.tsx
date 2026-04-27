@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { fetchSessions, createSession, deleteSession, type Session } from '../api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 export function Sessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -28,8 +29,7 @@ export function Sessions() {
   };
 
   const handleDelete = (id: string) => {
-    if (!window.confirm(`Delete session ${id}?`)) return;
-    deleteSession(id)
+    return deleteSession(id)
       .then(() => refresh())
       .catch((err) => setError(String(err)));
   };
@@ -68,12 +68,14 @@ export function Sessions() {
                 <td>{s.messageCount}</td>
                 <td>{new Date(s.createdAt).toLocaleString()}</td>
                 <td>
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() => handleDelete(s.sessionId)}
-                  >
-                    Delete
-                  </button>
+                  <ConfirmDialog
+                    title="Delete session?"
+                    description={`Session ${s.sessionId} will be deleted permanently.`}
+                    confirmText="Delete session"
+                    triggerText="Delete"
+                    triggerClassName="btn btn-danger btn-sm"
+                    onConfirm={() => handleDelete(s.sessionId)}
+                  />
                 </td>
               </tr>
             ))}

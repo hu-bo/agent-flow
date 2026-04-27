@@ -115,6 +115,7 @@
 ## ⚙️ 13. 配置系统（apps/console）
 - 支持配置tools、model
 - 支持限流 / 配额控制
+- 后台系统设计详见：[`docs/CONSOLE-SYSTEM-DESIGN.md`](./CONSOLE-SYSTEM-DESIGN.md)
 
 ---
 
@@ -175,10 +176,12 @@ agent-flow/
 │   ├── events/                   # 📡 logging/tracing
 │   ├── storage/                  # 💾 Redis/qdrant 适配
 │
-├── runner/                        # ⚙️ 执行层（Go，强隔离）
-│   ├── local/                     # 本地执行器(文件操作)
-│   ├── remote/                    # 远程agent(需要鉴权)
-│   ├── sandbox/                   # 沙箱执行（安全）
+├── pkg/                        # ⚙️ 执行层（Go，强隔离）
+│   │   ├── runner/                 # checkpoint（建议保留）
+│   │   │   ├── exec/               # 执行器，agent的手脚，可以为LLM做任何事情
+│   │   │   ├── sandbox/            # 安全的执行exec
+│   │   │   ├── docker/             # docker 执行 exec
+│   │   │   └── runner.go           # 统一入口
 │
 ├── protocol/                      # 📡 通信协议（强约束）
 │   ├── proto/                     # gRPC定义

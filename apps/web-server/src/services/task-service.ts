@@ -1,12 +1,15 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import type { AgentEvent, AgentRunResult, AgentRuntime } from '@agent-flow/core';
+import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import type { TaskAction, TaskEvent, TaskRecord, TaskStatus, TaskType } from '../contracts/api.js';
-import { NotFoundError } from '../lib/errors.js';
+import { ConflictError, NotFoundError } from '../lib/errors.js';
 import { ModelService } from './model-service.js';
 import { SessionService } from './session-service.js';
 
 export interface CreateTaskInput {
   prompt: string;
+  profileId?: string;
   modelId?: string;
   sessionId?: string;
   type?: TaskType;
@@ -20,11 +23,15 @@ export class TaskService {
   private readonly emitter = new EventEmitter();
   private readonly tasks = new Map<string, TaskRecord>();
   private readonly events = new Map<string, TaskEvent[]>();
-  private readonly timers = new Map<string, NodeJS.Timeout[]>();
+  private readonly executions = new Map<string, Promise<void>>();
+  private readonly abortControllers = new Map<string, AbortController>();
 
   constructor(
     private readonly modelService: ModelService,
     private readonly sessionService: SessionService,
+    private readonly runtime: AgentRuntime,
+    private readonly logger?: StructuredLogger,
+    private readonly tracer?: Tracer,
   ) {}
 
   listTasks() {
@@ -34,7 +41,7 @@ export class TaskService {
   }
 
   createTask(input: CreateTaskInput) {
-    const modelId = input.modelId ?? this.modelService.getCurrentModelId();
+    const modelId = input.modelId ?? this.modelService.resolveModelIdForProfile(input.profileId);
     this.modelService.getModel(modelId);
 
     const session =
@@ -49,6 +56,7 @@ export class TaskService {
     const task: TaskRecord = {
       taskId: randomUUID(),
       sessionId: session.sessionId,
+      profileId: input.profileId,
       type: input.type ?? 'chat',
       status: 'pending',
       createdAt: now,
@@ -65,8 +73,10 @@ export class TaskService {
       status: task.status,
       prompt: task.prompt,
       modelId: task.modelId,
+      profileId: task.profileId,
+      type: task.type,
     });
-    this.scheduleExecution(task.taskId);
+    this.scheduleExecution(task.taskId, input.config);
     return task;
   }
 
@@ -97,21 +107,36 @@ export class TaskService {
 
     switch (action) {
       case 'pause':
-        this.updateTask(taskId, 'paused');
-        this.clearTimers(taskId);
+        if (task.status === 'running' || task.status === 'pending') {
+          this.abortTask(taskId, 'Task paused');
+          this.updateTask(taskId, 'paused');
+        }
         break;
       case 'resume':
-        this.updateTask(taskId, 'running');
-        this.scheduleCompletion(taskId, 180);
+        if (task.status !== 'paused') {
+          throw new ConflictError(`Task "${taskId}" is not paused.`);
+        }
+        this.updateTask(taskId, 'pending');
+        this.scheduleExecution(taskId);
         break;
       case 'cancel':
+        if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
+          throw new ConflictError(`Task "${taskId}" is already terminal (${task.status}).`);
+        }
+        this.abortTask(taskId, 'Task cancelled');
         this.updateTask(taskId, 'cancelled');
-        this.clearTimers(taskId);
         this.pushEvent(taskId, 'task.cancelled', { status: 'cancelled' });
         break;
       case 'retry':
+        if (task.retryCount >= task.maxRetries) {
+          throw new ConflictError(
+            `Task "${taskId}" reached max retries (${task.maxRetries}).`,
+          );
+        }
         task.retryCount += 1;
         task.error = undefined;
+        task.outputs = undefined;
+        task.latestCheckpointId = '';
         this.updateTask(taskId, 'pending');
         this.scheduleExecution(taskId);
         break;
@@ -120,52 +145,137 @@ export class TaskService {
     return this.getTask(taskId);
   }
 
-  private scheduleExecution(taskId: string) {
-    this.clearTimers(taskId);
-
-    const timers = [
-      setTimeout(() => {
-        if (this.getTask(taskId).status !== 'pending') return;
-        this.updateTask(taskId, 'running');
-      }, 40),
-      setTimeout(() => {
-        this.completeTask(taskId);
-      }, 220),
-    ];
-
-    timers.forEach((timer) => timer.unref?.());
-    this.timers.set(taskId, timers);
-  }
-
-  private scheduleCompletion(taskId: string, delayMs: number) {
-    const timer = setTimeout(() => {
-      this.completeTask(taskId);
-    }, delayMs);
-    timer.unref?.();
-    const current = this.timers.get(taskId) ?? [];
-    current.push(timer);
-    this.timers.set(taskId, current);
-  }
-
-  private completeTask(taskId: string) {
-    const task = this.getTask(taskId);
-    if (!['pending', 'running'].includes(task.status)) {
+  private scheduleExecution(taskId: string, config?: Record<string, unknown>) {
+    const currentExecution = this.executions.get(taskId);
+    if (currentExecution) {
+      void currentExecution.finally(() => {
+        const latestTask = this.tasks.get(taskId);
+        if (!latestTask) {
+          return;
+        }
+        if (latestTask.status === 'pending') {
+          this.scheduleExecution(taskId, config);
+        }
+      });
       return;
     }
 
+    const execution = this.executeTask(taskId, config).finally(() => {
+      this.executions.delete(taskId);
+    });
+    this.executions.set(taskId, execution);
+  }
+
+  private async executeTask(taskId: string, config?: Record<string, unknown>) {
+    const task = this.getTask(taskId);
+    if (task.status !== 'pending' && task.status !== 'running') {
+      return;
+    }
+
+    const span = this.tracer
+      ? await this.tracer.startSpan('task.execute', {
+          attributes: {
+            taskId,
+            modelId: task.modelId,
+            taskType: task.type,
+          },
+        })
+      : undefined;
+
+    this.updateTask(taskId, 'running');
+    const controller = new AbortController();
+    this.abortControllers.set(taskId, controller);
+
+    try {
+      const result = await this.runtime.run(
+        {
+          taskId: task.taskId,
+          goal: task.prompt,
+          metadata: {
+            modelId: task.modelId,
+            profileId: task.profileId,
+            taskType: task.type,
+            sessionId: task.sessionId,
+            ...(config ?? {}),
+          },
+        },
+        {
+          signal: controller.signal,
+          onEvent: async (event) => {
+            this.handleAgentEvent(taskId, event);
+          },
+        },
+      );
+
+      this.applyResult(taskId, result);
+      await span?.end({
+        status: result.status,
+        eventCount: result.events.length,
+      });
+    } catch (error) {
+      const latestTask = this.getTask(taskId);
+      if (latestTask.status === 'paused' || latestTask.status === 'cancelled') {
+        await span?.end({ status: task.status });
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      task.error = message;
+      this.updateTask(taskId, 'failed');
+      this.pushEvent(taskId, 'task.failed', {
+        status: 'failed',
+        error: message,
+      });
+      this.logger?.error('task.execute.failed', 'task execution failed', {
+        attributes: {
+          taskId,
+          error: message,
+        },
+      });
+      await span?.fail(error);
+    } finally {
+      this.abortControllers.delete(taskId);
+    }
+  }
+
+  private applyResult(taskId: string, result: AgentRunResult) {
+    const task = this.getTask(taskId);
+    task.latestCheckpointId = result.checkpoints.at(-1)?.id ?? task.latestCheckpointId;
     task.outputs = {
-      summary: `Task "${task.prompt}" completed by the scaffold executor.`,
-      modelId: task.modelId,
-      taskType: task.type,
+      ...result.outputs,
+      coreTaskId: result.taskId,
+      coreSessionId: result.sessionId,
+      checkpoints: result.checkpoints.length,
     };
-    task.latestCheckpointId = randomUUID();
-    this.updateTask(taskId, 'completed');
-    this.pushEvent(taskId, 'task.completed', {
-      status: 'completed',
-      checkpointId: task.latestCheckpointId,
+
+    const latestTask = this.getTask(taskId);
+    if (latestTask.status === 'paused' || latestTask.status === 'cancelled') {
+      return;
+    }
+
+    if (result.status === 'succeeded') {
+      this.updateTask(taskId, 'completed');
+      this.pushEvent(taskId, 'task.completed', {
+        status: 'completed',
+        checkpointId: task.latestCheckpointId,
+        outputs: task.outputs as Record<string, unknown>,
+      });
+      return;
+    }
+
+    task.error = result.error ?? `Core runtime status: ${result.status}`;
+    this.updateTask(taskId, 'failed');
+    this.pushEvent(taskId, 'task.failed', {
+      status: 'failed',
+      error: task.error,
       outputs: task.outputs as Record<string, unknown>,
     });
-    this.clearTimers(taskId);
+  }
+
+  private handleAgentEvent(taskId: string, event: AgentEvent) {
+    this.pushEvent(taskId, 'task.log', {
+      agentEvent: event,
+    });
   }
 
   private updateTask(taskId: string, status: TaskStatus) {
@@ -194,11 +304,11 @@ export class TaskService {
     this.emitter.emit(getTaskChannel(taskId), event);
   }
 
-  private clearTimers(taskId: string) {
-    for (const timer of this.timers.get(taskId) ?? []) {
-      clearTimeout(timer);
+  private abortTask(taskId: string, reason: string) {
+    const controller = this.abortControllers.get(taskId);
+    if (controller && !controller.signal.aborted) {
+      controller.abort(reason);
     }
-    this.timers.delete(taskId);
   }
 }
 

@@ -10,10 +10,16 @@ Agent Flow 管理控制台，用于监控系统状态、管理会话和查看任
 ## 功能
 
 - **Dashboard** — 服务器健康状态监控，显示当前模型信息，每 10 秒自动刷新
+- **Provider** — 供应商配置（OpenAI / Anthropic / Custom），包含官网、base_url、apiKey 与扩展配置
+- **Model** — 模型列表管理（新增 / 编辑 / 删除），用于下发给 web-ui
 - **Sessions** — 会话列表管理（查看 / 删除）
 - **Tasks** — 任务状态查看与监控
 
 所有数据通过 REST API 从后端 (`http://localhost:3000`) 获取。
+
+## 系统设计
+
+- 后台系统设计文档：[`docs/CONSOLE-SYSTEM-DESIGN.md`](../../docs/CONSOLE-SYSTEM-DESIGN.md)
 
 ## 使用
 

@@ -9,6 +9,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   if (body.backgroundTask) {
     const task = request.server.services.taskService.createTask({
       prompt: body.message,
+      profileId: body.profileId,
       modelId: body.model,
       sessionId: body.sessionId,
       type: 'chat',
@@ -29,6 +30,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
       const generator = request.server.services.chatService.streamTurn({
         sessionId: body.sessionId,
         message: body.message,
+        profileId: body.profileId,
         modelId: body.model,
         reasoningEffort: body.reasoningEffort,
         attachments: body.attachments,
@@ -55,6 +57,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   const result = await request.server.services.chatService.runTurn({
     sessionId: body.sessionId,
     message: body.message,
+    profileId: body.profileId,
     modelId: body.model,
     reasoningEffort: body.reasoningEffort,
     attachments: body.attachments,

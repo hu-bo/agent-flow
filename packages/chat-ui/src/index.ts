@@ -6,6 +6,8 @@ export type { ChatPanelProps } from './components/ChatPanel/ChatPanel';
 export { MessageList } from './components/MessageList/MessageList';
 export { MessageBubble } from './components/MessageBubble/MessageBubble';
 export { InputArea } from './components/InputArea/InputArea';
+export { SelectField } from './components/SelectField/SelectField';
+export type { SelectFieldProps, SelectFieldOption } from './components/SelectField/SelectField';
 
 // Registry
 export { ContentRendererRegistry, createDefaultRegistry } from './registry';

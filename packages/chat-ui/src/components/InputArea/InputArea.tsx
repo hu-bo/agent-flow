@@ -6,6 +6,7 @@ import type {
   ReasoningEffort,
   TokenUsageSummary,
 } from '../../types';
+import { SelectField, type SelectFieldOption } from '../SelectField/SelectField';
 
 const REASONING_OPTIONS: Array<{ value: ReasoningEffort; label: string }> = [
   { value: 'low', label: 'LOW' },
@@ -78,8 +79,11 @@ export function InputArea({
 
   const disabled = isConnecting || isStreaming || !input.trim();
   const controlsDisabled = isConnecting || isStreaming;
-  const currentModelId = selectedModel ?? modelOptions?.[0]?.modelId;
+  const currentModelId = selectedModel ?? modelOptions?.[0]?.modelId ?? '';
   const activeProvider = modelOptions?.find((option) => option.modelId === currentModelId)?.provider;
+  const modelSelectOptions: SelectFieldOption[] =
+    modelOptions?.map((model) => ({ value: model.modelId, label: model.label })) ?? [];
+  const reasoningSelectOptions: SelectFieldOption[] = REASONING_OPTIONS;
   const usageUsed = tokenUsage?.usedTokens ?? 0;
   const usageRemaining =
     tokenUsage?.remainingTokens === null || tokenUsage?.remainingTokens === undefined
@@ -140,38 +144,32 @@ export function InputArea({
               className="chat-ui-file-input"
               onChange={handleFileChange}
             />
-
-            {activeProvider && <span className="chat-ui-provider-badge">{activeProvider}</span>}
-
             {modelOptions && modelOptions.length > 0 && (
-              <select
-                className="chat-ui-control-select"
-                value={currentModelId}
-                onChange={(e) => onModelChange?.(e.target.value)}
-                disabled={controlsDisabled}
-                aria-label="Model selection"
-              >
-                {modelOptions.map((model) => (
-                  <option key={model.modelId} value={model.modelId}>
-                    {model.label}
-                  </option>
-                ))}
-              </select>
+              <>
+                <SelectField
+                  value={currentModelId}
+                  options={modelSelectOptions}
+                  onChange={(value) => onModelChange?.(value)}
+                  disabled={controlsDisabled}
+                  ariaLabel="Model selection"
+                  wrapperClassName="min-w-40 max-w-[min(15rem,56vw)]"
+                />
+                {activeProvider && (
+                  <span className="hidden h-8 items-center rounded-xl bg-[color:var(--chat-panel-soft)] px-2.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--chat-text-subtle)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] sm:inline-flex">
+                    {activeProvider}
+                  </span>
+                )}
+              </>
             )}
 
-            <select
-              className="chat-ui-control-select"
+            <SelectField
               value={reasoningEffort}
-              onChange={(e) => onReasoningEffortChange?.(e.target.value as ReasoningEffort)}
+              options={reasoningSelectOptions}
+              onChange={(value) => onReasoningEffortChange?.(value as ReasoningEffort)}
               disabled={controlsDisabled}
-              aria-label="Reasoning effort"
-            >
-              {REASONING_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  REASONING {item.label}
-                </option>
-              ))}
-            </select>
+              ariaLabel="Reasoning effort"
+              wrapperClassName="min-w-24 max-w-[min(9rem,36vw)]"
+            />
           </div>
 
           <div className="chat-ui-control-right">

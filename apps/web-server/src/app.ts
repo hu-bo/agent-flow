@@ -1,6 +1,7 @@
 import cors from '@fastify/cors';
 import Fastify from 'fastify';
 import type { AppEnv } from './config/env.js';
+import { registerDatabase } from './plugins/db.js';
 import { registerHttpRuntime } from './plugins/http.js';
 import { registerServices } from './plugins/services.js';
 import { registerRoutes } from './routes/index.js';
@@ -22,6 +23,7 @@ export async function createApp({ env }: CreateAppOptions) {
   });
 
   await registerHttpRuntime(app);
+  await registerDatabase(app, { env });
   await registerServices(app, { env });
   await registerRoutes(app);
 

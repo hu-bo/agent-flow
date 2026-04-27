@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { Dashboard } from './pages/Dashboard';
+import { Models } from './pages/Models';
+import { Providers } from './pages/Providers';
 import { Sessions } from './pages/Sessions';
 import { Tasks } from './pages/Tasks';
 
@@ -18,12 +20,18 @@ function useHash(): string {
 
 const NAV_ITEMS = [
   { hash: '#/', label: 'Dashboard' },
+  { hash: '#/providers', label: 'Provider' },
+  { hash: '#/models', label: 'Model' },
   { hash: '#/sessions', label: 'Sessions' },
   { hash: '#/tasks', label: 'Tasks' },
 ] as const;
 
 function PageContent({ hash }: { hash: string }) {
   switch (hash) {
+    case '#/providers':
+      return <Providers />;
+    case '#/models':
+      return <Models />;
     case '#/sessions':
       return <Sessions />;
     case '#/tasks':

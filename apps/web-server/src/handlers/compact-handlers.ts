@@ -4,6 +4,9 @@ import { compactBodySchema } from '../schemas/compact.js';
 
 export async function compactSessionHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(compactBodySchema, request.body ?? {}, 'body');
-  const result = request.server.services.compactService.compactSession(body.sessionId, body.trigger);
+  const result = await request.server.services.compactService.compactSession(
+    body.sessionId,
+    body.trigger,
+  );
   reply.send(result);
 }

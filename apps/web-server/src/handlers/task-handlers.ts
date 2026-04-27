@@ -18,6 +18,7 @@ export async function createTaskHandler(request: FastifyRequest, reply: FastifyR
   const body = parseWithSchema(createTaskBodySchema, request.body, 'body');
   const task = request.server.services.taskService.createTask({
     prompt: body.prompt,
+    profileId: body.profileId,
     modelId: body.model,
     sessionId: body.sessionId,
     type: body.type,

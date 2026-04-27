@@ -7,5 +7,5 @@ export interface RegisterServicesOptions {
 }
 
 export async function registerServices(app: FastifyInstance, options: RegisterServicesOptions) {
-  app.decorate('services', createServices(options.env));
+  app.decorate('services', await createServices(options.env, app.db));
 }

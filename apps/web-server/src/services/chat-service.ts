@@ -1,4 +1,5 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
+import type { MemoryService } from '@agent-flow/memory';
 import type { ReasoningEffort, RuntimeGateway, SessionRecord } from '../contracts/api.js';
 import { createUnifiedMessage, createUserContent } from '../lib/messages.js';
 import { ModelService } from './model-service.js';
@@ -7,6 +8,7 @@ import { SessionService } from './session-service.js';
 export interface ChatTurnInput {
   sessionId?: string;
   message: string;
+  profileId?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
   attachments?: FilePart[];
@@ -31,12 +33,14 @@ export class ChatService {
     private readonly sessionService: SessionService,
     private readonly modelService: ModelService,
     private readonly runtimeGateway: RuntimeGateway,
+    private readonly memoryService?: MemoryService,
   ) {}
 
   async *streamTurn(input: ChatTurnInput): AsyncGenerator<UnifiedMessage, SessionRecord, undefined> {
     const prepared = this.prepareTurn(input);
 
     this.sessionService.appendMessage(prepared.session.sessionId, prepared.userMessage);
+    await this.recordMemory(prepared.session.sessionId, prepared.userMessage);
     yield prepared.userMessage;
 
     for await (const message of this.runtimeGateway.streamChat({
@@ -49,6 +53,7 @@ export class ChatService {
       attachments: prepared.attachments,
     })) {
       this.sessionService.appendMessage(prepared.session.sessionId, message);
+      await this.recordMemory(prepared.session.sessionId, message);
       yield message;
     }
 
@@ -76,7 +81,7 @@ export class ChatService {
   }
 
   private prepareTurn(input: ChatTurnInput): PreparedTurn {
-    const modelId = input.modelId ?? this.modelService.getCurrentModelId();
+    const modelId = input.modelId ?? this.modelService.resolveModelIdForProfile(input.profileId);
     this.modelService.getModel(modelId);
 
     const session = input.sessionId
@@ -103,5 +108,38 @@ export class ChatService {
       modelId,
       attachments: input.attachments ?? [],
     };
+  }
+
+  private async recordMemory(sessionId: string, message: UnifiedMessage): Promise<void> {
+    if (!this.memoryService) {
+      return;
+    }
+
+    const text = message.content
+      .map((part) => {
+        if (part.type === 'text') return part.text;
+        if (part.type === 'file') return `[file:${part.mimeType}]`;
+        if (part.type === 'tool-call') return `[tool-call:${part.toolName}]`;
+        if (part.type === 'tool-result') return `[tool-result:${part.toolName}]`;
+        if (part.type === 'image') return '[image]';
+        return '';
+      })
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    if (!text) {
+      return;
+    }
+
+    try {
+      await this.memoryService.rememberSession(sessionId, text, {
+        role: message.role,
+        messageId: message.uuid,
+        timestamp: message.timestamp,
+      });
+    } catch {
+      // Memory write is best-effort. Chat flow should continue even if memory backend fails.
+    }
   }
 }

@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@agent-flow/core": "workspace:*",
-    "@agent-flow/model-adapter-ai-sdk": "workspace:*",
+    "@agent-flow/model-adapters": "workspace:*",
     "@ai-sdk/openai": "^1.3.0",
     "@ai-sdk/anthropic": "^1.2.0",
     "ai": "^4.3.0"

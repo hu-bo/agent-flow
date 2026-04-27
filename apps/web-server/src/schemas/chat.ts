@@ -10,6 +10,7 @@ export const fileAttachmentSchema = z.object({
 export const createChatBodySchema = z.object({
   sessionId: sessionIdSchema.optional(),
   message: z.string().trim().min(1),
+  profileId: z.string().trim().min(1).max(64).optional(),
   model: modelIdSchema.optional(),
   reasoningEffort: reasoningEffortSchema.optional(),
   attachments: z.array(fileAttachmentSchema).max(10).optional(),
