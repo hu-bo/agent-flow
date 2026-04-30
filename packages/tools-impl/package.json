@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Built-in tool implementations (fs/git/http) for agent-flow",
+  "description": "Built-in transitional tool implementations (git/http) for agent-flow",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

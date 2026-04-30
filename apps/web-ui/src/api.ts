@@ -1,8 +1,18 @@
+import axios, { type AxiosRequestConfig } from 'axios';
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 
 interface ApiErrorPayload {
+  code?: string | number;
+  message?: string;
   error?: string;
-  code?: string;
+  details?: unknown;
+}
+
+interface ApiSuccessEnvelope<T> {
+  code: number;
+  data: T;
+  message: string;
+  requestId: string;
 }
 
 export interface SessionRecord {
@@ -22,84 +32,220 @@ export interface ModelDescriptor {
   maxInputTokens: number;
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+export interface RunnerRecord {
+  runnerId: string;
+  ownerUserId: string;
+  tokenId: string | null;
+  kind: 'local' | 'remote' | 'sandbox';
+  status: 'online' | 'offline';
+  host: string | null;
+  version: string | null;
+  capabilities: string[];
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RunnerTokenIssueResult {
+  runnerToken: string;
+  tokenId: string;
+  serverAddr: string;
+  grpcServerAddr: string;
+  downloadUrls: {
+    windows: string;
+    macos: string;
+    linux: string;
+  };
+}
+
+export interface RunnerApprovalTicketResult {
+  approvalTicket: string;
+  ticketId: string;
+  expiresAt: string;
+  scope: {
+    sessionId: string;
+    command: string;
+    workingDir: string;
+  };
+}
+
+const AUTH_APP_NAME = import.meta.env.VITE_CASDOOR_APP_NAME || 'aflow';
+const ACCESS_TOKEN_KEY = `af_webui_${AUTH_APP_NAME}_access_token`;
+
+function getAccessToken() {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+const apiClient = axios.create({
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+apiClient.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+function extractAxiosErrorMessage(error: unknown): string {
+  if (axios.isAxiosError<ApiErrorPayload>(error)) {
+    const payload = error.response?.data;
+    if (payload?.message) return payload.message;
+    if (payload?.error) return payload.error;
+    const rawData: unknown = error.response?.data;
+    if (typeof rawData === 'string' && rawData.trim().length > 0) {
+      return rawData;
+    }
+    return error.message || 'Request failed';
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return 'Request failed';
+}
+
+async function readFetchErrorMessage(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as ApiErrorPayload;
+    if (payload.message) return payload.message;
     if (payload.error) return payload.error;
   } catch {
-    // Fall through to text payload.
+    // ignore and fallback to text
   }
 
   const text = await response.text().catch(() => '');
   return text || `Request failed: ${response.status}`;
 }
 
-async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, init);
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+async function requestJson<T>(config: AxiosRequestConfig): Promise<T> {
+  try {
+    const response = await apiClient.request<ApiSuccessEnvelope<T>>(config);
+    return response.data.data;
+  } catch (error) {
+    throw new Error(extractAxiosErrorMessage(error));
   }
-  return response.json() as Promise<T>;
 }
 
-async function requestNoContent(input: RequestInfo | URL, init?: RequestInit): Promise<void> {
-  const response = await fetch(input, init);
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+async function requestNoContent(config: AxiosRequestConfig): Promise<void> {
+  try {
+    await apiClient.request(config);
+  } catch (error) {
+    throw new Error(extractAxiosErrorMessage(error));
   }
 }
 
 export async function fetchHealth(): Promise<{ status: string; model: string }> {
-  return requestJson('/api/health');
+  return requestJson({ url: '/api/health', method: 'GET' });
 }
 
 export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
-  return requestJson('/api/sessions');
+  return requestJson({ url: '/api/sessions', method: 'GET' });
 }
 
 export async function fetchModels(): Promise<{ currentModel: string; models: ModelDescriptor[] }> {
-  return requestJson('/api/models');
+  return requestJson({ url: '/api/models', method: 'GET' });
 }
 
 export async function fetchSession(
   sessionId: string,
 ): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
-  return requestJson(`/api/sessions/${sessionId}`);
+  return requestJson({ url: `/api/sessions/${sessionId}`, method: 'GET' });
 }
 
 export async function createSession(opts?: {
   model?: string;
   systemPrompt?: string;
 }): Promise<{ session: SessionRecord }> {
-  return requestJson('/api/sessions', {
+  return requestJson({
+    url: '/api/sessions',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    data: {
       modelId: opts?.model,
       systemPrompt: opts?.systemPrompt,
-    }),
+    },
   });
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  await requestNoContent(`/api/sessions/${id}`, { method: 'DELETE' });
+  await requestNoContent({ url: `/api/sessions/${id}`, method: 'DELETE' });
 }
 
 export async function switchModel(modelId: string): Promise<{ model: string }> {
-  return requestJson('/api/model', {
+  return requestJson({
+    url: '/api/model',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ modelId }),
+    data: { modelId },
   });
 }
 
 export async function triggerCompact(
   sessionId: string,
 ): Promise<{ sessionId: string; stats: unknown }> {
-  return requestJson('/api/compact', {
+  return requestJson({
+    url: '/api/compact',
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, trigger: 'manual' }),
+    data: { sessionId, trigger: 'manual' },
+  });
+}
+
+export async function fetchRunners(): Promise<{ runners: RunnerRecord[] }> {
+  return requestJson({ url: '/api/runners', method: 'GET' });
+}
+
+export async function fetchRunnerDownloads(): Promise<{
+  downloadUrls: {
+    windows: string;
+    macos: string;
+    linux: string;
+  };
+}> {
+  return requestJson({ url: '/api/runners/downloads', method: 'GET' });
+}
+
+export async function issueRunnerToken(): Promise<RunnerTokenIssueResult> {
+  return requestJson({
+    url: '/api/runners/token',
+    method: 'POST',
+    data: {},
+  });
+}
+
+export async function rotateRunnerToken(): Promise<RunnerTokenIssueResult> {
+  return requestJson({
+    url: '/api/runners/token/rotate',
+    method: 'POST',
+    data: {},
+  });
+}
+
+export async function issueRunnerApprovalTicket(input: {
+  sessionId: string;
+  command: string;
+  workingDir?: string;
+  ttlSec?: number;
+}): Promise<RunnerApprovalTicketResult> {
+  return requestJson({
+    url: '/api/runners/approval-ticket',
+    method: 'POST',
+    data: input,
+  });
+}
+
+export async function bindSessionRunner(sessionId: string, runnerId: string): Promise<{
+  sessionId: string;
+  runnerId: string;
+}> {
+  return requestJson({
+    url: `/api/sessions/${sessionId}/runner-binding`,
+    method: 'POST',
+    data: { runnerId },
   });
 }
 
@@ -108,6 +254,8 @@ interface StreamChatOptions {
   model?: string;
   reasoningEffort?: 'low' | 'medium' | 'high';
   sessionId: string;
+  approveRiskyOps?: boolean;
+  approvalTicket?: string;
   attachments?: FilePart[];
   signal?: AbortSignal;
   onMessage: (message: UnifiedMessage) => void;
@@ -142,18 +290,28 @@ export async function streamChat({
   model,
   reasoningEffort,
   sessionId,
+  approveRiskyOps,
+  approvalTicket,
   attachments,
   signal,
   onMessage,
 }: StreamChatOptions): Promise<void> {
+  const token = getAccessToken();
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       message,
       model,
       reasoningEffort,
       sessionId,
+      approveRiskyOps: Boolean(approveRiskyOps),
+      approvalTicket,
       attachments,
       stream: true,
     }),
@@ -161,7 +319,7 @@ export async function streamChat({
   });
 
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new Error(await readFetchErrorMessage(response));
   }
 
   if (!response.body) {
@@ -196,4 +354,3 @@ export async function streamChat({
   buffer += decoder.decode();
   consumeSseBuffer(buffer, handleData);
 }
-

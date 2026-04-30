@@ -6,7 +6,7 @@ import type {
   ReasoningEffort,
   TokenUsageSummary,
 } from '../../types';
-import { ContentRendererRegistry } from '../../registry';
+import { ContentRendererRegistry, type ContentRendererContext } from '../../registry';
 import { MessageList } from '../MessageList/MessageList';
 import { InputArea } from '../InputArea/InputArea';
 
@@ -23,6 +23,7 @@ export interface ChatPanelProps {
   isConnecting?: boolean;
   theme?: 'light' | 'dark';
   registry?: ContentRendererRegistry;
+  rendererContext?: ContentRendererContext;
   onFileSelect?: (files: File[]) => Promise<FileAttachment[]>;
   className?: string;
 }
@@ -40,12 +41,18 @@ export function ChatPanel({
   isConnecting,
   theme = 'light',
   registry,
+  rendererContext,
   onFileSelect,
   className,
 }: ChatPanelProps) {
   return (
     <div className={`chat-ui-root flex flex-1 min-w-0 flex-col ${className ?? ''}`} data-theme={theme}>
-      <MessageList messages={messages} isStreaming={isStreaming} registry={registry} />
+      <MessageList
+        messages={messages}
+        isStreaming={isStreaming}
+        registry={registry}
+        rendererContext={rendererContext}
+      />
       <InputArea
         onSend={onSend}
         selectedModel={selectedModel}

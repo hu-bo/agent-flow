@@ -2,7 +2,6 @@ import type { ToolDefinition, ToolRegistryLike } from '@agent-flow/core';
 
 export interface RegisterBuiltinToolsOptions {
   cwd?: string;
-  enableFileWrite?: boolean;
   blockedGitSubcommands?: string[];
 }
 

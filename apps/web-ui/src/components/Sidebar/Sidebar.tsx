@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Bot, ChevronsLeft, ChevronsRight, MessageSquare, Workflow } from 'lucide-react';
+import { Bot, ChevronsLeft, ChevronsRight, HardDrive, LogOut, MessageSquare, Workflow } from 'lucide-react';
+import { useCasdoor } from '@hquant/casdoor/client/react';
 import { createSession, deleteSession, fetchSessions } from '../../api';
 import type { SessionRecord } from '../../api';
 import './Sidebar.less';
@@ -9,6 +10,7 @@ const AUTO_COLLAPSE_MAX_WIDTH = 1120;
 
 const RAIL_ITEMS = [
   { to: '/chat', label: 'CHAT', ariaLabel: 'Chat workspace', icon: MessageSquare },
+  { to: '/runners', label: 'RUNNER', ariaLabel: 'Runner workspace', icon: HardDrive },
   { to: '/agent', label: 'AGENT', ariaLabel: 'Agent workspace', icon: Bot },
   { to: '/flow', label: 'FLOW', ariaLabel: 'Flow workspace', icon: Workflow },
 ] as const;
@@ -25,6 +27,7 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
     if (typeof window === 'undefined') return false;
     return window.innerWidth <= AUTO_COLLAPSE_MAX_WIDTH;
   });
+  const { user, logout } = useCasdoor();
   const isCollapsed = manualOverrideCollapsed ?? isAutoCollapsed;
 
   const loadSessions = useCallback(async () => {
@@ -158,6 +161,14 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
           ))}
 
           {sessions.length === 0 && <div className="sidebar-empty">No sessions yet</div>}
+        </div>
+
+        <div className="sidebar-account">
+          <div className="sidebar-account-name">{user?.displayName || user?.name || 'Unknown User'}</div>
+          <button className="sidebar-account-logout" onClick={logout}>
+            <LogOut size={13} aria-hidden />
+            SIGN_OUT
+          </button>
         </div>
       </div>
     </aside>

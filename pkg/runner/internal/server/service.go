@@ -13,6 +13,8 @@ import (
 	runnerpb "github.com/agent-flow/runner/protocol/proto"
 	runnercore "github.com/agent-flow/runner/runner"
 	"github.com/agent-flow/runner/runner/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type RunnerService struct {
@@ -31,6 +33,10 @@ func NewRunnerService(controller runnercore.Controller, authVerifier auth.Verifi
 		auth:       authVerifier,
 		version:    version,
 	}
+}
+
+func (s *RunnerService) Connect(stream runnerpb.RunnerService_ConnectServer) error {
+	return status.Error(codes.Unimplemented, "Connect streaming is handled by web-server control plane, not runner serve mode")
 }
 
 func (s *RunnerService) HealthCheck(_ context.Context, _ *runnerpb.HealthCheckRequest) (*runnerpb.HealthCheckResponse, error) {

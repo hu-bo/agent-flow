@@ -14,6 +14,8 @@ export const createChatBodySchema = z.object({
   model: modelIdSchema.optional(),
   reasoningEffort: reasoningEffortSchema.optional(),
   attachments: z.array(fileAttachmentSchema).max(10).optional(),
+  approveRiskyOps: z.boolean().optional().default(false),
+  approvalTicket: z.string().trim().min(1).max(256).optional(),
   stream: z.boolean().default(false),
   backgroundTask: z.boolean().default(false),
 });

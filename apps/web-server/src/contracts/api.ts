@@ -70,11 +70,15 @@ export interface TaskEvent {
 export interface RuntimeChatInput {
   session: SessionRecord;
   history: UnifiedMessage[];
+  userId: string;
   message: string;
   modelId: string;
   requestId: string;
   reasoningEffort?: ReasoningEffort;
   attachments: FilePart[];
+  preferredRunnerId?: string;
+  approveRiskyOps?: boolean;
+  approvalTicket?: string;
 }
 
 export interface RuntimeGateway {

@@ -5,16 +5,21 @@
 ## Scope
 
 - unified runner node execution (no local/remote split in runtime semantics)
+- semantic command router (`fs.read`, `fs.write`, `fs.patch`, `fs.list`, `fs.search`, `shell.exec`)
 - host execution engine (`runner/exec`)
 - docker execution engine (`runner/docker`)
 - sandbox policy guard (`runner/sandbox`)
-- gRPC service streaming task events (`stdout/stderr/progress/result`)
+- web-server connect mode (`poll -> execute -> task-event`) for runner task dispatch
+- legacy gRPC serve mode for compatibility
 
 ## Layout
 
-- `cmd/runnerd`: runner daemon entrypoint
-- `internal/server`: gRPC service implementation
+- `cmd`: runner daemon entrypoint
+- `internal/grpcclient`: web-server connect stream client loop
+- `internal/model`: local runner config persistence
+- `internal/server`: legacy gRPC service implementation
 - `runner/runner.go`: unified execution controller
+- `runner/semantic_commands.go`: semantic fs/shell command execution
 - `runner/types`: shared runner contracts
 - `runner/exec`: host execution engine
 - `runner/docker`: docker execution engine
@@ -35,7 +40,13 @@ protoc --proto_path=. \
 
 ```bash
 cd pkg/runner
-go run ./cmd/runnerd
+go run ./cmd start --rpc_host 127.0.0.1:9201 --rpc_token <runner_token>
+```
+
+Optional legacy runner serve mode:
+
+```bash
+go run ./cmd serve --addr :8091 --auth_token <token>
 ```
 
 ## Runtime options

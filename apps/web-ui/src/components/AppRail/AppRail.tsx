@@ -3,6 +3,7 @@ import './AppRail.less';
 
 const RAIL_ITEMS = [
   { to: '/chat', label: 'CHAT', ariaLabel: 'Chat workspace' },
+  { to: '/runners', label: 'RUNNER', ariaLabel: 'Runner workspace' },
   { to: '/agent', label: 'AGENT', ariaLabel: 'Agent workspace' },
   { to: '/flow', label: 'FLOW', ariaLabel: 'Flow workspace' },
 ] as const;

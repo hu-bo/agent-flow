@@ -63,6 +63,10 @@ func (r *ControllerImpl) Run(ctx context.Context, req types.TaskRequest, sink ty
 		defer cancel()
 	}
 
+	if handled, err := r.runSemanticCommand(ctx, req, sink); handled {
+		return err
+	}
+
 	executor, err := r.pickExecutor(req)
 	if err != nil {
 		return err

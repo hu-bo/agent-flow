@@ -1,34 +1,45 @@
 import './TextRenderer.less';
 import './ThinkingRenderer.less';
-import { useState } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { ContentRendererProps } from '../registry';
-import type { ThinkingPart } from '../types';
+import type { ThinkingPart, ThoughtChainItem } from '../types';
+import { ThoughtChain } from '../components/ThoughtChain/ThoughtChain';
 
 export function ThinkingRenderer({ part }: ContentRendererProps) {
-  const { text, durationMs } = part as ThinkingPart;
-  const [open, setOpen] = useState(false);
-
-  const durationLabel = durationMs != null ? `${(durationMs / 1000).toFixed(1)}s` : undefined;
+  const thinking = part as ThinkingPart;
+  const items: ThoughtChainItem[] =
+    thinking.items && thinking.items.length > 0
+      ? thinking.items
+      : [
+          {
+            key: 'thinking',
+            title: thinking.title ?? 'Thinking',
+            description: thinking.description,
+            content: thinking.text,
+            footer: thinking.footer,
+            icon: thinking.icon,
+            status: thinking.status ?? 'success',
+            durationMs: thinking.durationMs,
+          },
+        ];
 
   return (
-    <details
-      open={open}
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    <ThoughtChain
+      items={items}
+      defaultExpandedKeys={thinking.defaultOpen ? items.map((item) => item.key) : undefined}
       className="chat-ui-thinking"
-    >
-      <summary className="chat-ui-thinking-summary">
-        <span className="chat-ui-thinking-icon">THINK</span>
-        <span>Thinking</span>
-        {durationLabel && <span className="chat-ui-thinking-duration">({durationLabel})</span>}
-      </summary>
-      <div className="chat-ui-thinking-body chat-ui-markdown">
-        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-          {text}
-        </Markdown>
-      </div>
-    </details>
+      classNames={{ content: 'chat-ui-thinking-body chat-ui-markdown' }}
+      renderContent={(content) =>
+        typeof content === 'string' ? (
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {content}
+          </Markdown>
+        ) : (
+          content
+        )
+      }
+    />
   );
 }

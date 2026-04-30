@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { attachRequestContext } from '../middlewares/request-context.js';
 import { AppError, ValidationError } from '../lib/errors.js';
+import { sendError } from '../lib/response.js';
 
 interface FastifyClientError {
   statusCode?: number;
@@ -33,48 +34,48 @@ export async function registerHttpRuntime(app: FastifyInstance) {
     }
 
     if (error instanceof AppError) {
-      reply.status(error.statusCode).send({
-        error: error.message,
+      sendError(reply, {
+        statusCode: error.statusCode,
         code: error.code,
+        message: error.message,
         details: error.details,
-        requestId: request.id,
       });
       return;
     }
 
     if (error instanceof ZodError) {
       const validationError = new ValidationError('Invalid request payload', error.flatten());
-      reply.status(validationError.statusCode).send({
-        error: validationError.message,
+      sendError(reply, {
+        statusCode: validationError.statusCode,
         code: validationError.code,
+        message: validationError.message,
         details: validationError.details,
-        requestId: request.id,
       });
       return;
     }
 
     if (isFastifyClientError(error)) {
-      reply.status(error.statusCode).send({
-        error: error.message,
+      sendError(reply, {
+        statusCode: error.statusCode,
         code: error.code ?? 'BAD_REQUEST',
-        requestId: request.id,
+        message: error.message,
       });
       return;
     }
 
     request.log.error({ err: error }, 'Unhandled request error');
-    reply.status(500).send({
-      error: 'Internal Server Error',
+    sendError(reply, {
+      statusCode: 500,
       code: 'INTERNAL_SERVER_ERROR',
-      requestId: request.id,
+      message: 'Internal Server Error',
     });
   });
 
   app.setNotFoundHandler((request, reply) => {
-    reply.status(404).send({
-      error: `Route not found: ${request.method} ${request.url}`,
+    sendError(reply, {
+      statusCode: 404,
       code: 'NOT_FOUND',
-      requestId: request.id,
+      message: `Route not found: ${request.method} ${request.url}`,
     });
   });
 }

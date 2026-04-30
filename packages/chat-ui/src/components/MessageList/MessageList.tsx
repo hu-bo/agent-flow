@@ -1,16 +1,17 @@
 import './MessageList.less';
 import { useRef, useEffect } from 'react';
 import type { ChatMessage } from '../../types';
-import type { ContentRendererRegistry } from '../../registry';
+import type { ContentRendererContext, ContentRendererRegistry } from '../../registry';
 import { MessageBubble } from '../MessageBubble/MessageBubble';
 
 interface MessageListProps {
   messages: ChatMessage[];
   isStreaming?: boolean;
   registry?: ContentRendererRegistry;
+  rendererContext?: ContentRendererContext;
 }
 
-export function MessageList({ messages, isStreaming, registry }: MessageListProps) {
+export function MessageList({ messages, isStreaming, registry, rendererContext }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,7 +26,12 @@ export function MessageList({ messages, isStreaming, registry }: MessageListProp
         </div>
       )}
       {messages.map((msg) => (
-        <MessageBubble key={msg.uuid} message={msg} registry={registry} />
+        <MessageBubble
+          key={msg.uuid}
+          message={msg}
+          registry={registry}
+          rendererContext={rendererContext}
+        />
       ))}
       {isStreaming && (
         <div className="chat-ui-streaming" aria-live="polite">

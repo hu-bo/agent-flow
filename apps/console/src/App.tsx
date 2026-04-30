@@ -1,9 +1,11 @@
 import { useSyncExternalStore } from 'react';
+import { useCasdoor } from '@hquant/casdoor/client/react';
 import { Dashboard } from './pages/Dashboard';
 import { Models } from './pages/Models';
 import { Providers } from './pages/Providers';
 import { Sessions } from './pages/Sessions';
 import { Tasks } from './pages/Tasks';
+import { ConsoleAuthCallbackPage, ConsoleAuthGate } from './auth';
 
 function getHash(): string {
   return window.location.hash || '#/';
@@ -41,8 +43,9 @@ function PageContent({ hash }: { hash: string }) {
   }
 }
 
-export function App() {
+function ConsoleLayout() {
   const hash = useHash();
+  const { user, logout } = useCasdoor();
 
   return (
     <div className="layout">
@@ -61,10 +64,27 @@ export function App() {
             </li>
           ))}
         </ul>
+
+        <div className="sidebar-userbar">
+          <span className="sidebar-user-name">{user?.displayName || user?.name || 'Unknown User'}</span>
+          <button className="btn btn-sm btn-ghost" onClick={logout}>Logout</button>
+        </div>
       </nav>
       <main className="content">
         <PageContent hash={hash} />
       </main>
     </div>
+  );
+}
+
+export function App() {
+  if (window.location.pathname === '/callback') {
+    return <ConsoleAuthCallbackPage />;
+  }
+
+  return (
+    <ConsoleAuthGate>
+      <ConsoleLayout />
+    </ConsoleAuthGate>
   );
 }

@@ -1,0 +1,162 @@
+.chat-ui-thought-chain {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.35rem 0;
+}
+
+.chat-ui-thought-chain-item {
+  position: relative;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.chat-ui-thought-chain.has-line .chat-ui-thought-chain-item:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 0.58rem;
+  top: 1.65rem;
+  bottom: -0.45rem;
+  width: 1px;
+  background: color-mix(in srgb, var(--chat-brand-500) 20%, transparent);
+}
+
+.chat-ui-thought-chain-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  border: 0;
+  border-radius: 0.7rem;
+  background: var(--chat-overlay-panel);
+  color: var(--chat-text-muted);
+  cursor: default;
+  font: inherit;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  transition:
+    background 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease;
+}
+
+.chat-ui-thought-chain-item.is-collapsible .chat-ui-thought-chain-header {
+  cursor: pointer;
+}
+
+.chat-ui-thought-chain-item.is-collapsible .chat-ui-thought-chain-header:hover {
+  background: color-mix(in srgb, var(--chat-overlay-panel) 82%, white);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--chat-brand-500) 10%, transparent);
+  transform: translateY(-1px);
+}
+
+.chat-ui-thought-chain-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.16rem;
+  height: 1.16rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--chat-brand-600);
+}
+
+.chat-ui-thought-chain-status-dot {
+  display: block;
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0.24rem color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.chat-ui-thought-chain-item.is-running .chat-ui-thought-chain-status-dot {
+  animation: chat-ui-thought-chain-pulse 1.4s ease-in-out infinite;
+}
+
+.chat-ui-thought-chain-item.is-pending .chat-ui-thought-chain-icon {
+  color: var(--chat-text-subtle);
+}
+
+.chat-ui-thought-chain-item.is-error .chat-ui-thought-chain-icon {
+  color: #d84c4c;
+}
+
+.chat-ui-thought-chain-main {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.chat-ui-thought-chain-title {
+  overflow: hidden;
+  color: var(--chat-text-primary);
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-ui-thought-chain-description {
+  overflow: hidden;
+  color: var(--chat-text-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-ui-thought-chain-extra {
+  color: var(--chat-text-subtle);
+  font-size: 0.7rem;
+}
+
+.chat-ui-thought-chain-arrow {
+  color: var(--chat-text-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+}
+
+.chat-ui-thought-chain-content {
+  margin-left: 1.55rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--chat-overlay-panel) 72%, white);
+  padding: 0.55rem 0.7rem;
+  color: var(--chat-text-muted);
+  font-size: 0.84rem;
+}
+
+.chat-ui-thought-chain-footer {
+  margin-left: 1.55rem;
+  color: var(--chat-text-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+}
+
+.chat-ui-thought-chain-sm .chat-ui-thought-chain-header {
+  border-radius: 0.6rem;
+  padding: 0.42rem 0.55rem;
+}
+
+.chat-ui-thought-chain-sm .chat-ui-thought-chain-title {
+  font-size: 0.76rem;
+}
+
+.chat-ui-thought-chain-sm .chat-ui-thought-chain-content {
+  font-size: 0.8rem;
+}
+
+@keyframes chat-ui-thought-chain-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0.18rem color-mix(in srgb, currentColor 14%, transparent);
+  }
+
+  50% {
+    box-shadow: 0 0 0 0.38rem color-mix(in srgb, currentColor 6%, transparent);
+  }
+}

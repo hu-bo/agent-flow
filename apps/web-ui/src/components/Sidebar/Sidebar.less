@@ -260,6 +260,45 @@
   font-size: 0.78rem;
 }
 
+.sidebar-account {
+  border-top: 1px solid #e2e8f0;
+  padding: 0.68rem 0.85rem 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.sidebar-account-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pg-text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.sidebar-account-logout {
+  border: 0;
+  border-radius: 0.58rem;
+  background: #f5f8ff;
+  color: var(--pg-text-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  padding: 0.34rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.sidebar-account-logout:hover {
+  color: var(--pg-brand-600);
+  background: #ebf1ff;
+}
+
 @media (max-width: 1024px) {
   .sidebar {
     width: 16rem;

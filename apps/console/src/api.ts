@@ -1,3 +1,5 @@
+import axios, { type AxiosRequestConfig } from 'axios';
+
 export interface HealthResponse {
   status: string;
   model: string;
@@ -94,72 +96,152 @@ export interface AuditLogRecord {
   createdAt: string;
 }
 
-async function request<T>(url: string, opts?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`${res.status}: ${text}`);
+interface ApiSuccessEnvelope<T> {
+  code: number;
+  data: T;
+  message: string;
+  requestId: string;
+}
+
+interface ApiErrorEnvelope {
+  code?: string | number;
+  data?: null;
+  message?: string;
+  error?: string;
+  requestId?: string;
+  details?: unknown;
+}
+
+function isApiSuccessEnvelope<T>(value: unknown): value is ApiSuccessEnvelope<T> {
+  if (typeof value !== 'object' || value === null) {
+    return false;
   }
 
-  if (res.status === 204) {
-    return undefined as T;
+  const payload = value as Partial<ApiSuccessEnvelope<T>>;
+  return (
+    typeof payload.code === 'number' &&
+    'data' in payload &&
+    typeof payload.message === 'string' &&
+    typeof payload.requestId === 'string'
+  );
+}
+
+const AUTH_APP_NAME = import.meta.env.VITE_CASDOOR_APP_NAME || 'aflow';
+const ACCESS_TOKEN_KEY = `af_console_${AUTH_APP_NAME}_access_token`;
+
+function getAccessToken() {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+const apiClient = axios.create({
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+apiClient.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+function readErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const payload = error.response?.data as ApiErrorEnvelope | undefined;
+    if (payload?.message) return payload.message;
+    if (payload?.error) return payload.error;
+    const rawData: unknown = error.response?.data;
+    if (typeof rawData === 'string' && rawData.trim().length > 0) {
+      return rawData;
+    }
+    return error.message || 'Request failed';
   }
 
-  const contentType = res.headers.get('content-type') ?? '';
-  if (!contentType.includes('application/json')) {
-    return undefined as T;
+  if (error instanceof Error) {
+    return error.message;
   }
 
-  return (await res.json()) as T;
+  return 'Request failed';
+}
+
+async function request<T>(config: AxiosRequestConfig): Promise<T> {
+  try {
+    const res = await apiClient.request<unknown>(config);
+
+    if (res.status === 204) {
+      return undefined as T;
+    }
+
+    const payload = res.data as unknown;
+    if (isApiSuccessEnvelope<T>(payload)) {
+      return payload.data;
+    }
+
+    return payload as T;
+  } catch (error) {
+    throw new Error(readErrorMessage(error));
+  }
 }
 
 export function fetchHealth(): Promise<HealthResponse> {
-  return request('/api/health');
+  return request({ url: '/api/health', method: 'GET' });
 }
 
 export function fetchModels(): Promise<{ currentModel: string; models: RuntimeModelDescriptor[] }> {
-  return request('/api/models');
+  return request({ url: '/api/models', method: 'GET' });
 }
 
 export async function fetchSessions(): Promise<Session[]> {
-  const payload = await request<{ sessions: Session[] }>('/api/sessions');
+  const payload = await request<{ sessions: Session[] }>({ url: '/api/sessions', method: 'GET' });
   return payload.sessions;
 }
 
 export async function createSession(opts?: Record<string, unknown>): Promise<Session> {
-  const payload = await request<{ session: Session }>('/api/sessions', {
+  const payload = await request<{ session: Session }>({
+    url: '/api/sessions',
     method: 'POST',
-    body: JSON.stringify(opts ?? {}),
+    data: opts ?? {},
   });
   return payload.session;
 }
 
 export function deleteSession(id: string): Promise<void> {
-  return request(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return request({ url: `/api/sessions/${encodeURIComponent(id)}`, method: 'DELETE' });
 }
 
 export async function fetchTask(id: string): Promise<TaskState> {
-  const payload = await request<{ task: TaskState }>(`/api/tasks/${encodeURIComponent(id)}`);
+  const payload = await request<{ task: TaskState }>({
+    url: `/api/tasks/${encodeURIComponent(id)}`,
+    method: 'GET',
+  });
   return payload.task;
 }
 
-export function createTask(opts: { prompt: string; model?: string; config?: Record<string, unknown> }): Promise<CreateTaskResult> {
-  return request('/api/tasks', { method: 'POST', body: JSON.stringify(opts) });
+export function createTask(opts: {
+  prompt: string;
+  model?: string;
+  config?: Record<string, unknown>;
+}): Promise<CreateTaskResult> {
+  return request({ url: '/api/tasks', method: 'POST', data: opts });
 }
 
 export function switchModel(modelId: string): Promise<unknown> {
-  return request('/api/model', { method: 'POST', body: JSON.stringify({ modelId }) });
+  return request({ url: '/api/model', method: 'POST', data: { modelId } });
 }
 
 export function triggerCompact(): Promise<unknown> {
-  return request('/api/compact', { method: 'POST', body: JSON.stringify({}) });
+  return request({ url: '/api/compact', method: 'POST', data: {} });
 }
 
 export async function fetchAdminProviders(): Promise<ProviderRecord[]> {
-  const payload = await request<{ providers: ProviderRecord[] }>('/api/admin/providers');
+  const payload = await request<{ providers: ProviderRecord[] }>({
+    url: '/api/admin/providers',
+    method: 'GET',
+  });
   return payload.providers;
 }
 
@@ -169,15 +251,17 @@ export async function createAdminProvider(input: {
   status?: 'active' | 'disabled';
   metadata?: Record<string, unknown> | null;
 }): Promise<ProviderRecord> {
-  const payload = await request<{ provider: ProviderRecord }>('/api/admin/providers', {
+  const payload = await request<{ provider: ProviderRecord }>({
+    url: '/api/admin/providers',
     method: 'POST',
-    body: JSON.stringify(input),
+    data: input,
   });
   return payload.provider;
 }
 
 export async function deleteAdminProvider(providerId: number): Promise<void> {
-  await request(`/api/admin/providers/${providerId}`, {
+  await request({
+    url: `/api/admin/providers/${providerId}`,
     method: 'DELETE',
   });
 }
@@ -186,13 +270,11 @@ export async function updateAdminProvider(
   providerId: number,
   input: { status: 'active' | 'disabled' },
 ): Promise<ProviderRecord> {
-  const payload = await request<{ provider: ProviderRecord }>(
-    `/api/admin/providers/${providerId}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    },
-  );
+  const payload = await request<{ provider: ProviderRecord }>({
+    url: `/api/admin/providers/${providerId}`,
+    method: 'PATCH',
+    data: input,
+  });
   return payload.provider;
 }
 
@@ -200,19 +282,23 @@ export async function createProviderCredential(
   providerId: number,
   input: { apiKey: string; keyVersion?: number; status?: 'active' | 'disabled' },
 ): Promise<void> {
-  await request(`/api/admin/providers/${providerId}/credentials`, {
+  await request({
+    url: `/api/admin/providers/${providerId}/credentials`,
     method: 'POST',
-    body: JSON.stringify({
+    data: {
       secretRef: input.apiKey,
       keyVersion: input.keyVersion,
       status: input.status,
-    }),
+    },
   });
 }
 
 export async function fetchAdminModels(provider?: string): Promise<ProviderModelRecord[]> {
   const query = provider ? `?provider=${encodeURIComponent(provider)}` : '';
-  const payload = await request<{ models: ProviderModelRecord[] }>(`/api/admin/models${query}`);
+  const payload = await request<{ models: ProviderModelRecord[] }>({
+    url: `/api/admin/models${query}`,
+    method: 'GET',
+  });
   return payload.models;
 }
 
@@ -225,13 +311,11 @@ export async function updateAdminModel(
     status?: 'active' | 'disabled';
   },
 ): Promise<ProviderModelRecord> {
-  const payload = await request<{ model: ProviderModelRecord }>(
-    `/api/admin/models/${encodeURIComponent(modelId)}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(input),
-    },
-  );
+  const payload = await request<{ model: ProviderModelRecord }>({
+    url: `/api/admin/models/${encodeURIComponent(modelId)}`,
+    method: 'PATCH',
+    data: input,
+  });
   return payload.model;
 }
 
@@ -242,21 +326,26 @@ export async function createAdminModel(input: {
   tokenLimit: number;
   status?: 'active' | 'disabled';
 }): Promise<ProviderModelRecord> {
-  const payload = await request<{ model: ProviderModelRecord }>('/api/admin/models', {
+  const payload = await request<{ model: ProviderModelRecord }>({
+    url: '/api/admin/models',
     method: 'POST',
-    body: JSON.stringify(input),
+    data: input,
   });
   return payload.model;
 }
 
 export async function deleteAdminModel(modelId: string): Promise<void> {
-  await request(`/api/admin/models/${encodeURIComponent(modelId)}`, {
+  await request({
+    url: `/api/admin/models/${encodeURIComponent(modelId)}`,
     method: 'DELETE',
   });
 }
 
 export async function fetchModelProfiles(): Promise<ModelProfileRecord[]> {
-  const payload = await request<{ profiles: ModelProfileRecord[] }>('/api/admin/model-profiles');
+  const payload = await request<{ profiles: ModelProfileRecord[] }>({
+    url: '/api/admin/model-profiles',
+    method: 'GET',
+  });
   return payload.profiles;
 }
 
@@ -266,9 +355,10 @@ export async function createModelProfile(input: {
   intentTags?: string[];
   status?: 'active' | 'disabled';
 }): Promise<ModelProfileRecord> {
-  const payload = await request<{ profile: ModelProfileRecord }>('/api/admin/model-profiles', {
+  const payload = await request<{ profile: ModelProfileRecord }>({
+    url: '/api/admin/model-profiles',
     method: 'POST',
-    body: JSON.stringify(input),
+    data: input,
   });
   return payload.profile;
 }
@@ -282,19 +372,18 @@ export async function upsertRoutingPolicy(
     status?: 'active' | 'disabled';
   },
 ): Promise<RoutingPolicyRecord> {
-  const payload = await request<{ policy: RoutingPolicyRecord }>(
-    `/api/admin/model-profiles/${encodeURIComponent(profileId)}/routing`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(input),
-    },
-  );
+  const payload = await request<{ policy: RoutingPolicyRecord }>({
+    url: `/api/admin/model-profiles/${encodeURIComponent(profileId)}/routing`,
+    method: 'PUT',
+    data: input,
+  });
   return payload.policy;
 }
 
 export async function fetchAuditLogs(limit = 30): Promise<AuditLogRecord[]> {
-  const payload = await request<{ auditLogs: AuditLogRecord[] }>(
-    `/api/admin/audit-logs?limit=${limit}`,
-  );
+  const payload = await request<{ auditLogs: AuditLogRecord[] }>({
+    url: `/api/admin/audit-logs?limit=${limit}`,
+    method: 'GET',
+  });
   return payload.auditLogs;
 }

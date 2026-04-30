@@ -136,7 +136,51 @@ message TaskEvent {
   }
 }
 
+message ConnectRegister {
+  string runner_token = 1;
+  string runner_id = 2;
+  string kind = 3;
+  string host = 4;
+  string version = 5;
+  repeated string capabilities = 6;
+}
+
+message ConnectRegisterAck {
+  string runner_id = 1;
+  string status = 2;
+  int64 heartbeat_interval_ms = 3;
+  string server_time = 4;
+}
+
+message ConnectHeartbeat {
+  string runner_id = 1;
+  string runner_token = 2;
+  string timestamp = 3;
+}
+
+message ServerPing {
+  string server_time = 1;
+}
+
+message RunnerEnvelope {
+  oneof payload {
+    ConnectRegister register = 1;
+    ConnectHeartbeat heartbeat = 2;
+    TaskEvent task_event = 3;
+  }
+}
+
+message ServerEnvelope {
+  oneof payload {
+    ConnectRegisterAck register_ack = 1;
+    TaskRequest run_task = 2;
+    CancelTaskRequest cancel_task = 3;
+    ServerPing ping = 4;
+  }
+}
+
 service RunnerService {
+  rpc Connect(stream RunnerEnvelope) returns (stream ServerEnvelope);
   rpc RunTask(TaskRequest) returns (stream TaskEvent);
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);

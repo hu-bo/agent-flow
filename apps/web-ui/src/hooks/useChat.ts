@@ -8,6 +8,8 @@ interface SendMessageInput {
   sessionId: string;
   model?: string;
   reasoningEffort?: ReasoningEffort;
+  approveRiskyOps?: boolean;
+  approvalTicket?: string;
   attachments?: FileAttachment[];
 }
 
@@ -98,7 +100,7 @@ export function useChat(): UseChatReturn {
   }, []);
 
   const sendMessage = useCallback(
-    async ({ text, sessionId, model, reasoningEffort, attachments }: SendMessageInput) => {
+    async ({ text, sessionId, model, reasoningEffort, approveRiskyOps, approvalTicket, attachments }: SendMessageInput) => {
       const userInput = text.trim();
       if (!userInput) return;
       if (streamAbortRef.current) {
@@ -132,6 +134,8 @@ export function useChat(): UseChatReturn {
           model,
           reasoningEffort,
           sessionId,
+          approveRiskyOps,
+          approvalTicket,
           attachments: attachmentParts.length ? attachmentParts : undefined,
           signal: controller.signal,
           onMessage: (msg) => {
@@ -160,4 +164,3 @@ export function useChat(): UseChatReturn {
     isStreaming,
   };
 }
-

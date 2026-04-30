@@ -6,12 +6,15 @@ import { ModelService } from './model-service.js';
 import { SessionService } from './session-service.js';
 
 export interface ChatTurnInput {
+  userId: string;
   sessionId?: string;
   message: string;
   profileId?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
   attachments?: FilePart[];
+  approveRiskyOps?: boolean;
+  approvalTicket?: string;
   requestId: string;
 }
 
@@ -46,11 +49,15 @@ export class ChatService {
     for await (const message of this.runtimeGateway.streamChat({
       session: prepared.session,
       history: [...prepared.history, prepared.userMessage],
+      userId: input.userId,
       message: input.message,
       modelId: prepared.modelId,
       requestId: input.requestId,
       reasoningEffort: input.reasoningEffort,
       attachments: prepared.attachments,
+      preferredRunnerId: this.sessionService.getBoundRunner(prepared.session.sessionId),
+      approveRiskyOps: input.approveRiskyOps,
+      approvalTicket: input.approvalTicket,
     })) {
       this.sessionService.appendMessage(prepared.session.sessionId, message);
       await this.recordMemory(prepared.session.sessionId, message);
@@ -112,6 +119,9 @@ export class ChatService {
 
   private async recordMemory(sessionId: string, message: UnifiedMessage): Promise<void> {
     if (!this.memoryService) {
+      return;
+    }
+    if (message.metadata?.isMeta) {
       return;
     }
 

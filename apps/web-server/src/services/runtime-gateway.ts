@@ -1,5 +1,6 @@
 import {
   createAgent,
+  type Runner,
   ToolRegistry,
   type AgentEvent,
   type AgentRunRequest,
@@ -12,10 +13,12 @@ import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import { type MemoryService, type RecalledMemory } from '@agent-flow/memory';
 import { registerBuiltinTools } from '@agent-flow/tools-impl';
 import type { RuntimeChatInput, RuntimeGateway } from '../contracts/api.js';
-import { createTextMessage, summarizeMessages } from '../lib/messages.js';
+import { AsyncQueue } from '../lib/async-queue.js';
+import { createTextMessage, createUnifiedMessage, summarizeMessages } from '../lib/messages.js';
 
 export interface CreateCoreAgentRuntimeOptions {
   cwd?: string;
+  runners?: Runner[];
 }
 
 export function createCoreAgentRuntime(options: CreateCoreAgentRuntimeOptions = {}): AgentRuntime {
@@ -25,6 +28,7 @@ export function createCoreAgentRuntime(options: CreateCoreAgentRuntimeOptions = 
   });
   return createAgent({
     toolRegistry,
+    runners: options.runners,
   });
 }
 
@@ -63,86 +67,101 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         })
       : undefined;
 
-    try {
-      const recalled = await this.memoryService.recall(input.message, {
-        sessionId: input.session.sessionId,
-        includeSessionMemory: true,
-        limit: 4,
-      });
-      const runnerDirective = parseRunnerDirective(input.message);
-      const eventCountByType = new Map<string, number>();
+    const queue = new AsyncQueue<UnifiedMessage>();
+    const parentUuid = input.history.at(-1)?.uuid ?? null;
 
-      const runRequest = buildAgentRequest(input, recalled, runnerDirective);
-      const result = await this.runtime.run(runRequest, {
-        onEvent: async (event) => {
-          eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
-        },
-      });
-
-      const responseText = renderAssistantText({
-        input,
-        result,
-        recalled,
-        eventCountByType,
-        runnerDirective,
-      });
-
-      this.logger?.info('chat.turn.completed', 'core runtime turn completed', {
-        attributes: {
+    void (async () => {
+      try {
+        const recalled = await this.memoryService.recall(input.message, {
           sessionId: input.session.sessionId,
-          taskId: result.taskId,
-          coreSessionId: result.sessionId,
-          status: result.status,
-          eventCount: result.events.length,
-        },
-      });
+          includeSessionMemory: true,
+          limit: 4,
+        });
+        const runnerDirective = parseRunnerDirective(input.message);
+        const eventCountByType = new Map<string, number>();
+        const runRequest = buildAgentRequest(input, recalled, runnerDirective);
 
-      yield createTextMessage('assistant', responseText, {
-        parentUuid: input.history.at(-1)?.uuid ?? null,
-        metadata: {
-          modelId: input.modelId,
-          provider: 'core-runtime',
-          extensions: {
-            requestId: input.requestId,
+        const result = await this.runtime.run(runRequest, {
+          onEvent: async (event) => {
+            eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
+            const progressMessage = toProgressMessage(input, parentUuid, event);
+            if (progressMessage) {
+              queue.push(progressMessage);
+            }
+          },
+        });
+
+        const responseText = renderAssistantText({
+          input,
+          result,
+          recalled,
+          eventCountByType,
+          runnerDirective,
+        });
+
+        this.logger?.info('chat.turn.completed', 'core runtime turn completed', {
+          attributes: {
+            sessionId: input.session.sessionId,
             taskId: result.taskId,
             coreSessionId: result.sessionId,
             status: result.status,
             eventCount: result.events.length,
           },
-        },
-      });
+        });
 
-      await span?.end({
-        status: result.status,
-        eventCount: result.events.length,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.logger?.error('chat.turn.failed', 'core runtime turn failed', {
-        attributes: {
-          sessionId: input.session.sessionId,
-          modelId: input.modelId,
-          requestId: input.requestId,
-          error: message,
-        },
-      });
-      await span?.fail(error);
-
-      yield createTextMessage(
-        'assistant',
-        `Core runtime execution failed:\n${message}`,
-        {
-          parentUuid: input.history.at(-1)?.uuid ?? null,
-          metadata: {
-            modelId: input.modelId,
-            provider: 'core-runtime',
-            extensions: {
-              requestId: input.requestId,
-              error: message,
+        queue.push(
+          createTextMessage('assistant', responseText, {
+            parentUuid,
+            metadata: {
+              modelId: input.modelId,
+              provider: 'core-runtime',
+              extensions: {
+                requestId: input.requestId,
+                taskId: result.taskId,
+                coreSessionId: result.sessionId,
+                status: result.status,
+                eventCount: result.events.length,
+              },
             },
+          }),
+        );
+
+        await span?.end({
+          status: result.status,
+          eventCount: result.events.length,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger?.error('chat.turn.failed', 'core runtime turn failed', {
+          attributes: {
+            sessionId: input.session.sessionId,
+            modelId: input.modelId,
+            requestId: input.requestId,
+            error: message,
           },
-        },
-      );
+        });
+        await span?.fail(error);
+
+        queue.push(
+          createTextMessage('assistant', `Core runtime execution failed:\n${message}`, {
+            parentUuid,
+            metadata: {
+              modelId: input.modelId,
+              provider: 'core-runtime',
+              extensions: {
+                requestId: input.requestId,
+                error: message,
+              },
+            },
+          }),
+        );
+      } finally {
+        queue.close();
+      }
+    })();
+
+    for await (const message of queue) {
+      yield message;
     }
   }
 }
@@ -213,7 +232,17 @@ function buildAgentRequest(
     metadata: {
       modelId: input.modelId,
       requestId: input.requestId,
+      userId: input.userId,
       sessionId: input.session.sessionId,
+      sessionCwd: input.session.cwd,
+      cwd: input.session.cwd,
+      userMessage: input.message,
+      preferredRunnerId: input.preferredRunnerId,
+      approveRiskyOps: Boolean(input.approveRiskyOps),
+      approvalTicket:
+        typeof input.approvalTicket === 'string' && input.approvalTicket.trim().length > 0
+          ? input.approvalTicket.trim()
+          : undefined,
       reasoningEffort: input.reasoningEffort ?? 'medium',
       attachmentCount: input.attachments.length,
     },
@@ -329,4 +358,100 @@ function tokenizeCommandLine(commandLine: string): string[] {
       }
       return token;
     });
+}
+
+function toProgressMessage(
+  input: RuntimeChatInput,
+  parentUuid: string | null,
+  event: AgentEvent,
+): UnifiedMessage | undefined {
+  if (event.type === 'step.started') {
+    return createTextMessage(
+      'assistant',
+      `Step started: ${String(event.payload.title ?? event.payload.stepId ?? 'unknown')}`,
+      {
+        parentUuid,
+        metadata: {
+          modelId: input.modelId,
+          provider: 'core-runtime',
+          isMeta: true,
+          extensions: {
+            streamEvent: 'step.started',
+            payload: event.payload,
+          },
+        },
+      },
+    );
+  }
+
+  if (event.type === 'step.completed') {
+    return createTextMessage('assistant', `Step completed: ${String(event.payload.stepId ?? 'unknown')}`, {
+      parentUuid,
+      metadata: {
+        modelId: input.modelId,
+        provider: 'core-runtime',
+        isMeta: true,
+        extensions: {
+          streamEvent: 'step.completed',
+          payload: event.payload,
+        },
+      },
+    });
+  }
+
+  if (event.type === 'step.failed') {
+    return createTextMessage(
+      'assistant',
+      `Step failed: ${String(event.payload.stepId ?? 'unknown')} - ${String(event.payload.error ?? 'unknown error')}`,
+      {
+        parentUuid,
+        metadata: {
+          modelId: input.modelId,
+          provider: 'core-runtime',
+          isMeta: true,
+          extensions: {
+            streamEvent: 'step.failed',
+            payload: event.payload,
+          },
+        },
+      },
+    );
+  }
+
+  if (event.type !== 'runner.event') {
+    return undefined;
+  }
+
+  const runnerEvent = (event.payload as { runnerEvent?: unknown }).runnerEvent;
+  if (!runnerEvent || typeof runnerEvent !== 'object') {
+    return undefined;
+  }
+
+  const eventType =
+    typeof (runnerEvent as { type?: unknown }).type === 'string'
+      ? (runnerEvent as { type: string }).type
+      : 'unknown';
+
+  return createUnifiedMessage({
+    role: 'tool',
+    parentUuid,
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: event.id,
+        toolName: `runner.${eventType}`,
+        output: runnerEvent,
+        isError: eventType === 'error',
+      },
+    ],
+    metadata: {
+      modelId: input.modelId,
+      provider: 'core-runtime',
+      isMeta: true,
+      extensions: {
+        streamEvent: `runner.event.${eventType}`,
+        payload: event.payload,
+      },
+    },
+  });
 }

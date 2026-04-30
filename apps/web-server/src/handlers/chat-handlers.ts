@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { sendSuccess } from '../lib/response.js';
 import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
 import { createChatBodySchema } from '../schemas/chat.js';
@@ -13,13 +14,15 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
       modelId: body.model,
       sessionId: body.sessionId,
       type: 'chat',
+      config: {
+        userId: request.auth.userId,
+      },
     });
-    reply.status(202).send({
+    return sendSuccess(reply, {
       taskId: task.taskId,
       status: task.status,
       task,
-    });
-    return;
+    }, { statusCode: 202, message: 'Accepted' });
   }
 
   if (body.stream) {
@@ -28,12 +31,15 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
 
     try {
       const generator = request.server.services.chatService.streamTurn({
+        userId: request.auth.userId,
         sessionId: body.sessionId,
         message: body.message,
         profileId: body.profileId,
         modelId: body.model,
         reasoningEffort: body.reasoningEffort,
         attachments: body.attachments,
+        approveRiskyOps: body.approveRiskyOps,
+        approvalTicket: body.approvalTicket,
         requestId: request.requestContext.requestId,
       });
 
@@ -55,14 +61,17 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   }
 
   const result = await request.server.services.chatService.runTurn({
+    userId: request.auth.userId,
     sessionId: body.sessionId,
     message: body.message,
     profileId: body.profileId,
     modelId: body.model,
     reasoningEffort: body.reasoningEffort,
     attachments: body.attachments,
+    approveRiskyOps: body.approveRiskyOps,
+    approvalTicket: body.approvalTicket,
     requestId: request.requestContext.requestId,
   });
 
-  reply.send(result);
+  return sendSuccess(reply, result);
 }

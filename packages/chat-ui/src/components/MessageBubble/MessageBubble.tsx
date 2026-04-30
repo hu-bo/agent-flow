@@ -1,14 +1,19 @@
 import './MessageBubble.less';
 import { useMemo } from 'react';
 import type { ChatMessage } from '../../types';
-import { ContentRendererRegistry, createDefaultRegistry } from '../../registry';
+import {
+  ContentRendererRegistry,
+  createDefaultRegistry,
+  type ContentRendererContext,
+} from '../../registry';
 
 interface MessageBubbleProps {
   message: ChatMessage;
   registry?: ContentRendererRegistry;
+  rendererContext?: ContentRendererContext;
 }
 
-export function MessageBubble({ message, registry }: MessageBubbleProps) {
+export function MessageBubble({ message, registry, rendererContext }: MessageBubbleProps) {
   const reg = useMemo(() => registry ?? createDefaultRegistry(), [registry]);
 
   const isUser = message.role === 'user';
@@ -23,7 +28,15 @@ export function MessageBubble({ message, registry }: MessageBubbleProps) {
         {message.content.map((part, i) => {
           const Renderer = reg.get(part.type);
           if (Renderer) {
-            return <Renderer key={i} part={part} />;
+            return (
+              <Renderer
+                key={i}
+                part={part}
+                message={message}
+                index={i}
+                context={rendererContext}
+              />
+            );
           }
           // Fallback: render as JSON
           return (

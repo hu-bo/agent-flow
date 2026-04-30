@@ -19,6 +19,14 @@ import type {
 } from '../../types/index.js';
 
 let eventCounter = 0;
+const SEMANTIC_RUNNER_TOOL_COMMANDS = new Set([
+  'fs.read',
+  'fs.write',
+  'fs.patch',
+  'fs.list',
+  'fs.search',
+  'shell.exec'
+]);
 
 function nextEventId(): string {
   eventCounter += 1;
@@ -39,6 +47,20 @@ function createEvent(
     timestamp: new Date().toISOString(),
     payload
   };
+}
+
+function isSemanticRunnerToolCommand(toolName: string): boolean {
+  return SEMANTIC_RUNNER_TOOL_COMMANDS.has(toolName);
+}
+
+function parseRunnerArgsFromToolInput(input: Record<string, unknown> | undefined): string[] {
+  if (!input) {
+    return [];
+  }
+  if (!Array.isArray(input.args)) {
+    return [];
+  }
+  return input.args.map((value) => String(value));
 }
 
 export class InlineRunner implements Runner {
@@ -252,36 +274,70 @@ export class DefaultPlanExecutor implements PlanExecutor {
                   tool: step.toolName
                 })
               );
-              const toolResult = await this.options.toolExecutor.execute(
-                {
-                  name: step.toolName,
-                  input: step.input ?? {}
-                },
-                {
+              if (isSemanticRunnerToolCommand(step.toolName)) {
+                const runnerTask: RunnerTask = {
                   taskId: session.taskId,
                   sessionId: session.id,
                   stepId: step.id,
-                  signal: executeOptions.signal,
+                  command: step.toolName,
+                  args: parseRunnerArgsFromToolInput(step.input),
+                  stream: true,
+                  input: step.input,
                   metadata: request.metadata
-                },
-                {
-                  retries: 1
+                };
+                let runnerOutput: unknown = undefined;
+                for await (const runnerEvent of this.options.runnerRouter.execute(runnerTask, executeOptions.signal)) {
+                  yield await emit(
+                    createEvent(session.taskId, session.id, 'runner.event', {
+                      stepId: step.id,
+                      runnerEvent
+                    })
+                  );
+                  if (runnerEvent.type === 'result') {
+                    runnerOutput = runnerEvent.result;
+                  }
                 }
-              );
 
-              yield await emit(
-                createEvent(session.taskId, session.id, 'tool.result', {
-                  stepId: step.id,
-                  tool: step.toolName,
-                  ok: toolResult.ok,
-                  error: toolResult.error
-                })
-              );
+                yield await emit(
+                  createEvent(session.taskId, session.id, 'tool.result', {
+                    stepId: step.id,
+                    tool: step.toolName,
+                    ok: true
+                  })
+                );
+                output = runnerOutput;
+              } else {
+                const toolResult = await this.options.toolExecutor.execute(
+                  {
+                    name: step.toolName,
+                    input: step.input ?? {}
+                  },
+                  {
+                    taskId: session.taskId,
+                    sessionId: session.id,
+                    stepId: step.id,
+                    signal: executeOptions.signal,
+                    metadata: request.metadata
+                  },
+                  {
+                    retries: 1
+                  }
+                );
 
-              if (!toolResult.ok) {
-                throw new Error(toolResult.error ?? `Tool "${step.toolName}" failed.`);
+                yield await emit(
+                  createEvent(session.taskId, session.id, 'tool.result', {
+                    stepId: step.id,
+                    tool: step.toolName,
+                    ok: toolResult.ok,
+                    error: toolResult.error
+                  })
+                );
+
+                if (!toolResult.ok) {
+                  throw new Error(toolResult.error ?? `Tool "${step.toolName}" failed.`);
+                }
+                output = toolResult.output;
               }
-              output = toolResult.output;
             } else {
               if (!step.runner) {
                 throw new Error(`Step "${step.id}" is a runner step but has no runner config.`);

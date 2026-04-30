@@ -1,8 +1,13 @@
 import type { ComponentType } from 'react';
-import type { ChatContentPart } from './types';
+import type { ChatContentPart, ChatMessage } from './types';
+
+export type ContentRendererContext = Record<string, unknown>;
 
 export type ContentRendererProps<T extends ChatContentPart = ChatContentPart> = {
   part: T;
+  message: ChatMessage;
+  index: number;
+  context?: ContentRendererContext;
 };
 
 export type ContentRenderer = ComponentType<ContentRendererProps>;

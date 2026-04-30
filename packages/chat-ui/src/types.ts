@@ -11,6 +11,7 @@ import type {
   MessageMetadata,
   TokenUsage,
 } from '@agent-flow/core/messages';
+import type { ReactNode } from 'react';
 
 // Re-export base types
 export type {
@@ -29,10 +30,34 @@ export type {
 
 // --- UI-specific content part types ---
 
+export type ThoughtChainItemStatus = 'pending' | 'running' | 'success' | 'error';
+
+export interface ThoughtChainItem {
+  key: string;
+  title?: ReactNode;
+  description?: ReactNode;
+  content?: ReactNode;
+  footer?: ReactNode;
+  extra?: ReactNode;
+  icon?: ReactNode;
+  status?: ThoughtChainItemStatus;
+  durationMs?: number;
+  collapsible?: boolean;
+  disabled?: boolean;
+  className?: string;
+}
+
 export interface ThinkingPart {
   type: 'thinking';
   text: string;
+  title?: ReactNode;
+  description?: ReactNode;
+  footer?: ReactNode;
+  icon?: ReactNode;
+  status?: ThoughtChainItemStatus;
   durationMs?: number;
+  defaultOpen?: boolean;
+  items?: ThoughtChainItem[];
 }
 
 export interface CodeDiffPart {

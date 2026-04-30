@@ -201,6 +201,169 @@
   flex-shrink: 0;
 }
 
+.runner-panel {
+  height: 100%;
+  border-radius: 1rem;
+  background: linear-gradient(165deg, #f4f8ff, #ffffff);
+  box-shadow: var(--pg-shadow-2);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  overflow: auto;
+}
+
+.runner-hero {
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 0.8rem;
+  padding: 0.8rem;
+  box-shadow: var(--pg-shadow-1);
+}
+
+.runner-title {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--pg-text);
+}
+
+.runner-subtitle {
+  margin: 0.45rem 0 0;
+  font-size: 0.74rem;
+  color: var(--pg-text-muted);
+}
+
+.runner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.runner-action-link[aria-disabled="true"] {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.runner-commands {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.runner-command-block {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 0.8rem;
+  padding: 0.75rem;
+  box-shadow: var(--pg-shadow-1);
+}
+
+.runner-command-block h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  color: var(--pg-text-subtle);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.runner-command-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  color: var(--pg-text);
+}
+
+.runner-token-tip {
+  font-size: 0.72rem;
+  color: var(--pg-text-subtle);
+}
+
+.runner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.runner-list h3 {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--pg-text);
+}
+
+.runner-list-empty {
+  color: var(--pg-text-muted);
+  font-size: 0.74rem;
+}
+
+.runner-item {
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.72rem;
+  box-shadow: var(--pg-shadow-1);
+}
+
+.runner-item-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.runner-id {
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.69rem;
+  color: var(--pg-text);
+}
+
+.runner-pill {
+  border-radius: 999px;
+  padding: 0.14rem 0.46rem;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.runner-pill-online {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.15);
+}
+
+.runner-pill-offline {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.runner-item-meta {
+  margin-top: 0.38rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.46rem;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.61rem;
+  color: var(--pg-text-subtle);
+}
+
+.chat-runner-hint {
+  margin-bottom: 0.58rem;
+  border-radius: 0.7rem;
+  padding: 0.5rem 0.62rem;
+  font-size: 0.72rem;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.24);
+}
+
+.chat-runner-hint a {
+  color: #b45309;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.chat-runner-hint a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 640px) {
   .workspace-header,
   .workspace-canvas,
@@ -211,5 +374,9 @@
 
   .workspace-title {
     font-size: 0.8rem;
+  }
+
+  .runner-commands {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

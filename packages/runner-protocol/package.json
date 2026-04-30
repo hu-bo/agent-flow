@@ -1,0 +1,27 @@
+{
+  "name": "@agent-flow/runner-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Generated TypeScript contracts for the runner protocol",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "generate": "protoc --proto_path=../../ --ts_proto_out=./src/generated --ts_proto_opt=env=node,esModuleInterop=true,outputServices=none,outputEncodeMethods=false,outputJsonMethods=false,outputClientImpl=false,outputPartialMethods=false,oneof=unions-value ../../protocol/proto/runner.proto",
+    "build": "pnpm run generate && tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "typecheck": "pnpm run generate && tsc --noEmit"
+  },
+  "devDependencies": {
+    "ts-proto": "^2.7.7",
+    "typescript": "^5.8.3"
+  }
+}

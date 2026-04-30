@@ -15,9 +15,12 @@ import {
   updateModelProfileHandler,
   upsertRoutingPolicyHandler,
 } from '../handlers/admin-handlers.js';
+import { requireAdminRole } from '../middlewares/auth.js';
 import { requireJsonBody } from '../middlewares/require-json.js';
 
 export async function registerAdminRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', requireAdminRole);
+
   app.get('/admin/providers', listProvidersHandler);
   app.post('/admin/providers', { preHandler: requireJsonBody }, createProviderHandler);
   app.patch('/admin/providers/:providerId', { preHandler: requireJsonBody }, updateProviderHandler);

@@ -1,9 +1,10 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { sendSuccess } from '../lib/response.js';
 import { parseWithSchema } from '../lib/validation.js';
 import { createSessionBodySchema, sessionParamsSchema } from '../schemas/session.js';
 
 export async function listSessionsHandler(request: FastifyRequest, reply: FastifyReply) {
-  reply.send({
+  return sendSuccess(reply, {
     sessions: request.server.services.sessionService.listSessions(),
   });
 }
@@ -11,7 +12,7 @@ export async function listSessionsHandler(request: FastifyRequest, reply: Fastif
 export async function getSessionHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = parseWithSchema(sessionParamsSchema, request.params, 'params');
   const state = request.server.services.sessionService.getSessionState(params.sessionId);
-  reply.send({
+  return sendSuccess(reply, {
     session: state.session,
     messages: state.messages,
   });
@@ -25,9 +26,9 @@ export async function createSessionHandler(request: FastifyRequest, reply: Fasti
     systemPrompt: body.systemPrompt,
   });
 
-  reply.status(201).send({
+  return sendSuccess(reply, {
     session,
-  });
+  }, { statusCode: 201, message: 'Created' });
 }
 
 export async function deleteSessionHandler(request: FastifyRequest, reply: FastifyReply) {

@@ -79,6 +79,35 @@ pnpm --filter @agent-flow/web-server start
 | GET/POST | `/api/tasks` | 任务管理 |
 | GET | `/api/tasks/:taskId/events` | 任务事件 SSE |
 
+### API 响应约定
+
+普通 JSON 接口统一返回 envelope：
+
+```json
+{
+  "code": 0,
+  "data": {},
+  "message": "OK",
+  "requestId": "req-xxx"
+}
+```
+
+错误响应统一格式：
+
+```json
+{
+  "code": "NOT_FOUND",
+  "data": null,
+  "message": "Route not found: GET /api/xxx",
+  "requestId": "req-xxx",
+  "details": {}
+}
+```
+
+例外约定：
+- `SSE` 接口（如 `/api/chat` 的流式模式、`/api/tasks/:taskId/events`）返回事件流，不包 `code/data/message`。
+- `204 No Content` 接口（如 delete 场景）不返回 body。
+
 ## 提供的能力
 
 - 为 web-ui 和 console 提供统一的后端 API 层

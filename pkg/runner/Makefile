@@ -7,7 +7,7 @@ proto:
 	  protocol/proto/runner.proto
 
 proto-types:
-	node ../../protocol/types/generate-runner-types.mjs
+	cd ../.. && pnpm --filter @agent-flow/runner-protocol generate
 
 proto-all: proto proto-types
 
@@ -18,4 +18,4 @@ test:
 	go test ./...
 
 run:
-	go run ./cmd/runnerd
+	go run ./cmd

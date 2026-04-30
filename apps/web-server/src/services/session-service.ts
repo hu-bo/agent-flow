@@ -11,6 +11,7 @@ interface CreateSessionInput {
 
 export class SessionService {
   private readonly sessions = new Map<string, SessionState>();
+  private readonly runnerBindings = new Map<string, string>();
 
   constructor(private readonly defaultCwd: string) {}
 
@@ -62,6 +63,7 @@ export class SessionService {
     if (!this.sessions.delete(sessionId)) {
       throw new NotFoundError(`Session not found: ${sessionId}`);
     }
+    this.runnerBindings.delete(sessionId);
   }
 
   updateSessionModel(sessionId: string, modelId: string) {
@@ -91,5 +93,16 @@ export class SessionService {
     state.session.updatedAt = new Date().toISOString();
     state.session.latestCheckpointId = state.messages.at(-1)?.uuid ?? '';
     return state.session;
+  }
+
+  bindRunner(sessionId: string, runnerId: string) {
+    this.getSession(sessionId);
+    this.runnerBindings.set(sessionId, runnerId);
+    return runnerId;
+  }
+
+  getBoundRunner(sessionId: string): string | undefined {
+    this.getSession(sessionId);
+    return this.runnerBindings.get(sessionId);
   }
 }

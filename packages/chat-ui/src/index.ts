@@ -1,3 +1,4 @@
+import './tailwind.css';
 import 'highlight.js/styles/github.css';
 
 // Components
@@ -8,10 +9,19 @@ export { MessageBubble } from './components/MessageBubble/MessageBubble';
 export { InputArea } from './components/InputArea/InputArea';
 export { SelectField } from './components/SelectField/SelectField';
 export type { SelectFieldProps, SelectFieldOption } from './components/SelectField/SelectField';
+export { ThoughtChain } from './components/ThoughtChain/ThoughtChain';
+export type {
+  ThoughtChainProps,
+  ThoughtChainSemanticSlot,
+} from './components/ThoughtChain/ThoughtChain';
 
 // Registry
 export { ContentRendererRegistry, createDefaultRegistry } from './registry';
-export type { ContentRenderer, ContentRendererProps } from './registry';
+export type {
+  ContentRenderer,
+  ContentRendererContext,
+  ContentRendererProps,
+} from './registry';
 
 // Renderers (for custom composition)
 export { TextRenderer } from './renderers/TextRenderer';
@@ -31,6 +41,8 @@ export type {
   ReasoningEffort,
   TokenUsageSummary,
   ThinkingPart,
+  ThoughtChainItem,
+  ThoughtChainItemStatus,
   CodeDiffPart,
   // Re-exports from model-contracts
   ContentPart,

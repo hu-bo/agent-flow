@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { sendSuccess } from '../lib/response.js';
 import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
 import {
@@ -9,7 +10,7 @@ import {
 } from '../schemas/task.js';
 
 export async function listTasksHandler(request: FastifyRequest, reply: FastifyReply) {
-  reply.send({
+  return sendSuccess(reply, {
     tasks: request.server.services.taskService.listTasks(),
   });
 }
@@ -26,16 +27,16 @@ export async function createTaskHandler(request: FastifyRequest, reply: FastifyR
     maxRetries: body.maxRetries,
   });
 
-  reply.status(202).send({
+  return sendSuccess(reply, {
     taskId: task.taskId,
     status: task.status,
     task,
-  });
+  }, { statusCode: 202, message: 'Accepted' });
 }
 
 export async function getTaskHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = parseWithSchema(taskParamsSchema, request.params, 'params');
-  reply.send({
+  return sendSuccess(reply, {
     task: request.server.services.taskService.getTask(params.taskId),
   });
 }
@@ -43,7 +44,7 @@ export async function getTaskHandler(request: FastifyRequest, reply: FastifyRepl
 export async function taskActionHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = parseWithSchema(taskActionParamsSchema, request.params, 'params');
   const task = request.server.services.taskService.applyAction(params.taskId, params.action);
-  reply.send({
+  return sendSuccess(reply, {
     task,
   });
 }
