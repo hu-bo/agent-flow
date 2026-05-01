@@ -11,10 +11,12 @@ import {
 import type { UnifiedMessage } from '@agent-flow/core/messages';
 import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import { type MemoryService, type RecalledMemory } from '@agent-flow/memory';
+import type { AdapterMessage, AdapterTokenUsage, MessagePart } from '@agent-flow/model-adapters/types';
 import { registerBuiltinTools } from '@agent-flow/tools-impl';
 import type { RuntimeChatInput, RuntimeGateway } from '../contracts/api.js';
 import { AsyncQueue } from '../lib/async-queue.js';
 import { createTextMessage, createUnifiedMessage, summarizeMessages } from '../lib/messages.js';
+import type { ModelAdapterService } from './model-adapter-service.js';
 
 export interface CreateCoreAgentRuntimeOptions {
   cwd?: string;
@@ -35,6 +37,7 @@ export function createCoreAgentRuntime(options: CreateCoreAgentRuntimeOptions = 
 export interface CoreRuntimeGatewayOptions {
   runtime: AgentRuntime;
   memoryService: MemoryService;
+  modelAdapterService?: ModelAdapterService;
   logger?: StructuredLogger;
   tracer?: Tracer;
 }
@@ -42,12 +45,14 @@ export interface CoreRuntimeGatewayOptions {
 export class CoreRuntimeGateway implements RuntimeGateway {
   private readonly runtime: AgentRuntime;
   private readonly memoryService: MemoryService;
+  private readonly modelAdapterService?: ModelAdapterService;
   private readonly logger?: StructuredLogger;
   private readonly tracer?: Tracer;
 
   constructor(options: CoreRuntimeGatewayOptions) {
     this.runtime = options.runtime;
     this.memoryService = options.memoryService;
+    this.modelAdapterService = options.modelAdapterService;
     this.logger = options.logger;
     this.tracer = options.tracer;
   }
@@ -72,12 +77,24 @@ export class CoreRuntimeGateway implements RuntimeGateway {
 
     void (async () => {
       try {
-        const recalled = await this.memoryService.recall(input.message, {
+        const recalledRaw = await this.memoryService.recall(input.message, {
           sessionId: input.session.sessionId,
           includeSessionMemory: true,
           limit: 4,
         });
+        const recalled = recalledRaw.filter((memory) => !isRuntimeDiagnosticText(memory.text));
         const runnerDirective = parseRunnerDirective(input.message);
+
+        if (!runnerDirective) {
+          const response = await this.generateModelResponse(input, recalled, parentUuid);
+          queue.push(response);
+          await span?.end({
+            status: 'succeeded',
+            mode: 'model-generation',
+          });
+          return;
+        }
+
         const eventCountByType = new Map<string, number>();
         const runRequest = buildAgentRequest(input, recalled, runnerDirective);
 
@@ -164,6 +181,61 @@ export class CoreRuntimeGateway implements RuntimeGateway {
       yield message;
     }
   }
+
+  private async generateModelResponse(
+    input: RuntimeChatInput,
+    recalled: RecalledMemory[],
+    parentUuid: string | null,
+  ): Promise<UnifiedMessage> {
+    if (!this.modelAdapterService) {
+      throw new Error('Model adapter service is not configured for chat generation.');
+    }
+
+    const adapter = await this.modelAdapterService.createAdapter(input.modelId);
+    const messages = toAdapterMessages(input.history);
+    const result = await adapter.generate({
+      model: input.modelId,
+      messages,
+      systemPrompt: buildSystemPrompt(input, recalled),
+      config: {
+        maxOutputTokens: resolveMaxOutputTokens(input.reasoningEffort),
+        temperature: 0.7,
+      },
+      metadata: {
+        requestId: input.requestId,
+        sessionId: input.session.sessionId,
+        userId: input.userId,
+      },
+    });
+
+    const responseText = getAdapterText(result.message.parts).trim();
+    const fallbackText =
+      responseText.length > 0
+        ? responseText
+        : 'The model returned no text for this turn.';
+
+    this.logger?.info('chat.turn.completed', 'model chat turn completed', {
+      attributes: {
+        sessionId: input.session.sessionId,
+        modelId: input.modelId,
+        provider: adapter.provider,
+        finishReason: result.finishReason,
+      },
+    });
+
+    return createTextMessage('assistant', fallbackText, {
+      parentUuid,
+      metadata: {
+        modelId: input.modelId,
+        provider: adapter.provider,
+        tokenUsage: toUnifiedTokenUsage(result.usage),
+        extensions: {
+          requestId: input.requestId,
+          finishReason: result.finishReason,
+        },
+      },
+    });
+  }
 }
 
 interface RunnerDirective {
@@ -176,7 +248,9 @@ function buildAgentRequest(
   recalled: RecalledMemory[],
   runnerDirective: RunnerDirective | undefined,
 ): AgentRunRequest {
-  const recentHistory = input.history.slice(-8);
+  const recentHistory = input.history
+    .filter((message) => !message.metadata?.isMeta && !isRuntimeDiagnosticMessage(message))
+    .slice(-8);
   const initialContext: ContextFragmentInput[] = [
     ...recentHistory.map((message, index) => ({
       source: `history:${message.uuid}`,
@@ -358,6 +432,139 @@ function tokenizeCommandLine(commandLine: string): string[] {
       }
       return token;
     });
+}
+
+function buildSystemPrompt(input: RuntimeChatInput, recalled: RecalledMemory[]): string {
+  const lines = [
+    input.session.systemPrompt?.trim() ||
+      'You are Agent Flow, a helpful AI assistant. Answer the user directly and naturally.',
+  ];
+
+  if (recalled.length > 0) {
+    lines.push(
+      [
+        'Relevant memory for this conversation:',
+        ...recalled.map((memory) => `- ${memory.text}`),
+      ].join('\n'),
+    );
+  }
+
+  return lines.join('\n\n');
+}
+
+function toAdapterMessages(messages: UnifiedMessage[]): AdapterMessage[] {
+  return messages
+    .filter((message) => !message.metadata?.isMeta && !isRuntimeDiagnosticMessage(message))
+    .map<AdapterMessage>((message) => ({
+      id: message.uuid,
+      parentId: message.parentUuid,
+      role: message.role,
+      createdAt: message.timestamp,
+      parts: toAdapterParts(message),
+      meta: {
+        model: message.metadata.modelId,
+        provider: message.metadata.provider,
+      },
+    }))
+    .filter((message) => message.parts.length > 0);
+}
+
+function isRuntimeDiagnosticMessage(message: UnifiedMessage): boolean {
+  if (message.metadata.provider !== 'core-runtime') {
+    return false;
+  }
+  const text = message.content
+    .filter((part): part is Extract<UnifiedMessage['content'][number], { type: 'text' }> => part.type === 'text')
+    .map((part) => part.text)
+    .join('\n');
+  return isRuntimeDiagnosticText(text);
+}
+
+function isRuntimeDiagnosticText(text: string): boolean {
+  return (
+    text.includes('Core runtime executed successfully.') ||
+    text.includes('Core runtime finished with status:') ||
+    text.includes('No runner command was requested in this turn.') ||
+    text.includes('Latest output:') ||
+    text.includes('"mode": "placeholder"')
+  );
+}
+
+function toAdapterParts(message: UnifiedMessage): MessagePart[] {
+  const parts: MessagePart[] = [];
+  for (const part of message.content) {
+    if (part.type === 'text' && part.text.trim().length > 0) {
+      parts.push({ type: 'text', text: part.text });
+    } else if (part.type === 'image') {
+      if (part.source.type === 'base64') {
+        parts.push({
+          type: 'image',
+          source: {
+            kind: 'base64',
+            mediaType: part.source.mediaType,
+            data: part.source.data,
+          },
+        });
+      } else {
+        parts.push({
+          type: 'image',
+          source: {
+            kind: 'url',
+            url: part.source.url,
+          },
+        });
+      }
+    } else if (part.type === 'file') {
+      parts.push({
+        type: 'text',
+        text: `[Attached file: mime=${part.mimeType}, base64Length=${part.data.length}]`,
+      });
+    } else if (part.type === 'tool-call') {
+      parts.push({
+        type: 'tool-call',
+        callId: part.toolCallId,
+        toolName: part.toolName,
+        args: part.input,
+      });
+    } else if (part.type === 'tool-result') {
+      parts.push({
+        type: 'tool-result',
+        callId: part.toolCallId,
+        toolName: part.toolName,
+        result: part.output,
+        isError: part.isError,
+      });
+    }
+  }
+
+  if (message.role === 'user' && parts.length === 0) {
+    parts.push({ type: 'text', text: '[empty user message]' });
+  }
+
+  return parts;
+}
+
+function getAdapterText(parts: MessagePart[]): string {
+  return parts
+    .filter((part): part is Extract<MessagePart, { type: 'text' }> => part.type === 'text')
+    .map((part) => part.text)
+    .join('');
+}
+
+function resolveMaxOutputTokens(reasoningEffort: RuntimeChatInput['reasoningEffort']): number {
+  if (reasoningEffort === 'high') return 4096;
+  if (reasoningEffort === 'low') return 1024;
+  return 2048;
+}
+
+function toUnifiedTokenUsage(usage: AdapterTokenUsage) {
+  return {
+    promptTokens: usage.inputTokens,
+    completionTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
+  };
 }
 
 function toProgressMessage(

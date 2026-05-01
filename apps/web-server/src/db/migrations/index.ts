@@ -4,6 +4,7 @@ import { DropProviderModelCapabilities20260428000200 } from './20260428000200-dr
 import { InitUserAccount20260429000100 } from './20260429000100-init-user-account.js';
 import { AlignUserAccountWithCasdoor20260429000200 } from './20260429000200-align-user-account-with-casdoor.js';
 import { InitRunnerControlPlane20260429000300 } from './20260429000300-init-runner-control-plane.js';
+import { AddRunnerHostInfo20260501000300 } from './20260501000300-add-runner-host-info.js';
 
 export const migrations = [
   InitModelConfig20260426000100,
@@ -12,4 +13,5 @@ export const migrations = [
   InitUserAccount20260429000100,
   AlignUserAccountWithCasdoor20260429000200,
   InitRunnerControlPlane20260429000300,
+  AddRunnerHostInfo20260501000300,
 ];

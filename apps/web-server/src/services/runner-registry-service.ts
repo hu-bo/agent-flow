@@ -16,6 +16,8 @@ export interface RunnerRegisterInput {
   runnerId?: string;
   kind?: 'local' | 'remote' | 'sandbox';
   host?: string;
+  hostName?: string;
+  hostIp?: string;
   version?: string;
   capabilities?: string[];
 }
@@ -137,20 +139,27 @@ export class RunnerRegistryService {
   }
 
   private async upsertFromToken(token: RunnerTokenEntity, input: RunnerRegisterInput): Promise<RunnerEntity> {
-    const runnerId = input.runnerId?.trim() || createRunnerId();
-    const existing = await this.runnerRepository.findOne({ where: { runnerId } });
+    const inputRunnerId = normalizeText(input.runnerId);
+    const hostName = normalizeText(input.hostName) ?? normalizeText(input.host);
+    const hostIp = normalizeText(input.hostIp);
+    const host = normalizeText(input.host) ?? hostName;
+
+    const existing = inputRunnerId ? await this.runnerRepository.findOne({ where: { runnerId: inputRunnerId } }) : null;
     if (existing && existing.ownerUserId !== token.ownerUserId) {
       throw new AppError(403, 'RUNNER_OWNER_MISMATCH', 'runner_id belongs to another user');
     }
 
+    const runnerId = existing?.runnerId ?? inputRunnerId ?? createRunnerId();
     const runner = existing ?? this.runnerRepository.create({ runnerId });
     runner.ownerUserId = token.ownerUserId;
     runner.tokenId = token.tokenId;
-    runner.kind = input.kind ?? existing?.kind ?? 'local';
+    runner.kind = input.kind ?? runner.kind ?? 'local';
     runner.status = 'online';
-    runner.host = input.host ?? existing?.host ?? null;
-    runner.version = input.version ?? existing?.version ?? null;
-    runner.capabilities = input.capabilities ?? existing?.capabilities ?? [];
+    runner.host = host ?? runner.host ?? null;
+    runner.hostName = hostName ?? runner.hostName ?? null;
+    runner.hostIp = hostIp ?? runner.hostIp ?? null;
+    runner.version = normalizeText(input.version) ?? runner.version ?? null;
+    runner.capabilities = input.capabilities ?? runner.capabilities ?? [];
     runner.lastSeenAt = new Date();
     return this.runnerRepository.save(runner);
   }
@@ -187,4 +196,9 @@ export class RunnerRegistryService {
 
 function createRunnerId(): string {
   return `runner_${randomUUID()}`;
+}
+
+function normalizeText(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
 }

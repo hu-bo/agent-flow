@@ -255,6 +255,8 @@ export function RunnerPage() {
                   <div className="runner-item-meta">
                     <span>kind={runner.kind}</span>
                     <span>host={runner.host ?? '-'}</span>
+                    <span>hostname={runner.hostName ?? '-'}</span>
+                    <span>ip={runner.hostIp ?? '-'}</span>
                     <span>version={runner.version ?? '-'}</span>
                     <span>lastSeen={runner.lastSeenAt ?? '-'}</span>
                   </div>

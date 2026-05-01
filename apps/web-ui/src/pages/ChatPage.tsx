@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChatPanel } from '@agent-flow/chat-ui';
 import type {
@@ -295,7 +295,8 @@ export function ChatPage() {
 
   const tokenBudget =
     modelOptions.find((model) => model.modelId === selectedModel)?.maxInputTokens ?? null;
-  const tokenUsage = buildTokenUsage(messages as ChatMessage[], tokenBudget);
+  const chatMessages = useMemo(() => messages as ChatMessage[], [messages]);
+  const tokenUsage = buildTokenUsage(chatMessages, tokenBudget);
   const compactDisabled = !activeSession || isConnecting || isStreaming;
 
   return (
@@ -322,7 +323,7 @@ export function ChatPage() {
 
         <ChatPanel
           className="playground-chat-panel"
-          messages={messages as ChatMessage[]}
+          messages={chatMessages}
           onSend={handleSend}
           selectedModel={selectedModel}
           modelOptions={modelOptions}

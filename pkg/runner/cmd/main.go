@@ -78,7 +78,11 @@ func runStart(args []string) error {
 	rpcToken := fs.String("rpc_token", defaultToken, "runner token issued by web-server")
 	runnerID := fs.String("runner_id", strings.TrimSpace(cfg.RunnerID), "runner id for reconnect")
 	kind := fs.String("kind", defaultRunnerKind, "runner kind: local|remote|sandbox")
-	hostName := fs.String("host", localHostname(), "runner host label")
+	defaultHostName := localHostname()
+	defaultHostIP := localHostIP()
+	hostLabel := fs.String("host", defaultHostName, "runner host label")
+	hostName := fs.String("host_name", defaultHostName, "runner host name used for per-host identity")
+	hostIP := fs.String("host_ip", defaultHostIP, "runner host ip address")
 	version := fs.String("version", resolveVersion(), "runner version")
 	capabilities := fs.String("capabilities", defaultCaps, "comma-separated capability list")
 	dockerBinary := fs.String("docker_bin", os.Getenv("RUNNER_DOCKER_BIN"), "docker binary path")
@@ -99,27 +103,45 @@ func runStart(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	runnerTokenValue := strings.TrimSpace(*rpcToken)
+	rpcHostValue := strings.TrimSpace(*rpcHost)
+	var registeredRunnerID string
+	persistRegistration := func(result grpcclient.StartLoopResult) {
+		resultRunnerID := strings.TrimSpace(result.RunnerID)
+		if resultRunnerID == "" {
+			return
+		}
+		registeredRunnerID = resultRunnerID
+		saveErr := model.SaveLocalConfig(model.LocalConfig{
+			RunnerID:    resultRunnerID,
+			RunnerToken: runnerTokenValue,
+			ServerAddr:  rpcHostValue,
+		})
+		if saveErr != nil {
+			slog.Warn("failed to persist local runner config", "err", saveErr)
+			return
+		}
+		slog.Info("local runner config persisted", "runnerId", resultRunnerID)
+	}
+
 	result, err := grpcclient.StartLoop(ctx, controller, grpcclient.StartLoopOptions{
 		RunnerID:     strings.TrimSpace(*runnerID),
-		RunnerToken:  strings.TrimSpace(*rpcToken),
-		ServerAddr:   strings.TrimSpace(*rpcHost),
+		RunnerToken:  runnerTokenValue,
+		ServerAddr:   rpcHostValue,
 		Kind:         strings.TrimSpace(*kind),
-		Host:         strings.TrimSpace(*hostName),
+		Host:         strings.TrimSpace(*hostLabel),
+		HostName:     strings.TrimSpace(*hostName),
+		HostIP:       strings.TrimSpace(*hostIP),
 		Version:      strings.TrimSpace(*version),
 		Capabilities: parseCSV(*capabilities),
+		OnRegistered: persistRegistration,
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
-	resultRunnerID := result.RunnerID
-
-	saveErr := model.SaveLocalConfig(model.LocalConfig{
-		RunnerID:    resultRunnerID,
-		RunnerToken: strings.TrimSpace(*rpcToken),
-		ServerAddr:  strings.TrimSpace(*rpcHost),
-	})
-	if saveErr != nil {
-		slog.Warn("failed to persist local runner config", "err", saveErr)
+	resultRunnerID := strings.TrimSpace(result.RunnerID)
+	if resultRunnerID == "" {
+		resultRunnerID = strings.TrimSpace(registeredRunnerID)
 	}
 
 	slog.Info("runner stopped", "runnerId", resultRunnerID, "transport", "grpc")
@@ -194,7 +216,48 @@ func localHostname() string {
 	if err != nil {
 		return "unknown-host"
 	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "unknown-host"
+	}
 	return name
+}
+
+func localHostIP() string {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ip := ipFromAddr(addr)
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			if ipv4 := ip.To4(); ipv4 != nil {
+				return ipv4.String()
+			}
+		}
+	}
+	return ""
+}
+
+func ipFromAddr(addr net.Addr) net.IP {
+	switch value := addr.(type) {
+	case *net.IPNet:
+		return value.IP
+	case *net.IPAddr:
+		return value.IP
+	default:
+		return nil
+	}
 }
 
 func envOrDefault(key, fallback string) string {

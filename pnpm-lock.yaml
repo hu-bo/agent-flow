@@ -131,6 +131,9 @@ importers:
       '@agent-flow/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@agent-flow/model-adapters':
+        specifier: workspace:*
+        version: link:../../packages/model-adapters
       '@agent-flow/tools-impl':
         specifier: workspace:*
         version: link:../../packages/tools-impl

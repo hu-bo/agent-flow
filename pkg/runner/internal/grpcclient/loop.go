@@ -22,8 +22,11 @@ type StartLoopOptions struct {
 	ServerAddr   string
 	Kind         string
 	Host         string
+	HostName     string
+	HostIP       string
 	Version      string
 	Capabilities []string
+	OnRegistered func(result StartLoopResult)
 }
 
 type StartLoopResult struct {
@@ -63,6 +66,8 @@ func StartLoop(ctx context.Context, controller runnercore.Controller, opts Start
 				RunnerId:     strings.TrimSpace(opts.RunnerID),
 				Kind:         strings.TrimSpace(opts.Kind),
 				Host:         strings.TrimSpace(opts.Host),
+				HostName:     strings.TrimSpace(opts.HostName),
+				HostIp:       strings.TrimSpace(opts.HostIP),
 				Version:      strings.TrimSpace(opts.Version),
 				Capabilities: append([]string{}, opts.Capabilities...),
 			},
@@ -87,6 +92,12 @@ func StartLoop(ctx context.Context, controller runnercore.Controller, opts Start
 	heartbeatIntervalMs := ack.GetHeartbeatIntervalMs()
 	if heartbeatIntervalMs < 1000 {
 		heartbeatIntervalMs = 10_000
+	}
+	if opts.OnRegistered != nil {
+		opts.OnRegistered(StartLoopResult{
+			RunnerID:            runnerID,
+			HeartbeatIntervalMs: heartbeatIntervalMs,
+		})
 	}
 
 	heartbeatTicker := time.NewTicker(time.Duration(heartbeatIntervalMs) * time.Millisecond)

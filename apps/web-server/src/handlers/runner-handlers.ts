@@ -87,6 +87,8 @@ function toRunnerView(runner: {
   kind: string;
   status: string;
   host: string | null;
+  hostName: string | null;
+  hostIp: string | null;
   version: string | null;
   capabilities: string[];
   lastSeenAt: Date | null;
@@ -100,6 +102,8 @@ function toRunnerView(runner: {
     kind: runner.kind,
     status: runner.status,
     host: runner.host,
+    hostName: runner.hostName,
+    hostIp: runner.hostIp,
     version: runner.version,
     capabilities: runner.capabilities,
     lastSeenAt: runner.lastSeenAt?.toISOString() ?? null,

@@ -7,6 +7,7 @@ import { AuthService } from './auth-service.js';
 import { ChatService } from './chat-service.js';
 import { CompactService } from './compact-service.js';
 import { ModelAdminService } from './model-admin-service.js';
+import { ModelAdapterService } from './model-adapter-service.js';
 import { ModelService } from './model-service.js';
 import { RunnerRegistrationService } from './runner-registration-service.js';
 import { RunnerRegistryService } from './runner-registry-service.js';
@@ -27,6 +28,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const tracer = new Tracer({ logger });
   const memoryService = new MemoryService();
   const modelService = new ModelService(db, env.defaultModel);
+  const modelAdapterService = new ModelAdapterService(db);
   const modelAdminService = new ModelAdminService(db, {
     onModelConfigChanged: async () => {
       await modelService.refreshRuntimeModelCache();
@@ -52,6 +54,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const runtimeGateway = new CoreRuntimeGateway({
     runtime,
     memoryService,
+    modelAdapterService,
     logger,
     tracer,
   });
@@ -65,6 +68,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
 
   return {
     modelService,
+    modelAdapterService,
     modelAdminService,
     sessionService,
     runnerRegistrationService,

@@ -37,6 +37,8 @@ interface ConnectRegisterMessage {
   runnerId?: string;
   kind?: 'local' | 'remote' | 'sandbox';
   host?: string;
+  hostName?: string;
+  hostIp?: string;
   version?: string;
   capabilities?: string[];
 }
@@ -249,6 +251,8 @@ async function handleConnectStream(
             runnerId: message.register.runnerId,
             kind: message.register.kind,
             host: message.register.host,
+            hostName: message.register.hostName,
+            hostIp: message.register.hostIp,
             version: message.register.version,
             capabilities: message.register.capabilities,
           });
@@ -269,6 +273,8 @@ async function handleConnectStream(
               runnerId: registered.runnerId,
               ownerUserId: registered.ownerUserId,
               host: registered.host ?? undefined,
+              hostName: registered.hostName ?? undefined,
+              hostIp: registered.hostIp ?? undefined,
               version: registered.version ?? undefined,
             },
           });

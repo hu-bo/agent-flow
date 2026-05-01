@@ -39,6 +39,8 @@ export interface RunnerRecord {
   kind: 'local' | 'remote' | 'sandbox';
   status: 'online' | 'offline';
   host: string | null;
+  hostName: string | null;
+  hostIp: string | null;
   version: string | null;
   capabilities: string[];
   lastSeenAt: string | null;

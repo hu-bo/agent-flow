@@ -32,6 +32,12 @@ export class RunnerEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   host!: string | null;
 
+  @Column({ name: 'host_name', type: 'varchar', length: 255, nullable: true })
+  hostName!: string | null;
+
+  @Column({ name: 'host_ip', type: 'varchar', length: 64, nullable: true })
+  hostIp!: string | null;
+
   @Column({ type: 'varchar', length: 64, nullable: true })
   version!: string | null;
 
@@ -47,4 +53,3 @@ export class RunnerEntity {
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }
-

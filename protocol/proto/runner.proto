@@ -143,6 +143,8 @@ message ConnectRegister {
   string host = 4;
   string version = 5;
   repeated string capabilities = 6;
+  string host_name = 7;
+  string host_ip = 8;
 }
 
 message ConnectRegisterAck {
