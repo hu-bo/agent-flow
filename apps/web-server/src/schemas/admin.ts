@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { modelIdSchema } from './common.js';
+import { modelIdSchema, providerModelNameSchema } from './common.js';
 
 const providerStatusSchema = z.enum(['active', 'disabled']);
 const providerCredentialStatusSchema = z.enum(['active', 'disabled']);
@@ -39,7 +39,7 @@ export const modelParamsSchema = z.object({
 });
 
 export const createAdminModelBodySchema = z.object({
-  modelId: modelIdSchema,
+  model: providerModelNameSchema,
   displayName: z.string().trim().min(1).max(128),
   providerId: z.number().int().positive(),
   tokenLimit: z.number().int().positive().max(2_000_000),
@@ -49,6 +49,7 @@ export const createAdminModelBodySchema = z.object({
 export const updateAdminModelBodySchema = z
   .object({
     displayName: z.string().trim().min(1).max(128).optional(),
+    model: providerModelNameSchema.optional(),
     providerId: z.number().int().positive().optional(),
     tokenLimit: z.number().int().positive().max(2_000_000).optional(),
     status: providerModelStatusSchema.optional(),

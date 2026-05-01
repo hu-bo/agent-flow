@@ -1,7 +1,7 @@
 import './ChatPanel.less';
 import type {
   ChatMessage,
-  ChatModelOption,
+  ChatOption,
   FileAttachment,
   ReasoningEffort,
   TokenUsageSummary,
@@ -14,8 +14,8 @@ export interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (text: string, attachments?: FileAttachment[]) => void;
   selectedModel?: string;
-  modelOptions?: ChatModelOption[];
-  onModelChange?: (modelId: string) => void;
+  modelOptions?: ChatOption[];
+  onModelChange?: (value: string) => void;
   reasoningEffort?: ReasoningEffort;
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   tokenUsage?: TokenUsageSummary;

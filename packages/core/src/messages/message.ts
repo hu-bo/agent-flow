@@ -61,7 +61,8 @@ export interface CompactBoundaryInfo {
 }
 
 export interface MessageMetadata {
-  modelId?: string;
+  modelId?: string | number;
+  model?: string;
   provider?: string;
   tokenUsage?: TokenUsage;
   isMeta?: boolean;

@@ -11,16 +11,16 @@ import {
 } from './model-admin-contracts.js';
 
 export class ModelService {
-  private currentModelId: string;
+  private currentModelId: number;
   private models: ModelDescriptor[] = [];
-  private profilePrimaryModelIds = new Map<string, string>();
+  private profilePrimaryModelIds = new Map<string, number>();
   private routingPolicyWriter?: RoutingPolicyWriter;
 
   constructor(
     private readonly db: AppDataSource,
-    private readonly defaultModelId: string,
+    private readonly defaultModel: string,
   ) {
-    this.currentModelId = defaultModelId;
+    this.currentModelId = 1;
   }
 
   async initialize(): Promise<void> {
@@ -55,7 +55,7 @@ export class ModelService {
     return resolved;
   }
 
-  getModel(modelId: string) {
+  getModel(modelId: number) {
     const descriptor = this.models.find((model) => model.modelId === modelId);
     if (!descriptor) {
       throw new NotFoundError(`Unknown model: ${modelId}`);
@@ -63,7 +63,7 @@ export class ModelService {
     return descriptor;
   }
 
-  async switchModel(modelId: string, options: SwitchModelOptions = {}) {
+  async switchModel(modelId: number, options: SwitchModelOptions = {}) {
     if (!this.routingPolicyWriter) {
       throw new Error('RoutingPolicyWriter is not initialized');
     }
@@ -111,16 +111,20 @@ export class ModelService {
 
     const descriptors = models
       .filter((model) => model.provider.status === 'active')
-      .map<ModelDescriptor>((model) => ({
-        modelId: model.modelId,
-        displayName: model.displayName,
-        provider: model.provider.name,
-        maxInputTokens: model.tokenLimit,
-      }));
+      .map<ModelDescriptor>((model) => {
+        const providerType = model.provider.type;
+        return {
+          modelId: model.modelId,
+          model: `${providerType}/${model.model}`,
+          displayName: model.displayName,
+          provider: model.provider.name,
+          providerType,
+          providerModel: model.model,
+          maxInputTokens: model.tokenLimit,
+        };
+      });
 
-    this.models = descriptors.length
-      ? descriptors
-      : [createFallbackDescriptor(this.defaultModelId, inferProvider(this.defaultModelId))];
+    this.models = descriptors.length ? descriptors : [createFallbackDescriptor(this.defaultModel)];
 
     const policies = await routingPolicyRepository.find({
       where: {
@@ -141,46 +145,55 @@ export class ModelService {
       policyPrimaryModelId &&
       this.models.some((model) => model.modelId === policyPrimaryModelId)
         ? policyPrimaryModelId
-        : resolveDefaultModelId(this.models, this.defaultModelId);
+        : resolveDefaultModelId(this.models);
 
     this.currentModelId = resolvedCurrentModelId;
   }
 }
 
-function resolveDefaultModelId(
-  models: Array<Pick<ModelDescriptor, 'modelId'>>,
-  defaultModelId: string,
-) {
-  if (models.some((model) => model.modelId === defaultModelId)) {
-    return defaultModelId;
-  }
-
-  return models[0]?.modelId ?? defaultModelId;
+function resolveDefaultModelId(models: Array<Pick<ModelDescriptor, 'modelId'>>) {
+  return models[0]?.modelId ?? 1;
 }
 
-function createFallbackDescriptor(
-  modelId: string,
-  provider = inferProvider(modelId),
-): ModelDescriptor {
+function createFallbackDescriptor(rawModel: string): ModelDescriptor {
+  const { providerType, providerModel } = parseRuntimeModel(rawModel);
   return {
-    modelId,
-    displayName: modelId,
-    provider,
+    modelId: 1,
+    model: `${providerType}/${providerModel}`,
+    displayName: providerModel,
+    provider: providerType,
+    providerType,
+    providerModel,
     maxInputTokens: 128_000,
   };
 }
 
-function inferProvider(modelId: string): string {
-  if (modelId.startsWith('gpt-') || modelId.startsWith('o1') || modelId.startsWith('o3')) {
+function parseRuntimeModel(rawModel: string): { providerType: string; providerModel: string } {
+  const [provider, ...rest] = rawModel.split('/');
+  if (provider && rest.length > 0) {
+    return {
+      providerType: provider,
+      providerModel: rest.join('/'),
+    };
+  }
+
+  return {
+    providerType: inferProvider(rawModel),
+    providerModel: rawModel,
+  };
+}
+
+function inferProvider(model: string): string {
+  if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3')) {
     return 'openai';
   }
-  if (modelId.startsWith('claude-')) {
+  if (model.startsWith('claude-')) {
     return 'anthropic';
   }
-  if (modelId.startsWith('gemini-')) {
+  if (model.startsWith('gemini-')) {
     return 'google';
   }
-  if (modelId.startsWith('deepseek-')) {
+  if (model.startsWith('deepseek-')) {
     return 'deepseek';
   }
   return 'custom';

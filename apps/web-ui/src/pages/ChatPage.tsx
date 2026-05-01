@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChatPanel } from '@agent-flow/chat-ui';
 import type {
   ChatMessage,
-  ChatModelOption,
   FileAttachment,
   ReasoningEffort,
   TokenUsageSummary,
@@ -23,6 +22,12 @@ import { useChatStore } from '../store/chat-store';
 import './pages.less';
 
 type NoticeState = { kind: 'success' | 'error'; message: string } | null;
+type ModelSelectOption = {
+  value: string;
+  label: string;
+  provider?: string;
+  maxInputTokens?: number;
+};
 
 function readErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
@@ -72,8 +77,8 @@ export function ChatPage() {
   } = useChat();
   const activeSession = useChatStore((state) => state.activeSessionId);
   const setActiveSession = useChatStore((state) => state.setActiveSession);
-  const [modelOptions, setModelOptions] = useState<ChatModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [modelOptions, setModelOptions] = useState<ModelSelectOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
   const [notice, setNotice] = useState<NoticeState>(null);
   const [runnerOnlineCount, setRunnerOnlineCount] = useState(0);
@@ -107,15 +112,18 @@ export function ChatPage() {
       try {
         const payload = await fetchModels();
         const options = payload.models.map((model) => ({
-          modelId: model.modelId,
+          value: String(model.modelId),
           label: model.displayName,
           provider: model.provider,
           maxInputTokens: model.maxInputTokens,
         }));
         setModelOptions(options);
         // Keep user choice when route switches unless selected model is missing.
-        if (!selectedModel || !options.some((option) => option.modelId === selectedModel)) {
-          setSelectedModel(payload.currentModel);
+        if (
+          selectedModelId === null ||
+          !options.some((option) => Number(option.value) === selectedModelId)
+        ) {
+          setSelectedModelId(payload.currentModel);
         }
       } catch (error: unknown) {
         setNotice({
@@ -126,7 +134,7 @@ export function ChatPage() {
     }
 
     syncModels();
-  }, [selectedModel]);
+  }, [selectedModelId]);
 
   useEffect(() => {
     if (!notice) return;
@@ -190,10 +198,11 @@ export function ChatPage() {
   }, []);
 
   const handleModelChange = useCallback(
-    async (modelId: string) => {
+    async (value: string) => {
       try {
+        const modelId = Number(value);
         await switchModel(modelId);
-        setSelectedModel(modelId);
+        setSelectedModelId(modelId);
       } catch (error: unknown) {
         setNotice({
           kind: 'error',
@@ -210,7 +219,7 @@ export function ChatPage() {
       try {
         if (!targetSessionId) {
           const created = await createSession({
-            model: selectedModel || undefined,
+            model: selectedModelId ?? undefined,
           });
           targetSessionId = created.session.sessionId;
           setActiveSession(targetSessionId);
@@ -220,7 +229,7 @@ export function ChatPage() {
         await sendMessage({
           text,
           sessionId: targetSessionId,
-          model: selectedModel || undefined,
+          model: selectedModelId ?? undefined,
           reasoningEffort,
           attachments,
         });
@@ -245,7 +254,7 @@ export function ChatPage() {
               await sendMessage({
                 text,
                 sessionId: targetSessionId,
-                model: selectedModel || undefined,
+                model: selectedModelId ?? undefined,
                 reasoningEffort,
                 approvalTicket: ticket.approvalTicket,
                 attachments,
@@ -266,7 +275,7 @@ export function ChatPage() {
         });
       }
     },
-    [activeSession, navigate, reasoningEffort, selectedModel, sendMessage, setActiveSession],
+    [activeSession, navigate, reasoningEffort, selectedModelId, sendMessage, setActiveSession],
   );
 
   const handleCompact = useCallback(async () => {
@@ -294,7 +303,7 @@ export function ChatPage() {
   }, [activeSession, refreshSessionMessages]);
 
   const tokenBudget =
-    modelOptions.find((model) => model.modelId === selectedModel)?.maxInputTokens ?? null;
+    modelOptions.find((model) => Number(model.value) === selectedModelId)?.maxInputTokens ?? null;
   const chatMessages = useMemo(() => messages as ChatMessage[], [messages]);
   const tokenUsage = buildTokenUsage(chatMessages, tokenBudget);
   const compactDisabled = !activeSession || isConnecting || isStreaming;
@@ -325,7 +334,7 @@ export function ChatPage() {
           className="playground-chat-panel"
           messages={chatMessages}
           onSend={handleSend}
-          selectedModel={selectedModel}
+          selectedModel={selectedModelId === null ? undefined : String(selectedModelId)}
           modelOptions={modelOptions}
           onModelChange={handleModelChange}
           reasoningEffort={reasoningEffort}

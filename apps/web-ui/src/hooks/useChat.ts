@@ -6,7 +6,7 @@ import { fetchSession, streamChat } from '../api.js';
 interface SendMessageInput {
   text: string;
   sessionId: string;
-  model?: string;
+  model?: string | number;
   reasoningEffort?: ReasoningEffort;
   approveRiskyOps?: boolean;
   approvalTicket?: string;
@@ -114,7 +114,7 @@ export function useChat(): UseChatReturn {
         role: 'user',
         content: createUserContent(userInput, attachments),
         timestamp: new Date().toISOString(),
-        metadata: model ? { modelId: model } : {},
+        metadata: model ? { modelId: String(model) } : {},
       };
 
       setMessages((prev) => [...prev, userMsg]);

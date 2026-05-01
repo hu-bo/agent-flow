@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 export const sessionIdSchema = z.string().min(1);
 export const taskIdSchema = z.string().min(1);
-export const modelIdSchema = z.string().min(1);
+export const modelIdSchema = z.coerce.number().int().positive();
+export const providerModelNameSchema = z.string().trim().min(1).max(128);
 export const isoDateTimeSchema = z.string().datetime({ offset: true });
 export const reasoningEffortSchema = z.enum(['low', 'medium', 'high']);
 export const taskStatusSchema = z.enum([

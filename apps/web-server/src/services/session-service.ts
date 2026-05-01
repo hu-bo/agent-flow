@@ -4,7 +4,7 @@ import type { SessionRecord, SessionState } from '../contracts/api.js';
 import { NotFoundError } from '../lib/errors.js';
 
 interface CreateSessionInput {
-  modelId: string;
+  modelId: number;
   cwd: string;
   systemPrompt?: string;
 }
@@ -66,7 +66,7 @@ export class SessionService {
     this.runnerBindings.delete(sessionId);
   }
 
-  updateSessionModel(sessionId: string, modelId: string) {
+  updateSessionModel(sessionId: string, modelId: number) {
     const state = this.getSessionState(sessionId);
     state.session.modelId = modelId;
     state.session.updatedAt = new Date().toISOString();

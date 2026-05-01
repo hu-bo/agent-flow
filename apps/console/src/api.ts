@@ -6,15 +6,18 @@ export interface HealthResponse {
 }
 
 export interface RuntimeModelDescriptor {
-  modelId: string;
+  modelId: number;
+  model: string;
   displayName: string;
   provider: string;
+  providerType: string;
+  providerModel: string;
   maxInputTokens: number;
 }
 
 export interface Session {
   sessionId: string;
-  modelId: string;
+  modelId: number;
   messageCount: number;
   createdAt: string;
 }
@@ -50,7 +53,8 @@ export interface ProviderRecord {
 }
 
 export interface ProviderModelRecord {
-  modelId: string;
+  modelId: number;
+  model: string;
   displayName: string;
   providerId: number;
   providerName: string;
@@ -65,8 +69,8 @@ export interface ProviderModelRecord {
 export interface RoutingPolicyRecord {
   policyId: string;
   profileId: string;
-  primaryModelId: string;
-  fallbacks: string[];
+  primaryModelId: number;
+  fallbacks: number[];
   strategy: string;
   status: 'active' | 'disabled';
   createdAt: string;
@@ -191,7 +195,7 @@ export function fetchHealth(): Promise<HealthResponse> {
   return request({ url: '/api/health', method: 'GET' });
 }
 
-export function fetchModels(): Promise<{ currentModel: string; models: RuntimeModelDescriptor[] }> {
+export function fetchModels(): Promise<{ currentModel: number; models: RuntimeModelDescriptor[] }> {
   return request({ url: '/api/models', method: 'GET' });
 }
 
@@ -229,7 +233,7 @@ export function createTask(opts: {
   return request({ url: '/api/tasks', method: 'POST', data: opts });
 }
 
-export function switchModel(modelId: string): Promise<unknown> {
+export function switchModel(modelId: number): Promise<unknown> {
   return request({ url: '/api/model', method: 'POST', data: { modelId } });
 }
 
@@ -303,8 +307,9 @@ export async function fetchAdminModels(provider?: string): Promise<ProviderModel
 }
 
 export async function updateAdminModel(
-  modelId: string,
+  modelId: number,
   input: {
+    model?: string;
     displayName?: string;
     providerId?: number;
     tokenLimit?: number;
@@ -320,7 +325,7 @@ export async function updateAdminModel(
 }
 
 export async function createAdminModel(input: {
-  modelId: string;
+  model: string;
   displayName: string;
   providerId: number;
   tokenLimit: number;
@@ -334,7 +339,7 @@ export async function createAdminModel(input: {
   return payload.model;
 }
 
-export async function deleteAdminModel(modelId: string): Promise<void> {
+export async function deleteAdminModel(modelId: number): Promise<void> {
   await request({
     url: `/api/admin/models/${encodeURIComponent(modelId)}`,
     method: 'DELETE',
@@ -366,8 +371,8 @@ export async function createModelProfile(input: {
 export async function upsertRoutingPolicy(
   profileId: string,
   input: {
-    primaryModelId: string;
-    fallbacks?: string[];
+    primaryModelId: number;
+    fallbacks?: number[];
     strategy?: string;
     status?: 'active' | 'disabled';
   },

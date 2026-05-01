@@ -26,15 +26,15 @@ export class RoutingPolicyEntity {
   @JoinColumn({ name: 'profile_id', referencedColumnName: 'profileId' })
   profile!: ModelProfileEntity;
 
-  @Column({ name: 'primary_model_id', type: 'varchar', length: 128 })
-  primaryModelId!: string;
+  @Column({ name: 'primary_model_id', type: 'integer' })
+  primaryModelId!: number;
 
   @ManyToOne(() => ProviderModelEntity, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'primary_model_id', referencedColumnName: 'modelId' })
   primaryModel!: ProviderModelEntity;
 
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
-  fallbacks!: string[];
+  fallbacks!: number[];
 
   @Column({ type: 'varchar', length: 32, default: 'priority' })
   strategy!: string;

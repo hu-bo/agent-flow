@@ -33,8 +33,8 @@ export function Models() {
   const [selectedPrimaryModelId, setSelectedPrimaryModelId] = useState('');
   const [routingSubmitting, setRoutingSubmitting] = useState(false);
 
-  const [editingModelId, setEditingModelId] = useState<string | null>(null);
-  const [modelId, setModelId] = useState('');
+  const [editingModelId, setEditingModelId] = useState<number | null>(null);
+  const [model, setModel] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [providerId, setProviderId] = useState('');
   const [tokenLimit, setTokenLimit] = useState(defaultTokenLimit);
@@ -98,15 +98,15 @@ export function Models() {
       .map((model) => model.modelId);
     const preferredModelId = targetProfile.routingPolicy?.primaryModelId;
     if (preferredModelId && activeModelIds.includes(preferredModelId)) {
-      setSelectedPrimaryModelId(preferredModelId);
+      setSelectedPrimaryModelId(String(preferredModelId));
       return;
     }
-    setSelectedPrimaryModelId(activeModelIds[0] ?? '');
+    setSelectedPrimaryModelId(activeModelIds[0] ? String(activeModelIds[0]) : '');
   }, [models, profiles, selectedProfileId]);
 
   const resetForm = () => {
     setEditingModelId(null);
-    setModelId('');
+    setModel('');
     setDisplayName('');
     setTokenLimit(defaultTokenLimit);
     setStatus('active');
@@ -129,14 +129,14 @@ export function Models() {
 
   const handleEdit = (model: ProviderModelRecord) => {
     setEditingModelId(model.modelId);
-    setModelId(model.modelId);
+    setModel(model.model);
     setDisplayName(model.displayName);
     setProviderId(String(model.providerId));
     setTokenLimit(String(model.tokenLimit));
     setStatus(model.status);
   };
 
-  const handleDelete = async (targetModelId: string) => {
+  const handleDelete = async (targetModelId: number) => {
     try {
       await deleteAdminModel(targetModelId);
       setSuccess(`Model ${targetModelId} deleted.`);
@@ -156,7 +156,8 @@ export function Models() {
 
   const handleSetPrimaryModel = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedProfileId || !selectedPrimaryModelId) {
+    const primaryModelId = Number(selectedPrimaryModelId);
+    if (!selectedProfileId || !Number.isInteger(primaryModelId) || primaryModelId <= 0) {
       setError('Please select both profile and primary model.');
       return;
     }
@@ -164,12 +165,11 @@ export function Models() {
     setRoutingSubmitting(true);
     try {
       const existingFallbacks = (selectedProfile?.routingPolicy?.fallbacks ?? []).filter(
-        (modelId): modelId is string =>
-          typeof modelId === 'string' && modelId.trim().length > 0,
+        (modelId): modelId is number => Number.isInteger(modelId),
       );
-      const nextFallbacks = existingFallbacks.filter((modelId) => modelId !== selectedPrimaryModelId);
+      const nextFallbacks = existingFallbacks.filter((modelId) => modelId !== primaryModelId);
       await upsertRoutingPolicy(selectedProfileId, {
-        primaryModelId: selectedPrimaryModelId,
+        primaryModelId,
         fallbacks: nextFallbacks,
         strategy: selectedProfile?.routingPolicy?.strategy ?? 'ordered',
         status: selectedProfile?.routingPolicy?.status ?? 'active',
@@ -186,8 +186,8 @@ export function Models() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!modelId.trim() || !displayName.trim() || !providerId) {
-      setError('modelId, displayName and provider are required.');
+    if (!model.trim() || !displayName.trim() || !providerId) {
+      setError('model, displayName and provider are required.');
       return;
     }
 
@@ -201,15 +201,16 @@ export function Models() {
     try {
       if (!editingModelId) {
         await createAdminModel({
-          modelId: modelId.trim(),
+          model: model.trim(),
           displayName: displayName.trim(),
           providerId: Number(providerId),
           tokenLimit: tokenLimitNumber,
           status,
         });
-        setSuccess(`Model ${modelId.trim()} created.`);
+        setSuccess(`Model ${model.trim()} created.`);
       } else {
         await updateAdminModel(editingModelId, {
+          model: model.trim(),
           displayName: displayName.trim(),
           providerId: Number(providerId),
           tokenLimit: tokenLimitNumber,
@@ -261,8 +262,8 @@ export function Models() {
               <Select.Trigger id="routing-primary-model-id" className="radix-select-trigger" />
               <Select.Content position="popper">
                 {activeModels.map((model) => (
-                  <Select.Item key={model.modelId} value={model.modelId}>
-                    {model.displayName} ({model.modelId})
+                  <Select.Item key={model.modelId} value={String(model.modelId)}>
+                    {model.displayName} ({model.providerType}/{model.model})
                   </Select.Item>
                 ))}
               </Select.Content>
@@ -273,7 +274,11 @@ export function Models() {
             <input
               id="routing-current-primary"
               className="mono"
-              value={selectedProfile?.routingPolicy?.primaryModelId ?? '(not configured)'}
+              value={
+                selectedProfile?.routingPolicy?.primaryModelId
+                  ? String(selectedProfile.routingPolicy.primaryModelId)
+                  : '(not configured)'
+              }
               readOnly
             />
           </div>
@@ -293,13 +298,12 @@ export function Models() {
 
         <form onSubmit={(event) => void handleSubmit(event)} className="form-two-cols">
           <div className="form-group">
-            <label htmlFor="model-id">Model ID</label>
+            <label htmlFor="model-name">Model</label>
             <input
-              id="model-id"
-              value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-              placeholder="gpt-4.1"
-              disabled={Boolean(editingModelId)}
+              id="model-name"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="gpt-5.4"
             />
           </div>
 
@@ -407,7 +411,9 @@ export function Models() {
           <table className="table-soft">
             <thead>
               <tr>
-                <th>Model ID</th>
+                <th>ID</th>
+                <th>Model</th>
+                <th>Runtime</th>
                 <th>Display Name</th>
                 <th>Provider</th>
                 <th>Token Limit</th>
@@ -419,6 +425,8 @@ export function Models() {
               {visibleModels.map((model) => (
                 <tr key={model.modelId}>
                   <td className="mono">{model.modelId}</td>
+                  <td className="mono">{model.model}</td>
+                  <td className="mono">{model.providerType}/{model.model}</td>
                   <td>{model.displayName}</td>
                   <td>{model.providerName}</td>
                   <td>{model.tokenLimit.toLocaleString()}</td>

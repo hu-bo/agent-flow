@@ -19,16 +19,19 @@ export interface SessionRecord {
   sessionId: string;
   createdAt: string;
   updatedAt: string;
-  modelId: string;
+  modelId: number;
   cwd: string;
   messageCount: number;
   systemPrompt?: string;
 }
 
 export interface ModelDescriptor {
-  modelId: string;
+  modelId: number;
+  model: string;
   displayName: string;
   provider: string;
+  providerType: string;
+  providerModel: string;
   maxInputTokens: number;
 }
 
@@ -151,7 +154,7 @@ export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
   return requestJson({ url: '/api/sessions', method: 'GET' });
 }
 
-export async function fetchModels(): Promise<{ currentModel: string; models: ModelDescriptor[] }> {
+export async function fetchModels(): Promise<{ currentModel: number; models: ModelDescriptor[] }> {
   return requestJson({ url: '/api/models', method: 'GET' });
 }
 
@@ -162,7 +165,7 @@ export async function fetchSession(
 }
 
 export async function createSession(opts?: {
-  model?: string;
+  model?: string | number;
   systemPrompt?: string;
 }): Promise<{ session: SessionRecord }> {
   return requestJson({
@@ -179,7 +182,7 @@ export async function deleteSession(id: string): Promise<void> {
   await requestNoContent({ url: `/api/sessions/${id}`, method: 'DELETE' });
 }
 
-export async function switchModel(modelId: string): Promise<{ model: string }> {
+export async function switchModel(modelId: string | number): Promise<{ model: number }> {
   return requestJson({
     url: '/api/model',
     method: 'POST',
@@ -253,7 +256,7 @@ export async function bindSessionRunner(sessionId: string, runnerId: string): Pr
 
 interface StreamChatOptions {
   message: string;
-  model?: string;
+  model?: string | number;
   reasoningEffort?: 'low' | 'medium' | 'high';
   sessionId: string;
   approveRiskyOps?: boolean;

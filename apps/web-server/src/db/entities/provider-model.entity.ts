@@ -4,7 +4,7 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  PrimaryColumn,
+  PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { ProviderEntity } from './provider.entity.js';
@@ -13,8 +13,11 @@ export type ProviderModelStatus = 'active' | 'disabled';
 
 @Entity({ name: 'provider_model' })
 export class ProviderModelEntity {
-  @PrimaryColumn({ name: 'model_id', type: 'varchar', length: 128 })
-  modelId!: string;
+  @PrimaryGeneratedColumn({ name: 'model_id', type: 'integer' })
+  modelId!: number;
+
+  @Column({ type: 'varchar', length: 128 })
+  model!: string;
 
   @Column({ name: 'provider_id', type: 'integer' })
   providerId!: number;

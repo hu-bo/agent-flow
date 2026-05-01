@@ -181,7 +181,7 @@ export class ProviderAdminService {
         const modelIdSet = new Set(modelIds);
         const policies = await routingPolicyRepository.find();
         for (const policy of policies) {
-          const fallbacks = normalizeStringArray(policy.fallbacks);
+          const fallbacks = normalizeNumberArray(policy.fallbacks);
           const nextFallbacks = fallbacks.filter((modelId) => !modelIdSet.has(modelId));
           if (nextFallbacks.length === fallbacks.length) {
             continue;
@@ -313,12 +313,12 @@ export class ProviderAdminService {
   }
 }
 
-function normalizeStringArray(value: unknown): string[] {
+function normalizeNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.filter((item): item is string => typeof item === 'string');
+  return value.filter((item): item is number => Number.isInteger(item));
 }
 
 function toIso(value: Date | string) {

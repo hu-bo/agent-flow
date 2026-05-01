@@ -35,7 +35,7 @@ export class AiSdkAdapter implements ModelAdapter {
 
     message.meta = {
       ...(message.meta ?? {}),
-      model: this.model.modelId,
+      model: request.model,
       provider: this.provider,
     };
 

@@ -175,7 +175,7 @@ export class ProfilePolicyService {
       }
 
       const requestedFallbacks = input.fallbacks
-        ? dedupeStrings(input.fallbacks).filter((modelId) => modelId !== input.primaryModelId)
+        ? dedupeNumbers(input.fallbacks).filter((modelId) => modelId !== input.primaryModelId)
         : undefined;
       const fallbackModelIds = normalizeFallbacks(
         requestedFallbacks,
@@ -274,9 +274,9 @@ export class ProfilePolicyService {
 }
 
 function normalizeFallbacks(
-  fallbacks: string[] | null | undefined,
-  primaryModelId: string,
-  knownModelIds: string[],
+  fallbacks: number[] | null | undefined,
+  primaryModelId: number,
+  knownModelIds: number[],
 ) {
   const fallbackSet = new Set(
     (fallbacks ?? []).filter(
@@ -288,6 +288,10 @@ function normalizeFallbacks(
   }
 
   return knownModelIds.filter((modelId) => modelId !== primaryModelId);
+}
+
+function dedupeNumbers(values: number[]) {
+  return Array.from(new Set(values.filter((value) => Number.isInteger(value) && value > 0)));
 }
 
 function dedupeStrings(values: string[]) {

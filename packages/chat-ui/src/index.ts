@@ -37,7 +37,7 @@ export type {
   ChatContentPart,
   ChatMessage,
   FileAttachment,
-  ChatModelOption,
+  ChatOption,
   ReasoningEffort,
   TokenUsageSummary,
   ThinkingPart,

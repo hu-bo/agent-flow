@@ -88,14 +88,14 @@ export class ModelAdminService implements RoutingPolicyWriter {
   }
 
   updateAdminModel(
-    modelId: string,
+    modelId: number,
     input: UpdateProviderModelInput,
     options: SwitchModelOptions = {},
   ): Promise<ProviderModelRecord> {
     return this.modelCatalogService.updateAdminModel(modelId, input, options);
   }
 
-  deleteAdminModel(modelId: string, options: SwitchModelOptions = {}): Promise<void> {
+  deleteAdminModel(modelId: number, options: SwitchModelOptions = {}): Promise<void> {
     return this.modelCatalogService.deleteAdminModel(modelId, options);
   }
 

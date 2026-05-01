@@ -40,13 +40,14 @@ export interface CreateProviderCredentialInput {
 
 export interface UpdateProviderModelInput {
   displayName?: string;
+  model?: string;
   providerId?: number;
   tokenLimit?: number;
   status?: 'active' | 'disabled';
 }
 
 export interface CreateProviderModelInput {
-  modelId: string;
+  model: string;
   displayName: string;
   providerId: number;
   tokenLimit: number;
@@ -70,8 +71,8 @@ export interface UpdateModelProfileInput {
 
 export interface UpsertRoutingPolicyInput {
   policyId?: string;
-  primaryModelId: string;
-  fallbacks?: string[];
+  primaryModelId: number;
+  fallbacks?: number[];
   strategy?: string;
   status?: 'active' | 'disabled';
 }
@@ -99,7 +100,8 @@ export interface ProviderCredentialRecord {
 }
 
 export interface ProviderModelRecord {
-  modelId: string;
+  modelId: number;
+  model: string;
   displayName: string;
   providerId: number;
   providerName: string;
@@ -114,8 +116,8 @@ export interface ProviderModelRecord {
 export interface RoutingPolicyRecord {
   policyId: string;
   profileId: string;
-  primaryModelId: string;
-  fallbacks: string[];
+  primaryModelId: number;
+  fallbacks: number[];
   strategy: string;
   status: 'active' | 'disabled';
   createdAt: string;

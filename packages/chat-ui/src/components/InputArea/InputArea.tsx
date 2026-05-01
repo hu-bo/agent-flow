@@ -1,7 +1,7 @@
 import './InputArea.less';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
-  ChatModelOption,
+  ChatOption,
   FileAttachment,
   ReasoningEffort,
   TokenUsageSummary,
@@ -23,8 +23,8 @@ function formatTokenCount(value: number): string {
 interface InputAreaProps {
   onSend: (text: string, attachments?: FileAttachment[]) => void;
   selectedModel?: string;
-  modelOptions?: ChatModelOption[];
-  onModelChange?: (modelId: string) => void;
+  modelOptions?: ChatOption[];
+  onModelChange?: (value: string) => void;
   reasoningEffort?: ReasoningEffort;
   onReasoningEffortChange?: (effort: ReasoningEffort) => void;
   tokenUsage?: TokenUsageSummary;
@@ -79,10 +79,10 @@ export function InputArea({
 
   const disabled = isConnecting || isStreaming || !input.trim();
   const controlsDisabled = isConnecting || isStreaming;
-  const currentModelId = selectedModel ?? modelOptions?.[0]?.modelId ?? '';
-  const activeProvider = modelOptions?.find((option) => option.modelId === currentModelId)?.provider;
+  const currentModelValue = selectedModel ?? modelOptions?.[0]?.value ?? '';
+  const activeProvider = modelOptions?.find((option) => option.value === currentModelValue)?.provider;
   const modelSelectOptions: SelectFieldOption[] =
-    modelOptions?.map((model) => ({ value: model.modelId, label: model.label })) ?? [];
+    modelOptions?.map((model) => ({ value: model.value, label: model.label })) ?? [];
   const reasoningSelectOptions: SelectFieldOption[] = REASONING_OPTIONS;
   const usageUsed = tokenUsage?.usedTokens ?? 0;
   const usageRemaining =
@@ -147,7 +147,7 @@ export function InputArea({
             {modelOptions && modelOptions.length > 0 && (
               <>
                 <SelectField
-                  value={currentModelId}
+                  value={currentModelValue}
                   options={modelSelectOptions}
                   onChange={(value) => onModelChange?.(value)}
                   disabled={controlsDisabled}

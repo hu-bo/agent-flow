@@ -5,6 +5,7 @@ import { InitUserAccount20260429000100 } from './20260429000100-init-user-accoun
 import { AlignUserAccountWithCasdoor20260429000200 } from './20260429000200-align-user-account-with-casdoor.js';
 import { InitRunnerControlPlane20260429000300 } from './20260429000300-init-runner-control-plane.js';
 import { AddRunnerHostInfo20260501000300 } from './20260501000300-add-runner-host-info.js';
+import { RefactorProviderModelId20260502000100 } from './20260502000100-refactor-provider-model-id.js';
 
 export const migrations = [
   InitModelConfig20260426000100,
@@ -14,4 +15,5 @@ export const migrations = [
   AlignUserAccountWithCasdoor20260429000200,
   InitRunnerControlPlane20260429000300,
   AddRunnerHostInfo20260501000300,
+  RefactorProviderModelId20260502000100,
 ];

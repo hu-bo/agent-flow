@@ -10,7 +10,7 @@ import { SessionService } from './session-service.js';
 export interface CreateTaskInput {
   prompt: string;
   profileId?: string;
-  modelId?: string;
+  modelId?: number;
   sessionId?: string;
   type?: TaskType;
   config?: Record<string, unknown>;

@@ -60,16 +60,17 @@ export class ModelCatalogService {
 
       const existing = await providerModelRepository.findOne({
         where: {
-          modelId: input.modelId,
+          providerId: input.providerId,
+          model: input.model,
         },
       });
       if (existing) {
-        throw new ConflictError(`Model already exists: ${input.modelId}`);
+        throw new ConflictError(`Model already exists for provider "${provider.name}": ${input.model}`);
       }
 
       const created = await providerModelRepository.save(
         providerModelRepository.create({
-          modelId: input.modelId,
+          model: input.model,
           displayName: input.displayName,
           providerId: input.providerId,
           tokenLimit: input.tokenLimit,
@@ -93,7 +94,7 @@ export class ModelCatalogService {
       await this.auditService.writeAuditLog(manager, options, {
         action: 'provider_model.create',
         resource: 'provider_model',
-        resourceId: created.modelId,
+        resourceId: String(created.modelId),
         before: null,
         after: result,
       });
@@ -106,7 +107,7 @@ export class ModelCatalogService {
   }
 
   async updateAdminModel(
-    modelId: string,
+    modelId: number,
     input: UpdateProviderModelInput,
     options: SwitchModelOptions = {},
   ): Promise<ProviderModelRecord> {
@@ -129,6 +130,22 @@ export class ModelCatalogService {
       const before = this.toProviderModelRecord(providerModel);
       if (input.displayName !== undefined) {
         providerModel.displayName = input.displayName;
+      }
+      const nextProviderId = input.providerId ?? providerModel.providerId;
+      const nextModel = input.model ?? providerModel.model;
+      if (input.model !== undefined || input.providerId !== undefined) {
+        const duplicate = await providerModelRepository.findOne({
+          where: {
+            providerId: nextProviderId,
+            model: nextModel,
+          },
+        });
+        if (duplicate && duplicate.modelId !== providerModel.modelId) {
+          throw new ConflictError(`Model already exists for provider: ${nextModel}`);
+        }
+      }
+      if (input.model !== undefined) {
+        providerModel.model = input.model;
       }
       if (input.providerId !== undefined) {
         const provider = await providerRepository.findOne({
@@ -166,7 +183,7 @@ export class ModelCatalogService {
       await this.auditService.writeAuditLog(manager, options, {
         action: 'provider_model.update',
         resource: 'provider_model',
-        resourceId: saved.modelId,
+        resourceId: String(saved.modelId),
         before,
         after,
       });
@@ -178,7 +195,7 @@ export class ModelCatalogService {
     return result;
   }
 
-  async deleteAdminModel(modelId: string, options: SwitchModelOptions = {}): Promise<void> {
+  async deleteAdminModel(modelId: number, options: SwitchModelOptions = {}): Promise<void> {
     await this.db.transaction(async (manager) => {
       const providerModelRepository = manager.getRepository(ProviderModelEntity);
       const routingPolicyRepository = manager.getRepository(RoutingPolicyEntity);
@@ -214,7 +231,7 @@ export class ModelCatalogService {
 
       const policies = await routingPolicyRepository.find();
       for (const policy of policies) {
-        const fallbacks = normalizeStringArray(policy.fallbacks);
+        const fallbacks = normalizeNumberArray(policy.fallbacks);
         if (!fallbacks.includes(modelId)) {
           continue;
         }
@@ -251,7 +268,7 @@ export class ModelCatalogService {
       await this.auditService.writeAuditLog(manager, options, {
         action: 'provider_model.delete',
         resource: 'provider_model',
-        resourceId: modelId,
+        resourceId: String(modelId),
         before: this.toProviderModelRecord(model),
         after: null,
       });
@@ -270,6 +287,7 @@ export class ModelCatalogService {
   private toProviderModelRecord(model: ProviderModelEntity): ProviderModelRecord {
     return {
       modelId: model.modelId,
+      model: model.model,
       displayName: model.displayName,
       providerId: model.providerId,
       providerName: model.provider?.name ?? 'unknown',
@@ -283,12 +301,12 @@ export class ModelCatalogService {
   }
 }
 
-function normalizeStringArray(value: unknown): string[] {
+function normalizeNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.filter((item): item is string => typeof item === 'string');
+  return value.filter((item): item is number => Number.isInteger(item));
 }
 
 function toIso(value: Date | string) {

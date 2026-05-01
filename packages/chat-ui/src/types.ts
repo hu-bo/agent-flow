@@ -88,8 +88,8 @@ export interface FileAttachment {
 
 export type ReasoningEffort = 'low' | 'medium' | 'high';
 
-export interface ChatModelOption {
-  modelId: string;
+export interface ChatOption {
+  value: string;
   label: string;
   provider?: string;
   maxInputTokens?: number;

@@ -22,7 +22,7 @@ export interface SessionRecord {
   sessionId: string;
   createdAt: string;
   updatedAt: string;
-  modelId: string;
+  modelId: number;
   cwd: string;
   messageCount: number;
   systemPrompt?: string;
@@ -35,9 +35,12 @@ export interface SessionState {
 }
 
 export interface ModelDescriptor {
-  modelId: string;
+  modelId: number;
+  model: string;
   displayName: string;
   provider: string;
+  providerType: string;
+  providerModel: string;
   maxInputTokens: number;
 }
 
@@ -52,7 +55,7 @@ export interface TaskRecord {
   latestCheckpointId: string;
   retryCount: number;
   maxRetries: number;
-  modelId: string;
+  modelId: number;
   prompt: string;
   error?: string;
   outputs?: unknown;
@@ -72,7 +75,8 @@ export interface RuntimeChatInput {
   history: UnifiedMessage[];
   userId: string;
   message: string;
-  modelId: string;
+  modelId: number;
+  model: string;
   requestId: string;
   reasoningEffort?: ReasoningEffort;
   attachments: FilePart[];

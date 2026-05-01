@@ -10,7 +10,7 @@ export interface ChatTurnInput {
   sessionId?: string;
   message: string;
   profileId?: string;
-  modelId?: string;
+  modelId?: number;
   reasoningEffort?: ReasoningEffort;
   attachments?: FilePart[];
   approveRiskyOps?: boolean;
@@ -27,7 +27,8 @@ interface PreparedTurn {
   session: SessionRecord;
   history: UnifiedMessage[];
   userMessage: UnifiedMessage;
-  modelId: string;
+  modelId: number;
+  model: string;
   attachments: FilePart[];
 }
 
@@ -52,6 +53,7 @@ export class ChatService {
       userId: input.userId,
       message: input.message,
       modelId: prepared.modelId,
+      model: prepared.model,
       requestId: input.requestId,
       reasoningEffort: input.reasoningEffort,
       attachments: prepared.attachments,
@@ -89,8 +91,7 @@ export class ChatService {
 
   private prepareTurn(input: ChatTurnInput): PreparedTurn {
     const modelId = input.modelId ?? this.modelService.resolveModelIdForProfile(input.profileId);
-    this.modelService.getModel(modelId);
-
+    const model = this.modelService.getModel(modelId);
     const session = input.sessionId
       ? this.sessionService.updateSessionModel(input.sessionId, modelId)
       : this.sessionService.createSession({
@@ -104,7 +105,12 @@ export class ChatService {
       content: createUserContent(input.message, input.attachments ?? []),
       parentUuid: history.at(-1)?.uuid ?? null,
       metadata: {
-        modelId,
+        modelId: String(modelId),
+        provider: model.provider,
+        extensions: {
+          modelId,
+          model: model.model,
+        },
       },
     });
 
@@ -113,6 +119,7 @@ export class ChatService {
       history,
       userMessage,
       modelId,
+      model: model.model,
       attachments: input.attachments ?? [],
     };
   }

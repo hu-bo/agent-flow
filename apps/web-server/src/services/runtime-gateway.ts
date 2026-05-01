@@ -67,6 +67,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
           attributes: {
             sessionId: input.session.sessionId,
             modelId: input.modelId,
+            model: input.model,
             requestId: input.requestId,
           },
         })
@@ -130,10 +131,12 @@ export class CoreRuntimeGateway implements RuntimeGateway {
           createTextMessage('assistant', responseText, {
             parentUuid,
             metadata: {
-              modelId: input.modelId,
+              modelId: String(input.modelId),
               provider: 'core-runtime',
               extensions: {
                 requestId: input.requestId,
+                modelId: input.modelId,
+                model: input.model,
                 taskId: result.taskId,
                 coreSessionId: result.sessionId,
                 status: result.status,
@@ -153,6 +156,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
           attributes: {
             sessionId: input.session.sessionId,
             modelId: input.modelId,
+            model: input.model,
             requestId: input.requestId,
             error: message,
           },
@@ -163,10 +167,12 @@ export class CoreRuntimeGateway implements RuntimeGateway {
           createTextMessage('assistant', `Core runtime execution failed:\n${message}`, {
             parentUuid,
             metadata: {
-              modelId: input.modelId,
+              modelId: String(input.modelId),
               provider: 'core-runtime',
               extensions: {
                 requestId: input.requestId,
+                modelId: input.modelId,
+                model: input.model,
                 error: message,
               },
             },
@@ -194,7 +200,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
     const adapter = await this.modelAdapterService.createAdapter(input.modelId);
     const messages = toAdapterMessages(input.history);
     const result = await adapter.generate({
-      model: input.modelId,
+      model: input.model,
       messages,
       systemPrompt: buildSystemPrompt(input, recalled),
       config: {
@@ -205,6 +211,8 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         requestId: input.requestId,
         sessionId: input.session.sessionId,
         userId: input.userId,
+        modelId: input.modelId,
+        model: input.model,
       },
     });
 
@@ -218,6 +226,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
       attributes: {
         sessionId: input.session.sessionId,
         modelId: input.modelId,
+        model: input.model,
         provider: adapter.provider,
         finishReason: result.finishReason,
       },
@@ -226,10 +235,12 @@ export class CoreRuntimeGateway implements RuntimeGateway {
     return createTextMessage('assistant', fallbackText, {
       parentUuid,
       metadata: {
-        modelId: input.modelId,
+        modelId: String(input.modelId),
         provider: adapter.provider,
         tokenUsage: toUnifiedTokenUsage(result.usage),
         extensions: {
+          modelId: input.modelId,
+          model: input.model,
           requestId: input.requestId,
           finishReason: result.finishReason,
         },
@@ -305,6 +316,7 @@ function buildAgentRequest(
     runnerArgs: runnerDirective?.args,
     metadata: {
       modelId: input.modelId,
+      model: input.model,
       requestId: input.requestId,
       userId: input.userId,
       sessionId: input.session.sessionId,
@@ -341,7 +353,7 @@ function renderAssistantText(args: {
     result.status === 'succeeded'
       ? 'Core runtime executed successfully.'
       : `Core runtime finished with status: ${result.status}.`,
-    `Model: ${input.modelId}.`,
+    `Model: ${input.model}.`,
     runnerDirective
       ? `Runner command: ${runnerDirective.command} ${runnerDirective.args.join(' ')}`.trim()
       : 'No runner command was requested in this turn.',
@@ -462,7 +474,10 @@ function toAdapterMessages(messages: UnifiedMessage[]): AdapterMessage[] {
       createdAt: message.timestamp,
       parts: toAdapterParts(message),
       meta: {
-        model: message.metadata.modelId,
+        model:
+          typeof message.metadata.extensions?.model === 'string'
+            ? message.metadata.extensions.model
+            : String(message.metadata.modelId ?? ''),
         provider: message.metadata.provider,
       },
     }))
@@ -579,10 +594,12 @@ function toProgressMessage(
       {
         parentUuid,
         metadata: {
-          modelId: input.modelId,
+          modelId: String(input.modelId),
           provider: 'core-runtime',
           isMeta: true,
           extensions: {
+            modelId: input.modelId,
+            model: input.model,
             streamEvent: 'step.started',
             payload: event.payload,
           },
@@ -595,10 +612,12 @@ function toProgressMessage(
     return createTextMessage('assistant', `Step completed: ${String(event.payload.stepId ?? 'unknown')}`, {
       parentUuid,
       metadata: {
-        modelId: input.modelId,
+        modelId: String(input.modelId),
         provider: 'core-runtime',
         isMeta: true,
         extensions: {
+          modelId: input.modelId,
+          model: input.model,
           streamEvent: 'step.completed',
           payload: event.payload,
         },
@@ -613,10 +632,12 @@ function toProgressMessage(
       {
         parentUuid,
         metadata: {
-          modelId: input.modelId,
+          modelId: String(input.modelId),
           provider: 'core-runtime',
           isMeta: true,
           extensions: {
+            modelId: input.modelId,
+            model: input.model,
             streamEvent: 'step.failed',
             payload: event.payload,
           },
@@ -652,10 +673,12 @@ function toProgressMessage(
       },
     ],
     metadata: {
-      modelId: input.modelId,
+      modelId: String(input.modelId),
       provider: 'core-runtime',
       isMeta: true,
       extensions: {
+        modelId: input.modelId,
+        model: input.model,
         streamEvent: `runner.event.${eventType}`,
         payload: event.payload,
       },
