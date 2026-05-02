@@ -82,6 +82,34 @@
   padding: 0.28rem 0.56rem;
 }
 
+.workspace-runner-select {
+  min-width: 13rem;
+  max-width: 22rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--pg-text-muted);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.64rem;
+  letter-spacing: 0.03em;
+  padding: 0.28rem 0.58rem;
+  outline: none;
+  cursor: pointer;
+  box-shadow: var(--pg-shadow-1);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.workspace-runner-select:hover:not(:disabled),
+.workspace-runner-select:focus-visible:not(:disabled) {
+  border-color: rgba(79, 70, 229, 0.36);
+  color: var(--pg-brand-600);
+}
+
+.workspace-runner-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .workspace-canvas {
   flex: 1;
   min-height: 0;
@@ -309,6 +337,12 @@
   gap: 0.6rem;
 }
 
+.runner-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+}
+
 .runner-id {
   font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.69rem;
@@ -332,6 +366,17 @@
 .runner-pill-offline {
   color: #92400e;
   background: rgba(245, 158, 11, 0.16);
+}
+
+.runner-delete-btn {
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.25);
+  background: rgba(254, 242, 242, 0.75);
+}
+
+.runner-delete-btn:hover:not(:disabled) {
+  color: #b91c1c;
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
 .runner-item-meta {

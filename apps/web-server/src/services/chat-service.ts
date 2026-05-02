@@ -1,6 +1,7 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { MemoryService } from '@agent-flow/memory';
 import type { ReasoningEffort, RuntimeGateway, SessionRecord } from '../contracts/api.js';
+import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { createUnifiedMessage, createUserContent } from '../lib/messages.js';
 import { ModelService } from './model-service.js';
 import { SessionService } from './session-service.js';
@@ -21,6 +22,15 @@ export interface ChatTurnInput {
 export interface ChatTurnResult {
   session: SessionRecord;
   messages: UnifiedMessage[];
+}
+
+export interface RetryChatMessageInput {
+  userId: string;
+  sessionId: string;
+  messageId: string;
+  modelId?: number;
+  reasoningEffort?: ReasoningEffort;
+  requestId: string;
 }
 
 interface PreparedTurn {
@@ -87,6 +97,42 @@ export class ChatService {
       session: session ?? this.sessionService.getLatestSession()!,
       messages,
     };
+  }
+
+  async retryFromMessage(input: RetryChatMessageInput): Promise<ChatTurnResult> {
+    const messages = this.sessionService.listMessages(input.sessionId);
+    const targetIndex = messages.findIndex((message) => message.uuid === input.messageId);
+    if (targetIndex < 0) {
+      throw new NotFoundError(`Message not found: ${input.messageId}`);
+    }
+
+    const retryUserIndex = this.resolveRetryUserIndex(messages, targetIndex);
+    if (retryUserIndex < 0) {
+      throw new ValidationError('Retry target does not have a corresponding user message');
+    }
+
+    const userMessage = messages[retryUserIndex];
+    const retryText = this.extractRetryText(userMessage);
+    const retryAttachments = userMessage.content.filter((part): part is FilePart => part.type === 'file');
+    this.sessionService.truncateMessages(input.sessionId, retryUserIndex);
+
+    return this.runTurn({
+      userId: input.userId,
+      sessionId: input.sessionId,
+      message: retryText,
+      modelId: input.modelId ?? this.sessionService.getSession(input.sessionId).modelId,
+      reasoningEffort: input.reasoningEffort,
+      attachments: retryAttachments,
+      requestId: input.requestId,
+    });
+  }
+
+  deleteMessage(sessionId: string, messageId: string): SessionRecord {
+    const targetIndex = this.sessionService.findMessageIndex(sessionId, messageId);
+    if (targetIndex < 0) {
+      throw new NotFoundError(`Message not found: ${messageId}`);
+    }
+    return this.sessionService.truncateMessages(sessionId, targetIndex);
   }
 
   private prepareTurn(input: ChatTurnInput): PreparedTurn {
@@ -158,5 +204,25 @@ export class ChatService {
     } catch {
       // Memory write is best-effort. Chat flow should continue even if memory backend fails.
     }
+  }
+
+  private resolveRetryUserIndex(messages: UnifiedMessage[], targetIndex: number): number {
+    for (let index = targetIndex; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'user') {
+        return index;
+      }
+    }
+    return -1;
+  }
+
+  private extractRetryText(message: UnifiedMessage): string {
+    const textPart = message.content.find(
+      (part): part is { type: 'text'; text: string } => part.type === 'text',
+    );
+    const text = textPart?.text?.trim();
+    if (!text) {
+      throw new ValidationError('The selected message does not contain retryable text');
+    }
+    return text;
   }
 }

@@ -43,13 +43,41 @@
   font-size: 0.76rem;
 }
 
-.chat-ui-model-meta {
-  margin-top: 0.35rem;
+.chat-ui-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.38rem;
+  margin-top: 0.5rem;
+}
+
+.chat-ui-action-btn {
+  border: 0;
+  padding: 0.16rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chat-panel-soft) 76%, transparent);
   color: var(--chat-text-subtle);
-  font-size: 0.65rem;
+  font-size: 0.67rem;
   font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.chat-ui-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--chat-panel) 66%, white);
+  color: var(--chat-text-primary);
+}
+
+.chat-ui-action-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--chat-danger-text) 14%, var(--chat-panel));
+  color: var(--chat-danger-text);
+}
+
+.chat-ui-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .chat-ui-fallback-pre {

@@ -6,11 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/agent-flow/runner/internal/auth"
 	"github.com/agent-flow/runner/internal/grpcclient"
@@ -22,6 +24,8 @@ import (
 	"github.com/agent-flow/runner/runner/exec"
 	"github.com/agent-flow/runner/runner/sandbox"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -30,6 +34,8 @@ const (
 	defaultRunnerKind = "local"
 	defaultGRPCServer = "127.0.0.1:9201"
 	defaultCaps       = "shell.exec,fs.read,fs.write,fs.patch,fs.list,fs.search"
+	reconnectBaseWait = time.Second
+	reconnectMaxWait  = 30 * time.Second
 )
 
 func main() {
@@ -124,7 +130,7 @@ func runStart(args []string) error {
 		slog.Info("local runner config persisted", "runnerId", resultRunnerID)
 	}
 
-	result, err := grpcclient.StartLoop(ctx, controller, grpcclient.StartLoopOptions{
+	connectOptions := grpcclient.StartLoopOptions{
 		RunnerID:     strings.TrimSpace(*runnerID),
 		RunnerToken:  runnerTokenValue,
 		ServerAddr:   rpcHostValue,
@@ -135,16 +141,59 @@ func runStart(args []string) error {
 		Version:      strings.TrimSpace(*version),
 		Capabilities: parseCSV(*capabilities),
 		OnRegistered: persistRegistration,
-	})
-	if err != nil && !errors.Is(err, context.Canceled) {
-		return err
-	}
-	resultRunnerID := strings.TrimSpace(result.RunnerID)
-	if resultRunnerID == "" {
-		resultRunnerID = strings.TrimSpace(registeredRunnerID)
 	}
 
-	slog.Info("runner stopped", "runnerId", resultRunnerID, "transport", "grpc")
+	reconnectAttempt := 0
+	for {
+		result, err := grpcclient.StartLoop(ctx, controller, connectOptions)
+		resultRunnerID := strings.TrimSpace(result.RunnerID)
+		if resultRunnerID == "" {
+			resultRunnerID = strings.TrimSpace(registeredRunnerID)
+		}
+
+		// Exit cleanly on local shutdown signals.
+		if err == nil && ctx.Err() != nil {
+			slog.Info("runner stopped", "runnerId", resultRunnerID, "transport", "grpc")
+			return nil
+		}
+		if err != nil && (errors.Is(err, context.Canceled) || ctx.Err() != nil) {
+			slog.Info("runner stopped", "runnerId", resultRunnerID, "transport", "grpc")
+			return nil
+		}
+
+		if err != nil && !isRetryableRunnerError(err) {
+			return err
+		}
+
+		waitFor := reconnectDelay(reconnectAttempt)
+		reconnectAttempt++
+		if err != nil {
+			slog.Warn(
+				"runner grpc stream disconnected, reconnecting",
+				"runnerId", resultRunnerID,
+				"attempt", reconnectAttempt,
+				"wait", waitFor.String(),
+				"err", err,
+			)
+		} else {
+			slog.Warn(
+				"runner grpc stream ended, reconnecting",
+				"runnerId", resultRunnerID,
+				"attempt", reconnectAttempt,
+				"wait", waitFor.String(),
+			)
+		}
+
+		timer := time.NewTimer(waitFor)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			slog.Info("runner stopped", "runnerId", resultRunnerID, "transport", "grpc")
+			return nil
+		case <-timer.C:
+		}
+	}
+
 	return nil
 }
 
@@ -266,6 +315,37 @@ func envOrDefault(key, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func reconnectDelay(attempt int) time.Duration {
+	if attempt < 0 {
+		attempt = 0
+	}
+	// Exponential backoff capped at 30s keeps retries responsive while avoiding tight loops.
+	exp := math.Min(float64(attempt), 5)
+	wait := time.Duration(1<<int(exp)) * reconnectBaseWait
+	if wait > reconnectMaxWait {
+		return reconnectMaxWait
+	}
+	return wait
+}
+
+func isRetryableRunnerError(err error) bool {
+	code := status.Code(err)
+	switch code {
+	case codes.OK:
+		return true
+	case codes.Unavailable, codes.Unknown, codes.Internal, codes.ResourceExhausted, codes.Aborted, codes.DeadlineExceeded:
+		return true
+	case codes.Canceled:
+		// Context cancellation is handled by caller; other cancellations are usually transient transport churn.
+		return !errors.Is(err, context.Canceled)
+	case codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument, codes.NotFound, codes.FailedPrecondition:
+		return false
+	default:
+		// Fallback to retry: unknown transport errors (for example TCP reset) should not kill daemon mode.
+		return true
+	}
 }
 
 func printUsage() {

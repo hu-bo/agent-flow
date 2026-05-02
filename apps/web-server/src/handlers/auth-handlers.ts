@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { AppError } from '../lib/errors.js';
 import { sendSuccess } from '../lib/response.js';
 import { parseWithSchema } from '../lib/validation.js';
 import { oauthUrlBodySchema, tokenExchangeBodySchema, tokenRefreshBodySchema } from '../schemas/auth.js';
@@ -67,7 +68,7 @@ export async function sdkGetMeHandler(request: FastifyRequest, reply: FastifyRep
   const token = tokenFromHeader || tokenFromQuery;
 
   if (!token) {
-    return reply.status(400).send({ error: 'token is required' });
+    throw new AppError(400, 'BAD_REQUEST', 'token is required');
   }
 
   const result = await request.server.services.authService.getMe(token);

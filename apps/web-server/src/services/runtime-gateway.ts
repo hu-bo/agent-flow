@@ -85,8 +85,9 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         });
         const recalled = recalledRaw.filter((memory) => !isRuntimeDiagnosticText(memory.text));
         const runnerDirective = parseRunnerDirective(input.message);
+        const shouldTrySemanticRuntime = shouldAttemptSemanticRuntime(input.message);
 
-        if (!runnerDirective) {
+        if (!runnerDirective && !shouldTrySemanticRuntime) {
           const response = await this.generateModelResponse(input, recalled, parentUuid);
           queue.push(response);
           await span?.end({
@@ -116,6 +117,17 @@ export class CoreRuntimeGateway implements RuntimeGateway {
           eventCountByType,
           runnerDirective,
         });
+
+        if (!responseText) {
+          const fallbackResponse = await this.generateModelResponse(input, recalled, parentUuid);
+          queue.push(fallbackResponse);
+          await span?.end({
+            status: 'succeeded',
+            mode: 'model-fallback',
+            eventCount: result.events.length,
+          });
+          return;
+        }
 
         this.logger?.info('chat.turn.completed', 'core runtime turn completed', {
           attributes: {
@@ -341,34 +353,29 @@ function renderAssistantText(args: {
   recalled: RecalledMemory[];
   eventCountByType: Map<string, number>;
   runnerDirective: RunnerDirective | undefined;
-}): string {
-  const { input, result, recalled, eventCountByType, runnerDirective } = args;
+}): string | undefined {
+  const { result } = args;
   const latestOutput = extractLatestOutput(result);
-  const eventSummary = [...eventCountByType.entries()]
-    .sort((left, right) => left[0].localeCompare(right[0]))
-    .map(([name, count]) => `${name}: ${count}`)
-    .join(', ');
 
-  const lines = [
-    result.status === 'succeeded'
-      ? 'Core runtime executed successfully.'
-      : `Core runtime finished with status: ${result.status}.`,
-    `Model: ${input.model}.`,
-    runnerDirective
-      ? `Runner command: ${runnerDirective.command} ${runnerDirective.args.join(' ')}`.trim()
-      : 'No runner command was requested in this turn.',
-    recalled.length > 0 ? `Memory hits used: ${recalled.length}.` : 'No recalled memory was injected.',
-    `Agent events: ${result.events.length}${eventSummary ? ` (${eventSummary})` : ''}.`,
-  ];
+  if (result.status !== 'succeeded') {
+    const detail = result.error || (latestOutput !== undefined ? formatUnknown(latestOutput) : 'unknown error');
+    return `I couldn't complete the local task.\n\n${detail}`;
+  }
+
+  if (isPlaceholderOutput(latestOutput)) {
+    return undefined;
+  }
+
+  const rendered = renderRuntimeOutput(latestOutput);
+  if (rendered) {
+    return rendered;
+  }
 
   if (latestOutput !== undefined) {
-    lines.push(`Latest output:\n${formatUnknown(latestOutput)}`);
-  }
-  if (result.error) {
-    lines.push(`Error detail: ${result.error}`);
+    return formatUnknown(latestOutput);
   }
 
-  return lines.join('\n\n');
+  return 'The local task finished successfully.';
 }
 
 function extractLatestOutput(result: AgentRunResult): unknown {
@@ -388,6 +395,133 @@ function formatUnknown(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isPlaceholderOutput(value: unknown): boolean {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  return value.mode === 'placeholder';
+}
+
+function getObjectString(value: Record<string, unknown>, key: string): string | undefined {
+  const target = value[key];
+  return typeof target === 'string' ? target : undefined;
+}
+
+function getObjectNumber(value: Record<string, unknown>, key: string): number | undefined {
+  const target = value[key];
+  return typeof target === 'number' && Number.isFinite(target) ? target : undefined;
+}
+
+function renderRuntimeOutput(output: unknown): string | undefined {
+  if (output === null || output === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(output)) {
+    return formatUnknown(output);
+  }
+
+  if (Array.isArray(output.entries)) {
+    return renderFsListOutput(output);
+  }
+  if (typeof output.content === 'string' && typeof output.path === 'string') {
+    return renderFsReadOutput(output);
+  }
+  if (Array.isArray(output.matches)) {
+    return renderFsSearchOutput(output);
+  }
+  if (Array.isArray(output.stdout) || Array.isArray(output.stderr)) {
+    return renderShellExecOutput(output);
+  }
+
+  return formatUnknown(output);
+}
+
+function renderFsListOutput(output: Record<string, unknown>): string {
+  const path = getObjectString(output, 'path') ?? '.';
+  const total = getObjectNumber(output, 'total') ?? 0;
+  const entries = Array.isArray(output.entries) ? output.entries : [];
+  const previewLines = entries
+    .slice(0, 40)
+    .map((entry) => {
+      if (!isPlainObject(entry)) {
+        return `- ${formatUnknown(entry)}`;
+      }
+      const type = getObjectString(entry, 'type') ?? 'entry';
+      const name = getObjectString(entry, 'name') ?? getObjectString(entry, 'path') ?? '(unknown)';
+      const size = getObjectNumber(entry, 'size');
+      const sizeLabel = typeof size === 'number' ? ` (${size} bytes)` : '';
+      return `- [${type}] ${name}${sizeLabel}`;
+    })
+    .join('\n');
+
+  const extra = total > 40 ? `\n... and ${total - 40} more.` : '';
+  return [`Listed ${total} entries under: ${path}`, previewLines ? `\n${previewLines}${extra}` : ''].join('');
+}
+
+function renderFsReadOutput(output: Record<string, unknown>): string {
+  const path = getObjectString(output, 'path') ?? '(unknown path)';
+  const size = getObjectNumber(output, 'size');
+  const sizeLabel = typeof size === 'number' ? `${size} bytes` : 'unknown size';
+  const content = getObjectString(output, 'content') ?? '';
+  const maxPreviewChars = 8000;
+  const truncated = content.length > maxPreviewChars;
+  const preview = truncated ? `${content.slice(0, maxPreviewChars)}\n\n... (truncated)` : content;
+
+  return [`Read file: ${path} (${sizeLabel})`, '', preview || '(empty file)'].join('\n');
+}
+
+function renderFsSearchOutput(output: Record<string, unknown>): string {
+  const path = getObjectString(output, 'path') ?? '.';
+  const pattern = getObjectString(output, 'pattern') ?? '(pattern)';
+  const total = getObjectNumber(output, 'total') ?? 0;
+  const matches = Array.isArray(output.matches) ? output.matches : [];
+  const previewLines = matches
+    .slice(0, 40)
+    .map((match) => {
+      if (!isPlainObject(match)) {
+        return `- ${formatUnknown(match)}`;
+      }
+      const file = getObjectString(match, 'path') ?? '(unknown file)';
+      const line = getObjectNumber(match, 'line');
+      const content = getObjectString(match, 'content') ?? '';
+      const lineLabel = typeof line === 'number' ? `:${line}` : '';
+      return `- ${file}${lineLabel} ${content}`;
+    })
+    .join('\n');
+  const extra = total > 40 ? `\n... and ${total - 40} more.` : '';
+
+  return [
+    `Found ${total} matches for "${pattern}" under: ${path}`,
+    previewLines ? `\n${previewLines}${extra}` : '',
+  ].join('');
+}
+
+function renderShellExecOutput(output: Record<string, unknown>): string {
+  const command = getObjectString(output, 'command') ?? 'command';
+  const stdout = Array.isArray(output.stdout)
+    ? output.stdout.filter((item): item is string => typeof item === 'string')
+    : [];
+  const stderr = Array.isArray(output.stderr)
+    ? output.stderr.filter((item): item is string => typeof item === 'string')
+    : [];
+
+  const sections: string[] = [`Executed: ${command}`];
+  if (stdout.length > 0) {
+    sections.push(`STDOUT:\n${stdout.join('\n')}`);
+  }
+  if (stderr.length > 0) {
+    sections.push(`STDERR:\n${stderr.join('\n')}`);
+  }
+  if (stdout.length === 0 && stderr.length === 0) {
+    sections.push('(No output)');
+  }
+  return sections.join('\n\n');
 }
 
 function toContextText(message: UnifiedMessage): string {
@@ -444,6 +578,49 @@ function tokenizeCommandLine(commandLine: string): string[] {
       }
       return token;
     });
+}
+
+function shouldAttemptSemanticRuntime(message: string): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (isCapabilityQuestion(trimmed)) {
+    return false;
+  }
+
+  if (/(list|ls|dir|tree|read|open|cat|show|search|find|grep)/i.test(trimmed)) {
+    return true;
+  }
+
+  const zhKeywords = [
+    '\u67e5\u770b',
+    '\u770b\u770b',
+    '\u770b\u4e0b',
+    '\u8bfb\u53d6',
+    '\u6253\u5f00',
+    '\u5217\u51fa',
+    '\u76ee\u5f55',
+    '\u6587\u4ef6',
+    '\u641c\u7d22',
+    '\u67e5\u627e',
+    '\u684c\u9762',
+  ];
+  return zhKeywords.some((keyword) => trimmed.includes(keyword));
+}
+
+function isCapabilityQuestion(message: string): boolean {
+  const lowered = message.toLowerCase();
+  const zhCapability = /你能|可以|能否|是否/.test(message);
+  const zhQuestionEnding = /吗[？?]?$/.test(message);
+  if (zhCapability && zhQuestionEnding) {
+    return true;
+  }
+
+  const enCapability = /(can you|could you|are you able to|do you support)/i.test(lowered);
+  const hasQuestionMark = /[?？]$/.test(message);
+  return enCapability && hasQuestionMark;
 }
 
 function buildSystemPrompt(input: RuntimeChatInput, recalled: RecalledMemory[]): string {
@@ -587,42 +764,8 @@ function toProgressMessage(
   parentUuid: string | null,
   event: AgentEvent,
 ): UnifiedMessage | undefined {
-  if (event.type === 'step.started') {
-    return createTextMessage(
-      'assistant',
-      `Step started: ${String(event.payload.title ?? event.payload.stepId ?? 'unknown')}`,
-      {
-        parentUuid,
-        metadata: {
-          modelId: String(input.modelId),
-          provider: 'core-runtime',
-          isMeta: true,
-          extensions: {
-            modelId: input.modelId,
-            model: input.model,
-            streamEvent: 'step.started',
-            payload: event.payload,
-          },
-        },
-      },
-    );
-  }
-
-  if (event.type === 'step.completed') {
-    return createTextMessage('assistant', `Step completed: ${String(event.payload.stepId ?? 'unknown')}`, {
-      parentUuid,
-      metadata: {
-        modelId: String(input.modelId),
-        provider: 'core-runtime',
-        isMeta: true,
-        extensions: {
-          modelId: input.modelId,
-          model: input.model,
-          streamEvent: 'step.completed',
-          payload: event.payload,
-        },
-      },
-    });
+  if (event.type === 'step.started' || event.type === 'step.completed') {
+    return undefined;
   }
 
   if (event.type === 'step.failed') {

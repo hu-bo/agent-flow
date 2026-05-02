@@ -95,6 +95,17 @@ export class SessionService {
     return state.session;
   }
 
+  findMessageIndex(sessionId: string, messageId: string) {
+    const state = this.getSessionState(sessionId);
+    return state.messages.findIndex((message) => message.uuid === messageId);
+  }
+
+  truncateMessages(sessionId: string, count: number) {
+    const state = this.getSessionState(sessionId);
+    const safeCount = Math.max(0, Math.min(count, state.messages.length));
+    return this.replaceMessages(sessionId, state.messages.slice(0, safeCount));
+  }
+
   bindRunner(sessionId: string, runnerId: string) {
     this.getSession(sessionId);
     this.runnerBindings.set(sessionId, runnerId);

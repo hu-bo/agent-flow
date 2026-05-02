@@ -2,7 +2,11 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { sendSuccess } from '../lib/response.js';
 import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
-import { createChatBodySchema } from '../schemas/chat.js';
+import {
+  createChatBodySchema,
+  messageMutationParamsSchema,
+  retryChatMessageBodySchema,
+} from '../schemas/chat.js';
 
 export async function createChatHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(createChatBodySchema, request.body, 'body');
@@ -74,4 +78,35 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   });
 
   return sendSuccess(reply, result);
+}
+
+export async function retryChatMessageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(messageMutationParamsSchema, request.params, 'params');
+  const body = parseWithSchema(retryChatMessageBodySchema, request.body ?? {}, 'body');
+
+  await request.server.services.chatService.retryFromMessage({
+    userId: request.auth.userId,
+    sessionId: params.sessionId,
+    messageId: body.messageId,
+    modelId: body.model,
+    reasoningEffort: body.reasoningEffort,
+    requestId: request.requestContext.requestId,
+  });
+
+  const state = request.server.services.sessionService.getSessionState(params.sessionId);
+  return sendSuccess(reply, {
+    session: state.session,
+    messages: state.messages,
+  });
+}
+
+export async function deleteChatMessageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(messageMutationParamsSchema, request.params, 'params');
+  request.server.services.chatService.deleteMessage(params.sessionId, params.messageId);
+
+  const state = request.server.services.sessionService.getSessionState(params.sessionId);
+  return sendSuccess(reply, {
+    session: state.session,
+    messages: state.messages,
+  });
 }

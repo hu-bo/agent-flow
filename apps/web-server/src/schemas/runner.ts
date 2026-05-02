@@ -7,6 +7,10 @@ export const runnerBindingParamsSchema = z.object({
   sessionId: sessionIdSchema,
 });
 
+export const runnerParamsSchema = z.object({
+  runnerId: runnerIdSchema,
+});
+
 export const runnerBindingBodySchema = z.object({
   runnerId: runnerIdSchema,
 });

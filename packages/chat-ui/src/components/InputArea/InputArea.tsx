@@ -30,6 +30,9 @@ interface InputAreaProps {
   tokenUsage?: TokenUsageSummary;
   isStreaming?: boolean;
   isConnecting?: boolean;
+  onCompactContext?: () => void | Promise<void>;
+  compactContextDisabled?: boolean;
+  compactContextLabel?: string;
   onFileSelect?: (files: File[]) => Promise<FileAttachment[]>;
 }
 
@@ -43,6 +46,9 @@ export function InputArea({
   tokenUsage,
   isStreaming,
   isConnecting,
+  onCompactContext,
+  compactContextDisabled,
+  compactContextLabel = 'Compact Context',
   onFileSelect,
 }: InputAreaProps) {
   const [input, setInput] = useState('');
@@ -79,8 +85,8 @@ export function InputArea({
 
   const disabled = isConnecting || isStreaming || !input.trim();
   const controlsDisabled = isConnecting || isStreaming;
+  const compactDisabled = compactContextDisabled ?? controlsDisabled;
   const currentModelValue = selectedModel ?? modelOptions?.[0]?.value ?? '';
-  const activeProvider = modelOptions?.find((option) => option.value === currentModelValue)?.provider;
   const modelSelectOptions: SelectFieldOption[] =
     modelOptions?.map((model) => ({ value: model.value, label: model.label })) ?? [];
   const reasoningSelectOptions: SelectFieldOption[] = REASONING_OPTIONS;
@@ -145,21 +151,14 @@ export function InputArea({
               onChange={handleFileChange}
             />
             {modelOptions && modelOptions.length > 0 && (
-              <>
-                <SelectField
-                  value={currentModelValue}
-                  options={modelSelectOptions}
-                  onChange={(value) => onModelChange?.(value)}
-                  disabled={controlsDisabled}
-                  ariaLabel="Model selection"
-                  wrapperClassName="min-w-40 max-w-[min(15rem,56vw)]"
-                />
-                {activeProvider && (
-                  <span className="hidden h-8 items-center rounded-xl bg-[color:var(--chat-panel-soft)] px-2.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[color:var(--chat-text-subtle)] shadow-[inset_0_1px_0_rgba(255,255,255,0.68)] sm:inline-flex">
-                    {activeProvider}
-                  </span>
-                )}
-              </>
+              <SelectField
+                value={currentModelValue}
+                options={modelSelectOptions}
+                onChange={(value) => onModelChange?.(value)}
+                disabled={controlsDisabled}
+                ariaLabel="Model selection"
+                wrapperClassName="min-w-40 max-w-[min(15rem,56vw)]"
+              />
             )}
 
             <SelectField
@@ -173,6 +172,17 @@ export function InputArea({
           </div>
 
           <div className="chat-ui-control-right">
+            {onCompactContext && (
+              <button
+                className="chat-ui-compact-btn"
+                disabled={compactDisabled}
+                onClick={() => {
+                  void onCompactContext();
+                }}
+              >
+                {compactContextLabel}
+              </button>
+            )}
             <span className="chat-ui-token-usage">
               Tokens {formatTokenCount(usageUsed)} / {usageRemaining}
             </span>

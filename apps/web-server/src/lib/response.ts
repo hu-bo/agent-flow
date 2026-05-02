@@ -8,7 +8,7 @@ export interface ApiSuccessEnvelope<T> {
 }
 
 export interface ApiErrorEnvelope {
-  code: string | number;
+  code: number;
   data: null;
   message: string;
   requestId: string;
@@ -35,14 +35,13 @@ export function sendSuccess<T>(
 export function sendError(
   reply: FastifyReply,
   options: {
-    code: string | number;
     message: string;
     statusCode: number;
     details?: unknown;
   },
 ) {
   const payload: ApiErrorEnvelope = {
-    code: options.code,
+    code: options.statusCode,
     data: null,
     message: options.message,
     requestId: reply.request.id,
@@ -50,5 +49,5 @@ export function sendError(
   if (options.details !== undefined) {
     payload.details = options.details;
   }
-  return reply.status(options.statusCode).send(payload);
+  return reply.status(200).send(payload);
 }

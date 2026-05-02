@@ -93,6 +93,12 @@ func StartLoop(ctx context.Context, controller runnercore.Controller, opts Start
 	if heartbeatIntervalMs < 1000 {
 		heartbeatIntervalMs = 10_000
 	}
+	slog.Info(
+		"runner connected to web-server grpc",
+		"runnerId", runnerID,
+		"server", target,
+		"heartbeatIntervalMs", heartbeatIntervalMs,
+	)
 	if opts.OnRegistered != nil {
 		opts.OnRegistered(StartLoopResult{
 			RunnerID:            runnerID,

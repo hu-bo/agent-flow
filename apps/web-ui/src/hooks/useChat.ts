@@ -20,6 +20,7 @@ interface UseChatReturn {
   refreshSessionMessages: (sessionId: string | null) => Promise<void>;
   isConnecting: boolean;
   isStreaming: boolean;
+  typingMessageId: string | null;
 }
 
 function attachmentToFilePart(attachment: FileAttachment): FilePart | null {
@@ -46,6 +47,7 @@ export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const loadSequenceRef = useRef(0);
@@ -67,6 +69,7 @@ export function useChat(): UseChatReturn {
 
     if (!sessionId) {
       setMessages([]);
+      setTypingMessageId(null);
       setIsConnecting(false);
       return;
     }
@@ -80,6 +83,7 @@ export function useChat(): UseChatReturn {
       // Avoid overriding optimistic stream state while a response is still in flight.
       if (streamAbortRef.current) return;
       setMessages(payload.messages);
+      setTypingMessageId(null);
     } finally {
       if (loadSequenceRef.current === currentLoad) {
         setIsConnecting(false);
@@ -90,12 +94,14 @@ export function useChat(): UseChatReturn {
   const refreshSessionMessages = useCallback(async (sessionId: string | null) => {
     if (!sessionId) {
       setMessages([]);
+      setTypingMessageId(null);
       return;
     }
 
     const payload = await fetchSession(sessionId);
     if (activeSessionRef.current === sessionId && !streamAbortRef.current) {
       setMessages(payload.messages);
+      setTypingMessageId(null);
     }
   }, []);
 
@@ -118,6 +124,7 @@ export function useChat(): UseChatReturn {
       };
 
       setMessages((prev) => [...prev, userMsg]);
+      setTypingMessageId(null);
       setIsStreaming(true);
       setIsConnecting(false);
 
@@ -143,6 +150,9 @@ export function useChat(): UseChatReturn {
             // Server stream includes the user message; skip it to avoid duplicates.
             if (msg.role === 'user') return;
             setMessages((prev) => [...prev, msg]);
+            if (msg.role === 'assistant' && !msg.metadata?.isMeta) {
+              setTypingMessageId(msg.uuid);
+            }
           },
         });
       } finally {
@@ -162,5 +172,6 @@ export function useChat(): UseChatReturn {
     refreshSessionMessages,
     isConnecting,
     isStreaming,
+    typingMessageId,
   };
 }

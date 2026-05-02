@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  deleteRunner,
   fetchRunnerDownloads,
   fetchRunners,
   issueRunnerToken,
   rotateRunnerToken,
+  streamRunners,
   type RunnerRecord,
   type RunnerTokenIssueResult,
 } from '../api';
@@ -76,6 +78,7 @@ export function RunnerPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState<NoticeState>(null);
   const [isCreatingToken, setIsCreatingToken] = useState(false);
+  const [deletingRunnerId, setDeletingRunnerId] = useState<string | null>(null);
 
   const refreshRunners = useCallback(async () => {
     const payload = await fetchRunners();
@@ -117,14 +120,46 @@ export function RunnerPage() {
   }, []);
 
   useEffect(() => {
-    if (!isConnecting) return;
-    const timer = window.setInterval(() => {
-      void refreshRunners().catch(() => {
-        // keep polling while connecting
-      });
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [isConnecting, refreshRunners]);
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    let controller: AbortController | null = null;
+
+    const connect = () => {
+      if (cancelled) return;
+      controller = new AbortController();
+
+      void streamRunners({
+        signal: controller.signal,
+        onRunners: (next) => {
+          if (cancelled) return;
+          setRunners(next);
+          if (next.some((runner) => runner.status === 'online')) {
+            setIsConnecting(false);
+          }
+        },
+      })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          if (error instanceof Error && error.name === 'AbortError') {
+            return;
+          }
+        })
+        .finally(() => {
+          if (cancelled) return;
+          retryTimer = window.setTimeout(connect, 1500);
+        });
+    };
+
+    connect();
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      if (retryTimer !== null) {
+        window.clearTimeout(retryTimer);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -179,6 +214,31 @@ export function RunnerPage() {
         kind: 'error',
         message: readErrorMessage(error, 'Failed to refresh runners'),
       });
+    }
+  }, [refreshRunners]);
+
+  const handleDeleteRunner = useCallback(async (runnerId: string) => {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(`Delete runner record ${runnerId}?`);
+      if (!confirmed) return;
+    }
+
+    setDeletingRunnerId(runnerId);
+    try {
+      await deleteRunner(runnerId);
+      setRunners((previous) => previous.filter((runner) => runner.runnerId !== runnerId));
+      setNotice({
+        kind: 'success',
+        message: `Runner ${runnerId} deleted.`,
+      });
+      await refreshRunners();
+    } catch (error: unknown) {
+      setNotice({
+        kind: 'error',
+        message: readErrorMessage(error, 'Failed to delete runner'),
+      });
+    } finally {
+      setDeletingRunnerId(null);
     }
   }, [refreshRunners]);
 
@@ -250,7 +310,17 @@ export function RunnerPage() {
                 <div className="runner-item" key={runner.runnerId}>
                   <div className="runner-item-main">
                     <span className="runner-id">{runner.runnerId}</span>
-                    <span className={`runner-pill runner-pill-${runner.status}`}>{runner.status}</span>
+                    <div className="runner-item-actions">
+                      <span className={`runner-pill runner-pill-${runner.status}`}>{runner.status}</span>
+                      <button
+                        className="workspace-action-btn runner-delete-btn"
+                        type="button"
+                        onClick={() => void handleDeleteRunner(runner.runnerId)}
+                        disabled={deletingRunnerId === runner.runnerId}
+                      >
+                        {deletingRunnerId === runner.runnerId ? 'Deleting...' : 'Delete'}
+                      </button>
+                    </div>
                   </div>
                   <div className="runner-item-meta">
                     <span>kind={runner.kind}</span>

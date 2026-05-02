@@ -1,10 +1,12 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { sendSuccess } from '../lib/response.js';
+import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
 import { AppError } from '../lib/errors.js';
 import {
   runnerBindingBodySchema,
   runnerBindingParamsSchema,
+  runnerParamsSchema,
   runnerApprovalTicketBodySchema,
 } from '../schemas/runner.js';
 
@@ -12,6 +14,57 @@ export async function listRunnersHandler(request: FastifyRequest, reply: Fastify
   const runners = await request.server.services.runnerRegistryService.listRunners(request.auth.userId);
   return sendSuccess(reply, {
     runners: runners.map(toRunnerView),
+  });
+}
+
+export async function deleteRunnerHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(runnerParamsSchema, request.params, 'params');
+  await request.server.services.runnerRegistryService.removeRunnerForUser(request.auth.userId, params.runnerId);
+  reply.status(204).send();
+}
+
+export async function streamRunnersHandler(request: FastifyRequest, reply: FastifyReply) {
+  const stream = createSseStream(reply);
+  stream.comment(`request=${request.requestContext.requestId}`);
+
+  let closed = false;
+  let lastPayload = '';
+
+  const publishRunners = async (force = false) => {
+    const runners = await request.server.services.runnerRegistryService.listRunners(request.auth.userId);
+    const payload = {
+      runners: runners.map(toRunnerView),
+    };
+    const serialized = JSON.stringify(payload);
+    if (!force && serialized === lastPayload) {
+      return;
+    }
+    lastPayload = serialized;
+    stream.send(payload, 'runners');
+  };
+
+  const publishError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Failed to stream runners';
+    stream.send({ error: message }, 'error');
+  };
+
+  try {
+    await publishRunners(true);
+  } catch (error) {
+    publishError(error);
+  }
+
+  const timer = setInterval(() => {
+    if (closed) return;
+    void publishRunners().catch((error) => {
+      publishError(error);
+    });
+  }, 2_000);
+  timer.unref?.();
+
+  request.raw.on('close', () => {
+    closed = true;
+    clearInterval(timer);
   });
 }
 

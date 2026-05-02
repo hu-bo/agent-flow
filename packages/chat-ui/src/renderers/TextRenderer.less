@@ -82,3 +82,54 @@
   padding: 0.1rem 0.32rem;
   color: #4338ca;
 }
+
+.chat-ui-code-block {
+  margin: 0.45rem 0;
+}
+
+.chat-ui-markdown .chat-ui-code-block pre {
+  margin: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.chat-ui-code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.32rem 0.52rem;
+  border: 1px solid var(--chat-code-border);
+  border-bottom: 0;
+  border-top-left-radius: 0.6rem;
+  border-top-right-radius: 0.6rem;
+  background: color-mix(in srgb, var(--chat-code-bg) 84%, white);
+}
+
+.chat-ui-code-language {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--chat-text-subtle);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.chat-ui-copy-btn {
+  border: 1px solid var(--chat-border);
+  border-radius: 0.45rem;
+  background: #ffffff;
+  color: var(--chat-text-muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0.2rem 0.48rem;
+  transition: color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.chat-ui-copy-btn:hover {
+  color: var(--chat-text-primary);
+  border-color: var(--chat-brand-300);
+  transform: translateY(-1px);
+}
+
+.chat-ui-copy-btn:active {
+  transform: translateY(0);
+}

@@ -9,9 +9,22 @@ interface MessageListProps {
   isStreaming?: boolean;
   registry?: ContentRendererRegistry;
   rendererContext?: ContentRendererContext;
+  onRetryMessage?: (message: ChatMessage) => void | Promise<void>;
+  onCopyMessage?: (message: ChatMessage) => void | Promise<void>;
+  onDeleteMessage?: (message: ChatMessage) => void | Promise<void>;
+  messageActionDisabled?: boolean;
 }
 
-export function MessageList({ messages, isStreaming, registry, rendererContext }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  registry,
+  rendererContext,
+  onRetryMessage,
+  onCopyMessage,
+  onDeleteMessage,
+  messageActionDisabled,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,12 +38,18 @@ export function MessageList({ messages, isStreaming, registry, rendererContext }
           Send a message to start chatting.
         </div>
       )}
-      {messages.map((msg) => (
+      {messages.map((msg, index) => (
         <MessageBubble
           key={msg.uuid}
           message={msg}
+          isStreaming={Boolean(isStreaming)}
+          isLatest={index === messages.length - 1}
           registry={registry}
           rendererContext={rendererContext}
+          onRetry={onRetryMessage}
+          onCopy={onCopyMessage}
+          onDelete={onDeleteMessage}
+          actionDisabled={messageActionDisabled}
         />
       ))}
       {isStreaming && (

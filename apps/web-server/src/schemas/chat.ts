@@ -19,3 +19,14 @@ export const createChatBodySchema = z.object({
   stream: z.boolean().default(false),
   backgroundTask: z.boolean().default(false),
 });
+
+export const retryChatMessageBodySchema = z.object({
+  messageId: z.string().uuid(),
+  model: modelIdSchema.optional(),
+  reasoningEffort: reasoningEffortSchema.optional(),
+});
+
+export const messageMutationParamsSchema = z.object({
+  sessionId: sessionIdSchema,
+  messageId: z.string().uuid(),
+});

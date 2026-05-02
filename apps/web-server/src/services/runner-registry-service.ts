@@ -61,6 +61,16 @@ export class RunnerRegistryService {
     return runner;
   }
 
+  async removeRunnerForUser(ownerUserId: string, runnerId: string): Promise<void> {
+    const result = await this.runnerRepository.delete({
+      ownerUserId,
+      runnerId,
+    });
+    if (!result.affected) {
+      throw new NotFoundError(`Runner not found: ${runnerId}`);
+    }
+  }
+
   async register(input: RunnerRegisterInput): Promise<RunnerEntity> {
     const token = await this.registrationService.verifyToken(input.runnerToken);
     return this.upsertFromToken(token, input);

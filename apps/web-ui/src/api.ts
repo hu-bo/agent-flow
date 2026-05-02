@@ -204,6 +204,67 @@ export async function fetchRunners(): Promise<{ runners: RunnerRecord[] }> {
   return requestJson({ url: '/api/runners', method: 'GET' });
 }
 
+export async function deleteRunner(runnerId: string): Promise<void> {
+  await requestNoContent({ url: `/api/runners/${runnerId}`, method: 'DELETE' });
+}
+
+interface StreamRunnersOptions {
+  signal?: AbortSignal;
+  onRunners: (runners: RunnerRecord[]) => void;
+}
+
+export async function streamRunners({
+  signal,
+  onRunners,
+}: StreamRunnersOptions): Promise<void> {
+  const token = getAccessToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch('/api/runners/events', {
+    method: 'GET',
+    headers,
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readFetchErrorMessage(response));
+  }
+
+  if (!response.body) {
+    throw new Error('SSE stream body is empty');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const handleData = (payload: string) => {
+    if (payload === '[DONE]') {
+      return;
+    }
+    const parsed = JSON.parse(payload) as { runners?: RunnerRecord[]; error?: string };
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
+    if (Array.isArray(parsed.runners)) {
+      onRunners(parsed.runners);
+    }
+  };
+
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    buffer += decoder.decode(chunk.value, { stream: true });
+    buffer = consumeSseBuffer(buffer, handleData);
+  }
+
+  buffer += decoder.decode();
+  consumeSseBuffer(buffer, handleData);
+}
+
 export async function fetchRunnerDownloads(): Promise<{
   downloadUrls: {
     windows: string;
@@ -358,4 +419,31 @@ export async function streamChat({
 
   buffer += decoder.decode();
   consumeSseBuffer(buffer, handleData);
+}
+
+export async function retrySessionMessage(input: {
+  sessionId: string;
+  messageId: string;
+  model?: string | number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+}): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
+  return requestJson({
+    url: `/api/chat/${input.sessionId}/retry`,
+    method: 'POST',
+    data: {
+      messageId: input.messageId,
+      model: input.model,
+      reasoningEffort: input.reasoningEffort,
+    },
+  });
+}
+
+export async function deleteSessionMessage(
+  sessionId: string,
+  messageId: string,
+): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
+  return requestJson({
+    url: `/api/chat/${sessionId}/messages/${messageId}`,
+    method: 'DELETE',
+  });
 }
