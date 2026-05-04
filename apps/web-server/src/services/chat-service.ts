@@ -1,6 +1,6 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { MemoryService } from '@agent-flow/memory';
-import type { ReasoningEffort, RuntimeGateway, SessionRecord } from '../contracts/api.js';
+import type { ChatStreamEvent, ReasoningEffort, RuntimeGateway, SessionRecord } from '../contracts/api.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { createUnifiedMessage, createUserContent } from '../lib/messages.js';
 import { ModelService } from './model-service.js';
@@ -50,12 +50,15 @@ export class ChatService {
     private readonly memoryService?: MemoryService,
   ) {}
 
-  async *streamTurn(input: ChatTurnInput): AsyncGenerator<UnifiedMessage, SessionRecord, undefined> {
+  async *streamTurn(input: ChatTurnInput): AsyncGenerator<ChatStreamEvent, SessionRecord, undefined> {
     const prepared = this.prepareTurn(input);
 
     this.sessionService.appendMessage(prepared.session.sessionId, prepared.userMessage);
     await this.recordMemory(prepared.session.sessionId, prepared.userMessage);
-    yield prepared.userMessage;
+    yield {
+      type: 'message',
+      message: prepared.userMessage,
+    };
 
     for await (const message of this.runtimeGateway.streamChat({
       session: prepared.session,
@@ -71,8 +74,12 @@ export class ChatService {
       approveRiskyOps: input.approveRiskyOps,
       approvalTicket: input.approvalTicket,
     })) {
-      this.sessionService.appendMessage(prepared.session.sessionId, message);
-      await this.recordMemory(prepared.session.sessionId, message);
+      if (message.type === 'message') {
+        this.sessionService.upsertMessage(prepared.session.sessionId, message.message);
+        if (!isStreamingMessage(message.message)) {
+          await this.recordMemory(prepared.session.sessionId, message.message);
+        }
+      }
       yield message;
     }
 
@@ -90,7 +97,9 @@ export class ChatService {
         session = step.value;
         break;
       }
-      messages.push(step.value);
+      if (step.value.type === 'message') {
+        messages.push(step.value.message);
+      }
     }
 
     return {
@@ -225,4 +234,8 @@ export class ChatService {
     }
     return text;
   }
+}
+
+function isStreamingMessage(message: UnifiedMessage): boolean {
+  return message.metadata?.extensions?.streamState === 'streaming';
 }

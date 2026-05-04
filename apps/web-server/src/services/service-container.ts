@@ -14,7 +14,7 @@ import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
 import { RunnerApprovalService } from './runner-approval-service.js';
 import { RemoteRunner } from './remote-runner.js';
-import { CoreRuntimeGateway, createCoreAgentRuntime } from './runtime-gateway.js';
+import { CoreRuntimeGateway, createCoreAgentRuntimeBundle } from './runtime-gateway.js';
 import { SessionService } from './session-service.js';
 import { TaskService } from './task-service.js';
 
@@ -47,14 +47,18 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const runnerApprovalService = new RunnerApprovalService();
   const runnerDispatchService = new RunnerDispatchService(runnerRegistryService, runnerApprovalService, logger);
   const remoteRunner = new RemoteRunner(runnerDispatchService);
-  const runtime = createCoreAgentRuntime({
+  const runtimeBundle = createCoreAgentRuntimeBundle({
     cwd: process.cwd(),
     runners: [remoteRunner],
+    runnerDispatchService,
   });
+  const { runtime, toolRegistry, toolExecutor } = runtimeBundle;
   const runtimeGateway = new CoreRuntimeGateway({
     runtime,
     memoryService,
     modelAdapterService,
+    toolRegistry,
+    toolExecutor,
     logger,
     tracer,
   });

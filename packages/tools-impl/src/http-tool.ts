@@ -1,4 +1,5 @@
 import type { ToolDefinition, ToolSchema } from '@agent-flow/core';
+import { z } from 'zod';
 
 export interface HttpToolInput {
   url: string;
@@ -15,6 +16,16 @@ export interface HttpToolOutput {
   headers: Record<string, string>;
   body: unknown;
 }
+
+const httpToolInputSchema = z.object({
+  url: z.string().url(),
+  method: z.string().trim().min(1).optional(),
+  headers: z.record(z.string()).optional(),
+  body: z.unknown().optional(),
+  timeoutMs: z.number().int().positive().max(120_000).optional()
+});
+
+type ParsedHttpToolInput = z.infer<typeof httpToolInputSchema>;
 
 export class HttpTool implements ToolDefinition<HttpToolInput, HttpToolOutput> {
   readonly schema: ToolSchema = {
@@ -45,19 +56,16 @@ export class HttpTool implements ToolDefinition<HttpToolInput, HttpToolOutput> {
   };
 
   async execute(input: HttpToolInput): Promise<HttpToolOutput> {
-    if (!input.url) {
-      throw new Error('Invalid input: "url" is required.');
-    }
-
-    const timeoutMs = input.timeoutMs ?? 20_000;
+    const parsed = parseHttpToolInput(input);
+    const timeoutMs = parsed.timeoutMs ?? 20_000;
     const timeoutController = new AbortController();
     const timeout = setTimeout(() => timeoutController.abort('Request timeout'), timeoutMs);
 
     try {
-      const response = await fetch(input.url, {
-        method: input.method ?? 'GET',
-        headers: buildHeaders(input.headers, input.body),
-        body: buildBody(input.body),
+      const response = await fetch(parsed.url, {
+        method: parsed.method ?? 'GET',
+        headers: buildHeaders(parsed.headers, parsed.body),
+        body: buildBody(parsed.body),
         signal: timeoutController.signal
       });
 
@@ -73,6 +81,14 @@ export class HttpTool implements ToolDefinition<HttpToolInput, HttpToolOutput> {
       clearTimeout(timeout);
     }
   }
+}
+
+function parseHttpToolInput(input: unknown): ParsedHttpToolInput {
+  const result = httpToolInputSchema.safeParse(input);
+  if (!result.success) {
+    throw new Error(`Invalid http.request input: ${result.error.message}`);
+  }
+  return result.data;
 }
 
 function buildHeaders(

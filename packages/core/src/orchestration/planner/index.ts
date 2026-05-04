@@ -42,6 +42,7 @@ const ZH_LIST_KEYWORDS = [
   '\u6587\u4ef6\u5217\u8868',
   '\u6587\u4ef6\u5939',
   '\u684c\u9762',
+  '\u6709\u4ec0\u4e48',
 ] as const;
 const ZH_RECURSIVE_KEYWORDS = ['\u9012\u5f52', '\u5168\u5c40', '\u5168\u91cf'] as const;
 const ZH_FILE_NOUNS = ['\u6587\u4ef6', '\u6587\u4ef6\u5939', '\u76ee\u5f55'] as const;
@@ -55,12 +56,32 @@ function resolveSemanticPathCandidate(message: string, candidatePath: string): s
     return candidatePath;
   }
 
+  const windowsDrivePath = extractWindowsDrivePath(message);
+  if (windowsDrivePath) {
+    return windowsDrivePath;
+  }
+
   if (includesAny(message, ['\u684c\u9762', 'Desktop', 'desktop'])) {
     // Keep semantic fs operations inside workspace scope when user requests Desktop.
     return '.';
   }
 
   return '';
+}
+
+function extractWindowsDrivePath(message: string): string | undefined {
+  const explicitDrive = message.match(/\b([A-Za-z]):(?:[\\/][^\s"'`]*)?/);
+  if (explicitDrive?.[0]) {
+    const raw = explicitDrive[0];
+    return raw.length === 2 ? `${raw}\\` : raw;
+  }
+
+  const zhDrive = message.match(/\b([A-Za-z])\s*\u76d8/);
+  if (zhDrive?.[1]) {
+    return `${zhDrive[1].toUpperCase()}:\\`;
+  }
+
+  return undefined;
 }
 
 export function detectSemanticToolStep(rawMessage: string): SemanticToolStep | undefined {
@@ -71,14 +92,21 @@ export function detectSemanticToolStep(rawMessage: string): SemanticToolStep | u
 
   const lowered = message.toLowerCase();
   const quotedPath = message.match(/`([^`]+)`/)?.[1];
-  const genericPath = message.match(/[A-Za-z]:\\[^\s"'`]+|\.{0,2}[\\/][^\s"'`]+|[A-Za-z0-9._-]+[\\/][^\s"'`]+/)?.[0];
+  const genericPath = message.match(/[A-Za-z]:(?:[\\/][^\s"'`]*)?|\.{0,2}[\\/][^\s"'`]+|[A-Za-z0-9._-]+[\\/][^\s"'`]+/)?.[0];
   const explicitCandidatePath = (quotedPath ?? genericPath ?? '').trim();
   const candidatePath = resolveSemanticPathCandidate(message, explicitCandidatePath);
   const hasLookVerb = includesAny(message, ZH_READ_KEYWORDS);
   const hasFileNoun = includesAny(message, ZH_FILE_NOUNS);
+  const hasListIntent =
+    /(list|ls|dir|tree)/i.test(message) ||
+    includesAny(message, ZH_LIST_KEYWORDS) ||
+    (hasLookVerb && hasFileNoun);
 
   const isReadIntent =
-    (/(read|open|cat|show)/i.test(message) || hasLookVerb) && explicitCandidatePath.length > 0;
+    (/(read|open|cat|show)/i.test(message) || hasLookVerb) &&
+    explicitCandidatePath.length > 0 &&
+    !hasListIntent &&
+    !isWindowsDriveRootPath(explicitCandidatePath);
   if (isReadIntent) {
     return {
       title: 'semantic-fs-read',
@@ -112,11 +140,7 @@ export function detectSemanticToolStep(rawMessage: string): SemanticToolStep | u
     }
   }
 
-  const isListIntent =
-    /(list|ls|dir|tree)/i.test(message) ||
-    includesAny(message, ZH_LIST_KEYWORDS) ||
-    (hasLookVerb && hasFileNoun);
-  if (isListIntent) {
+  if (hasListIntent) {
     return {
       title: 'semantic-fs-list',
       toolName: 'fs.list',
@@ -129,6 +153,10 @@ export function detectSemanticToolStep(rawMessage: string): SemanticToolStep | u
   }
 
   return undefined;
+}
+
+function isWindowsDriveRootPath(path: string): boolean {
+  return /^[A-Za-z]:[\\/]?$/.test(path.trim());
 }
 
 function deriveSemanticToolStep(request: AgentRunRequest): SemanticToolStep | undefined {

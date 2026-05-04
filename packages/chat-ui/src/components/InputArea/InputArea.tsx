@@ -2,6 +2,7 @@ import './InputArea.less';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type {
   ChatOption,
+  ChatSuggestion,
   FileAttachment,
   ReasoningEffort,
   TokenUsageSummary,
@@ -34,6 +35,8 @@ interface InputAreaProps {
   compactContextDisabled?: boolean;
   compactContextLabel?: string;
   onFileSelect?: (files: File[]) => Promise<FileAttachment[]>;
+  suggestions?: ChatSuggestion[];
+  onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
 }
 
 export function InputArea({
@@ -50,6 +53,8 @@ export function InputArea({
   compactContextDisabled,
   compactContextLabel = 'Compact Context',
   onFileSelect,
+  suggestions,
+  onSuggestionSelect,
 }: InputAreaProps) {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -83,6 +88,18 @@ export function InputArea({
     setAttachments((prev) => prev.filter((a) => a.id !== id));
   };
 
+  const handleSuggestionClick = (suggestion: ChatSuggestion) => {
+    if (isConnecting || isStreaming) return;
+    onSuggestionSelect?.(suggestion);
+    if (suggestion.behavior === 'fill') {
+      setInput(suggestion.prompt);
+      return;
+    }
+    onSend(suggestion.prompt, attachments.length > 0 ? attachments : undefined);
+    setInput('');
+    setAttachments([]);
+  };
+
   const disabled = isConnecting || isStreaming || !input.trim();
   const controlsDisabled = isConnecting || isStreaming;
   const compactDisabled = compactContextDisabled ?? controlsDisabled;
@@ -108,6 +125,27 @@ export function InputArea({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
         />
+
+        {suggestions && suggestions.length > 0 && (
+          <div className="chat-ui-suggestion-row" aria-label="Suggestions">
+            {suggestions.map((suggestion, index) => {
+              const key = suggestion.id ?? `${suggestion.label}-${index}`;
+              const disabled = isConnecting || isStreaming;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className="chat-ui-suggestion-chip"
+                  disabled={disabled}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  title={suggestion.description ?? suggestion.prompt}
+                >
+                  {suggestion.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {attachments.length > 0 && (
           <div className="chat-ui-attachments">

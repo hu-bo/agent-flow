@@ -20,6 +20,18 @@ describe('detectSemanticToolStep', () => {
     expect(step).toBeDefined();
     expect(step?.toolName).toBe('fs.list');
   });
+
+  it('detects chinese windows drive list intent with typo hint', () => {
+    const step = detectSemanticToolStep('查看D盘有什么，fs.lis');
+
+    expect(step).toBeDefined();
+    expect(step?.toolName).toBe('fs.list');
+    expect(step?.input).toMatchObject({
+      path: 'D:\\',
+      recursive: false,
+      maxEntries: 200,
+    });
+  });
 });
 
 describe('StaticPlanner', () => {

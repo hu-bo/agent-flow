@@ -162,7 +162,7 @@ export class RunnerDispatchService {
 
     try {
       const workingDir = resolveTaskWorkingDir(task.metadata);
-      const sandboxPolicy = deriveSandboxPolicy(task.command, workingDir);
+      const sandboxPolicy = deriveSandboxPolicy(task.command, workingDir, task.input);
       const engine = resolveEngine(task.metadata);
       const riskLevel = classifyRiskLevel(task.command);
       const approval = validateApprovalForTask(this.runnerApprovalService, task, workingDir, riskLevel);
@@ -424,23 +424,50 @@ function resolveEngine(metadata: Record<string, unknown> | undefined): PendingRu
   return 'host';
 }
 
-function deriveSandboxPolicy(command: string, workingDir: string): PendingSandboxPolicy {
+function deriveSandboxPolicy(
+  command: string,
+  workingDir: string,
+  input: Record<string, unknown> | undefined,
+): PendingSandboxPolicy {
   const semanticFsReadOnly = command === 'fs.read' || command === 'fs.list' || command === 'fs.search';
   const semanticFsWrite = command === 'fs.write' || command === 'fs.patch';
   const shellExec = command === 'shell.exec';
   const enabled = semanticFsReadOnly || semanticFsWrite || shellExec || !isKnownSafeCommand(command);
+  const allowedReadPaths = semanticFsReadOnly
+    ? uniqueStrings([workingDir, ...extractAbsoluteFsInputPaths(input)])
+    : [workingDir];
 
   return {
     enabled,
     readOnly: semanticFsReadOnly,
     allowNetwork: false,
     allowedWorkingDirs: [workingDir],
-    allowedReadPaths: [workingDir],
+    allowedReadPaths,
     allowedWritePaths: semanticFsWrite ? [workingDir] : [],
     blockedCommandFragments: [' rm ', ' rmdir ', ' del ', ' format ', ' shutdown ', ' reboot '],
     allowedEnvKeys: [],
     deniedEnvKeys: ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY'],
   };
+}
+
+function extractAbsoluteFsInputPaths(input: Record<string, unknown> | undefined): string[] {
+  const candidate = input?.path;
+  if (typeof candidate !== 'string') {
+    return [];
+  }
+  const path = candidate.trim();
+  if (!isAbsolutePathLike(path)) {
+    return [];
+  }
+  return [path];
+}
+
+function isAbsolutePathLike(path: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/') || path.startsWith('\\\\');
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
 function classifyRiskLevel(command: string): 'low' | 'medium' | 'high' {

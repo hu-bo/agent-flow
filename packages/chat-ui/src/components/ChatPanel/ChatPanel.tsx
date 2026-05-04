@@ -2,6 +2,7 @@ import './ChatPanel.less';
 import type {
   ChatMessage,
   ChatOption,
+  ChatSuggestion,
   FileAttachment,
   ReasoningEffort,
   TokenUsageSummary,
@@ -28,6 +29,8 @@ export interface ChatPanelProps {
   onCompactContext?: () => void | Promise<void>;
   compactContextDisabled?: boolean;
   compactContextLabel?: string;
+  suggestions?: ChatSuggestion[];
+  onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
   theme?: 'light' | 'dark';
   registry?: ContentRendererRegistry;
   rendererContext?: ContentRendererContext;
@@ -53,6 +56,8 @@ export function ChatPanel({
   onCompactContext,
   compactContextDisabled,
   compactContextLabel,
+  suggestions,
+  onSuggestionSelect,
   theme = 'light',
   registry,
   rendererContext,
@@ -85,6 +90,8 @@ export function ChatPanel({
         compactContextDisabled={compactContextDisabled}
         compactContextLabel={compactContextLabel}
         onFileSelect={onFileSelect}
+        suggestions={suggestions}
+        onSuggestionSelect={onSuggestionSelect}
       />
     </div>
   );

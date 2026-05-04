@@ -199,7 +199,7 @@ func fsRead(req types.TaskRequest) (map[string]any, error) {
 		return nil, fmt.Errorf("fs.read only supports utf8 encoding")
 	}
 
-	absPath, err := resolveScopedPath(baseDir(req), path)
+	absPath, err := resolveReadScopedPath(req, path)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func fsWrite(req types.TaskRequest) (map[string]any, error) {
 		return nil, fmt.Errorf("fs.write only supports utf8 encoding")
 	}
 
-	absPath, err := resolveScopedPath(baseDir(req), path)
+	absPath, err := resolveWriteScopedPath(req, path)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func fsPatch(req types.TaskRequest) (map[string]any, error) {
 		return nil, fmt.Errorf("fs.patch requires non-empty search")
 	}
 
-	absPath, err := resolveScopedPath(baseDir(req), path)
+	absPath, err := resolveWriteScopedPath(req, path)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +302,7 @@ func fsList(req types.TaskRequest) (map[string]any, error) {
 		maxEntries = 200
 	}
 
-	absPath, err := resolveScopedPath(baseDir(req), path)
+	absPath, err := resolveReadScopedPath(req, path)
 	if err != nil {
 		return nil, err
 	}
@@ -393,7 +393,7 @@ func fsSearch(req types.TaskRequest) (map[string]any, error) {
 		maxMatches = 100
 	}
 
-	absPath, err := resolveScopedPath(baseDir(req), path)
+	absPath, err := resolveReadScopedPath(req, path)
 	if err != nil {
 		return nil, err
 	}
@@ -504,6 +504,42 @@ func resolveScopedPath(base, candidate string) (string, error) {
 		return "", fmt.Errorf("path %q is outside working directory", candidate)
 	}
 	return targetAbs, nil
+}
+
+func resolveReadScopedPath(req types.TaskRequest, candidate string) (string, error) {
+	if path, err := resolveScopedPath(baseDir(req), candidate); err == nil {
+		return path, nil
+	}
+
+	for _, root := range req.Sandbox.AllowedReadPaths {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		path, err := resolveScopedPath(root, candidate)
+		if err == nil {
+			return path, nil
+		}
+	}
+
+	return resolveScopedPath(baseDir(req), candidate)
+}
+
+func resolveWriteScopedPath(req types.TaskRequest, candidate string) (string, error) {
+	if len(req.Sandbox.AllowedWritePaths) == 0 {
+		return resolveScopedPath(baseDir(req), candidate)
+	}
+
+	for _, root := range req.Sandbox.AllowedWritePaths {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		path, err := resolveScopedPath(root, candidate)
+		if err == nil {
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("path %q is outside writable directories", candidate)
 }
 
 func coalescePath(primary string, args []string) string {

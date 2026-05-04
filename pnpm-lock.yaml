@@ -373,6 +373,9 @@ importers:
       '@agent-flow/core':
         specifier: workspace:*
         version: link:../core
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       typescript:
         specifier: ^5.8.3

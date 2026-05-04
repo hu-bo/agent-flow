@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { modelIdSchema, reasoningEffortSchema, sessionIdSchema } from './common.js';
 
+const shortMessageIdSchema = z.string().regex(/^[a-f0-9]{16}$/i, 'messageId must be 16 hex chars');
+const legacyUuidSchema = z.string().uuid();
+const messageIdSchema = z.union([shortMessageIdSchema, legacyUuidSchema]);
+
 export const fileAttachmentSchema = z.object({
   type: z.literal('file'),
   mimeType: z.string().min(1),
@@ -21,12 +25,12 @@ export const createChatBodySchema = z.object({
 });
 
 export const retryChatMessageBodySchema = z.object({
-  messageId: z.string().uuid(),
+  messageId: messageIdSchema,
   model: modelIdSchema.optional(),
   reasoningEffort: reasoningEffortSchema.optional(),
 });
 
 export const messageMutationParamsSchema = z.object({
   sessionId: sessionIdSchema,
-  messageId: z.string().uuid(),
+  messageId: messageIdSchema,
 });

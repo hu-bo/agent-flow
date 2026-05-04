@@ -1,43 +1,85 @@
 import {
   createAgent,
   type Runner,
+  ToolExecutor,
   ToolRegistry,
   type AgentEvent,
   type AgentRunRequest,
   type AgentRunResult,
   type AgentRuntime,
   type ContextFragmentInput,
+  type ToolDefinition,
+  type ToolExecutorLike,
+  type ToolRegistryLike,
 } from '@agent-flow/core';
-import type { UnifiedMessage } from '@agent-flow/core/messages';
+import type { TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
 import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import { type MemoryService, type RecalledMemory } from '@agent-flow/memory';
-import type { AdapterMessage, AdapterTokenUsage, MessagePart } from '@agent-flow/model-adapters/types';
+import type {
+  AdapterMessage,
+  AdapterTokenUsage,
+  FinishReason,
+  MessagePart,
+  ToolSpec,
+} from '@agent-flow/model-adapters/types';
 import { registerBuiltinTools } from '@agent-flow/tools-impl';
-import type { RuntimeChatInput, RuntimeGateway } from '../contracts/api.js';
+import type {
+  ApprovalRequiredPayload,
+  ChatStreamEvent,
+  ChatStreamMessageDeltaEvent,
+  RuntimeChatInput,
+  RuntimeGateway,
+} from '../contracts/api.js';
+import { extractApprovalRequiredFromError, parseApprovalRequiredErrorMessage } from '../lib/approval.js';
 import { AsyncQueue } from '../lib/async-queue.js';
 import { createTextMessage, createUnifiedMessage, summarizeMessages } from '../lib/messages.js';
 import type { ModelAdapterService } from './model-adapter-service.js';
+import { registerRunnerBackedTools } from './runner-backed-tools.js';
+import type { RunnerDispatchService } from './runner-dispatch-service.js';
 
 export interface CreateCoreAgentRuntimeOptions {
   cwd?: string;
   runners?: Runner[];
+  runnerDispatchService?: RunnerDispatchService;
 }
 
-export function createCoreAgentRuntime(options: CreateCoreAgentRuntimeOptions = {}): AgentRuntime {
+export interface CoreAgentRuntimeBundle {
+  runtime: AgentRuntime;
+  toolRegistry: ToolRegistry;
+  toolExecutor: ToolExecutor;
+}
+
+export function createCoreAgentRuntimeBundle(options: CreateCoreAgentRuntimeOptions = {}): CoreAgentRuntimeBundle {
   const toolRegistry = new ToolRegistry();
   registerBuiltinTools(toolRegistry, {
     cwd: options.cwd ?? process.cwd(),
   });
-  return createAgent({
+  if (options.runnerDispatchService) {
+    registerRunnerBackedTools(toolRegistry, options.runnerDispatchService);
+  }
+  const toolExecutor = new ToolExecutor(toolRegistry);
+  const runtime = createAgent({
     toolRegistry,
+    toolExecutor,
     runners: options.runners,
   });
+  return {
+    runtime,
+    toolRegistry,
+    toolExecutor,
+  };
+}
+
+export function createCoreAgentRuntime(options: CreateCoreAgentRuntimeOptions = {}): AgentRuntime {
+  return createCoreAgentRuntimeBundle(options).runtime;
 }
 
 export interface CoreRuntimeGatewayOptions {
   runtime: AgentRuntime;
   memoryService: MemoryService;
   modelAdapterService?: ModelAdapterService;
+  toolRegistry?: ToolRegistryLike;
+  toolExecutor?: ToolExecutorLike;
   logger?: StructuredLogger;
   tracer?: Tracer;
 }
@@ -46,6 +88,8 @@ export class CoreRuntimeGateway implements RuntimeGateway {
   private readonly runtime: AgentRuntime;
   private readonly memoryService: MemoryService;
   private readonly modelAdapterService?: ModelAdapterService;
+  private readonly toolRegistry?: ToolRegistryLike;
+  private readonly toolExecutor?: ToolExecutorLike;
   private readonly logger?: StructuredLogger;
   private readonly tracer?: Tracer;
 
@@ -53,6 +97,8 @@ export class CoreRuntimeGateway implements RuntimeGateway {
     this.runtime = options.runtime;
     this.memoryService = options.memoryService;
     this.modelAdapterService = options.modelAdapterService;
+    this.toolRegistry = options.toolRegistry;
+    this.toolExecutor = options.toolExecutor;
     this.logger = options.logger;
     this.tracer = options.tracer;
   }
@@ -61,7 +107,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
     return this.runtime;
   }
 
-  async *streamChat(input: RuntimeChatInput): AsyncGenerator<UnifiedMessage> {
+  async *streamChat(input: RuntimeChatInput): AsyncGenerator<ChatStreamEvent> {
     const span = this.tracer
       ? await this.tracer.startSpan('chat.turn', {
           attributes: {
@@ -73,7 +119,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         })
       : undefined;
 
-    const queue = new AsyncQueue<UnifiedMessage>();
+    const queue = new AsyncQueue<ChatStreamEvent>();
     const parentUuid = input.history.at(-1)?.uuid ?? null;
 
     void (async () => {
@@ -85,15 +131,24 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         });
         const recalled = recalledRaw.filter((memory) => !isRuntimeDiagnosticText(memory.text));
         const runnerDirective = parseRunnerDirective(input.message);
-        const shouldTrySemanticRuntime = shouldAttemptSemanticRuntime(input.message);
 
-        if (!runnerDirective && !shouldTrySemanticRuntime) {
-          const response = await this.generateModelResponse(input, recalled, parentUuid);
-          queue.push(response);
-          await span?.end({
-            status: 'succeeded',
-            mode: 'model-generation',
+        if (!runnerDirective) {
+          const finalResponse = await this.streamModelResponse(input, recalled, parentUuid, (event) => {
+            queue.push(event);
           });
+          if (!finalResponse) {
+            const response = await this.generateModelResponse(input, recalled, parentUuid);
+            queue.push(toMessageEvent(response));
+            await span?.end({
+              status: 'succeeded',
+              mode: 'model-generation',
+            });
+          } else {
+            await span?.end({
+              status: 'succeeded',
+              mode: 'model-stream',
+            });
+          }
           return;
         }
 
@@ -105,10 +160,20 @@ export class CoreRuntimeGateway implements RuntimeGateway {
             eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
             const progressMessage = toProgressMessage(input, parentUuid, event);
             if (progressMessage) {
-              queue.push(progressMessage);
+              queue.push(toMessageEvent(progressMessage));
             }
           },
         });
+        const approvalFromResult = extractApprovalFromAgentRunResult(result);
+        if (approvalFromResult) {
+          queue.push(toApprovalRequiredEvent(approvalFromResult));
+          await span?.end({
+            status: 'succeeded',
+            mode: 'approval-required',
+            eventCount: result.events.length,
+          });
+          return;
+        }
 
         const responseText = renderAssistantText({
           input,
@@ -120,7 +185,7 @@ export class CoreRuntimeGateway implements RuntimeGateway {
 
         if (!responseText) {
           const fallbackResponse = await this.generateModelResponse(input, recalled, parentUuid);
-          queue.push(fallbackResponse);
+          queue.push(toMessageEvent(fallbackResponse));
           await span?.end({
             status: 'succeeded',
             mode: 'model-fallback',
@@ -140,22 +205,24 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         });
 
         queue.push(
-          createTextMessage('assistant', responseText, {
-            parentUuid,
-            metadata: {
-              modelId: String(input.modelId),
-              provider: 'core-runtime',
-              extensions: {
-                requestId: input.requestId,
-                modelId: input.modelId,
-                model: input.model,
-                taskId: result.taskId,
-                coreSessionId: result.sessionId,
-                status: result.status,
-                eventCount: result.events.length,
+          toMessageEvent(
+            createTextMessage('assistant', responseText, {
+              parentUuid,
+              metadata: {
+                modelId: String(input.modelId),
+                provider: 'core-runtime',
+                extensions: {
+                  requestId: input.requestId,
+                  modelId: input.modelId,
+                  model: input.model,
+                  taskId: result.taskId,
+                  coreSessionId: result.sessionId,
+                  status: result.status,
+                  eventCount: result.events.length,
+                },
               },
-            },
-          }),
+            }),
+          ),
         );
 
         await span?.end({
@@ -163,6 +230,16 @@ export class CoreRuntimeGateway implements RuntimeGateway {
           eventCount: result.events.length,
         });
       } catch (error) {
+        const approval = extractApprovalFromUnknown(error);
+        if (approval) {
+          queue.push(toApprovalRequiredEvent(approval));
+          await span?.end({
+            status: 'succeeded',
+            mode: 'approval-required',
+          });
+          return;
+        }
+
         const message = error instanceof Error ? error.message : String(error);
         this.logger?.error('chat.turn.failed', 'core runtime turn failed', {
           attributes: {
@@ -176,27 +253,29 @@ export class CoreRuntimeGateway implements RuntimeGateway {
         await span?.fail(error);
 
         queue.push(
-          createTextMessage('assistant', `Core runtime execution failed:\n${message}`, {
-            parentUuid,
-            metadata: {
-              modelId: String(input.modelId),
-              provider: 'core-runtime',
-              extensions: {
-                requestId: input.requestId,
-                modelId: input.modelId,
-                model: input.model,
-                error: message,
+          toMessageEvent(
+            createTextMessage('assistant', `Core runtime execution failed:\n${message}`, {
+              parentUuid,
+              metadata: {
+                modelId: String(input.modelId),
+                provider: 'core-runtime',
+                extensions: {
+                  requestId: input.requestId,
+                  modelId: input.modelId,
+                  model: input.model,
+                  error: message,
+                },
               },
-            },
-          }),
+            }),
+          ),
         );
       } finally {
         queue.close();
       }
     })();
 
-    for await (const message of queue) {
-      yield message;
+    for await (const event of queue) {
+      yield event;
     }
   }
 
@@ -259,12 +338,284 @@ export class CoreRuntimeGateway implements RuntimeGateway {
       },
     });
   }
+
+
+  private async streamModelResponse(
+    input: RuntimeChatInput,
+    recalled: RecalledMemory[],
+    parentUuid: string | null,
+    onEvent: (event: ChatStreamEvent) => void,
+  ): Promise<UnifiedMessage | null> {
+    if (!this.modelAdapterService) {
+      throw new Error('Model adapter service is not configured for chat generation.');
+    }
+
+    const adapter = await this.modelAdapterService.createAdapter(input.modelId);
+    const messages = toAdapterMessages(input.history);
+    const tools = this.getModelToolSpecs();
+    const message = createTextMessage('assistant', '', {
+      parentUuid,
+      metadata: {
+        modelId: String(input.modelId),
+        provider: adapter.provider,
+        extensions: {
+          modelId: input.modelId,
+          model: input.model,
+          requestId: input.requestId,
+          streamState: 'streaming',
+        },
+      },
+    });
+
+    let responseText = '';
+    let finishReason: FinishReason = 'stop';
+    let usage: AdapterTokenUsage | undefined;
+    let hasStreamed = false;
+    let streamCompleted = false;
+    let finalMessage = message;
+
+    try {
+      for (let round = 0; round < MAX_MODEL_TOOL_ROUNDS; round += 1) {
+        responseText = '';
+        const toolCalls: ModelToolCall[] = [];
+        const assistantParts: MessagePart[] = [];
+        const currentMessage = round === 0 ? message : createTextMessage('assistant', '', {
+          parentUuid,
+          metadata: {
+            modelId: String(input.modelId),
+            provider: adapter.provider,
+            extensions: {
+              modelId: input.modelId,
+              model: input.model,
+              requestId: input.requestId,
+              streamState: 'streaming',
+              toolRound: round,
+            },
+          },
+        });
+        finalMessage = currentMessage;
+
+        for await (const event of adapter.stream({
+          model: input.model,
+          messages,
+          systemPrompt: buildSystemPrompt(input, recalled),
+          tools,
+          toolChoice: tools.length > 0 ? 'auto' : 'none',
+          config: {
+            maxOutputTokens: resolveMaxOutputTokens(input.reasoningEffort),
+            temperature: 0.7,
+          },
+          metadata: {
+            requestId: input.requestId,
+            sessionId: input.session.sessionId,
+            userId: input.userId,
+            modelId: input.modelId,
+            model: input.model,
+          },
+        })) {
+          if (event.type === 'text-delta') {
+            if (event.delta.length === 0) {
+              continue;
+            }
+            responseText += event.delta;
+            hasStreamed = true;
+            currentMessage.timestamp = new Date().toISOString();
+            currentMessage.metadata = {
+              ...currentMessage.metadata,
+              extensions: {
+                ...(currentMessage.metadata.extensions ?? {}),
+                streamState: 'streaming',
+                finishReason,
+              },
+            };
+            onEvent(
+              toMessageDeltaEvent(currentMessage, event.delta),
+            );
+          } else if (event.type === 'tool-call-end') {
+            toolCalls.push({
+              callId: event.callId,
+              toolName: event.toolName,
+              args: event.args,
+            });
+          } else if (event.type === 'finish') {
+            finishReason = event.finishReason;
+            usage = event.usage;
+          } else if (event.type === 'error') {
+            throw new Error(event.message);
+          }
+        }
+
+        if (responseText.trim().length > 0) {
+          assistantParts.push({ type: 'text', text: responseText });
+        }
+
+        for (const toolCall of toolCalls) {
+          assistantParts.push({
+            type: 'tool-call',
+            callId: toolCall.callId,
+            toolName: toolCall.toolName,
+            args: toolCall.args,
+          });
+        }
+
+        if (assistantParts.length > 0) {
+          messages.push(createAdapterAssistantMessage(assistantParts, messages.at(-1)?.id ?? null));
+        }
+
+        if (toolCalls.length === 0) {
+          streamCompleted = true;
+          break;
+        }
+
+        const toolResultParts = await Promise.all(
+          toolCalls.map((toolCall, index) => this.executeModelToolCall(input, toolCall, index)),
+        );
+        messages.push(createAdapterToolMessage(toolResultParts, messages.at(-1)?.id ?? null));
+        hasStreamed = true;
+      }
+    } catch (error) {
+      if (error instanceof ApprovalRequiredError) {
+        throw error;
+      }
+      if (!hasStreamed) {
+        return null;
+      }
+      throw error;
+    }
+
+    if (!streamCompleted) {
+      return null;
+    }
+
+    if (responseText.trim().length === 0) {
+      responseText = 'The model returned no text for this turn.';
+    }
+    finalMessage.content = [{ type: 'text', text: responseText }];
+    finalMessage.timestamp = new Date().toISOString();
+    finalMessage.metadata = {
+      ...finalMessage.metadata,
+      ...(usage ? { tokenUsage: toUnifiedTokenUsage(usage) } : {}),
+      extensions: {
+        ...(finalMessage.metadata.extensions ?? {}),
+        streamState: 'done',
+        finishReason,
+      },
+    };
+    onEvent(toMessageEvent({ ...finalMessage, content: [...finalMessage.content], metadata: { ...finalMessage.metadata } }));
+
+    this.logger?.info('chat.turn.completed', 'model chat stream completed', {
+      attributes: {
+        sessionId: input.session.sessionId,
+        modelId: input.modelId,
+        model: input.model,
+        provider: adapter.provider,
+        finishReason,
+      },
+    });
+
+    return finalMessage;
+  }
+
+  private getModelToolSpecs(): ToolSpec[] {
+    if (!this.toolRegistry) {
+      return [];
+    }
+
+    return this.toolRegistry
+      .list()
+      .filter(isModelVisibleTool)
+      .map((tool) => ({
+        name: MODEL_TOOL_NAME_BY_INTERNAL.get(tool.schema.name) ?? tool.schema.name,
+        description: tool.schema.description,
+        inputSchema: toModelToolSchema(tool.schema.input),
+      }));
+  }
+
+  private async executeModelToolCall(
+    input: RuntimeChatInput,
+    toolCall: ModelToolCall,
+    index: number,
+  ): Promise<Extract<MessagePart, { type: 'tool-result' }>> {
+    const internalToolName = INTERNAL_TOOL_NAME_BY_MODEL.get(toolCall.toolName) ?? toolCall.toolName;
+    if (!this.toolExecutor) {
+      return {
+        type: 'tool-result',
+        callId: toolCall.callId,
+        toolName: toolCall.toolName,
+        result: { error: 'Tool executor is not configured.' },
+        isError: true,
+      };
+    }
+
+    const result = await this.toolExecutor.execute(
+      {
+        name: internalToolName,
+        input: isPlainObject(toolCall.args) ? toolCall.args : {},
+      },
+      {
+        taskId: input.requestId,
+        sessionId: input.session.sessionId,
+        stepId: `model_tool_${index + 1}`,
+        metadata: buildToolContextMetadata(input),
+      },
+      {
+        retries: 0,
+      },
+    );
+    if (!result.ok) {
+      const approval = parseApprovalRequiredErrorMessage(result.error ?? '');
+      if (approval) {
+        throw new ApprovalRequiredError(approval);
+      }
+    }
+
+    return {
+      type: 'tool-result',
+      callId: toolCall.callId,
+      toolName: toolCall.toolName,
+      result: result.ok ? result.output : { error: result.error ?? 'Tool execution failed.' },
+      isError: !result.ok,
+    };
+  }
 }
 
 interface RunnerDirective {
   command: string;
   args: string[];
 }
+
+interface ModelToolCall {
+  callId: string;
+  toolName: string;
+  args: unknown;
+}
+
+class ApprovalRequiredError extends Error {
+  readonly approval: ApprovalRequiredPayload;
+
+  constructor(approval: ApprovalRequiredPayload) {
+    super(
+      `Approval required before running high-risk command "${approval.command}" in "${approval.workingDir}".`,
+    );
+    this.name = 'ApprovalRequiredError';
+    this.approval = approval;
+  }
+}
+
+const MODEL_TOOL_NAME_BY_INTERNAL = new Map<string, string>([
+  ['fs.read', 'fs_read'],
+  ['fs.write', 'fs_write'],
+  ['fs.patch', 'fs_patch'],
+  ['fs.list', 'fs_list'],
+  ['fs.search', 'fs_search'],
+  ['shell.exec', 'shell_exec'],
+]);
+
+const INTERNAL_TOOL_NAME_BY_MODEL = new Map(
+  [...MODEL_TOOL_NAME_BY_INTERNAL.entries()].map(([internal, model]) => [model, internal]),
+);
+
+const MAX_MODEL_TOOL_ROUNDS = 4;
 
 function buildAgentRequest(
   input: RuntimeChatInput,
@@ -344,6 +695,61 @@ function buildAgentRequest(
       reasoningEffort: input.reasoningEffort ?? 'medium',
       attachmentCount: input.attachments.length,
     },
+  };
+}
+
+function buildToolContextMetadata(input: RuntimeChatInput): Record<string, unknown> {
+  return {
+    modelId: input.modelId,
+    model: input.model,
+    requestId: input.requestId,
+    userId: input.userId,
+    sessionId: input.session.sessionId,
+    sessionCwd: input.session.cwd,
+    cwd: input.session.cwd,
+    userMessage: input.message,
+    preferredRunnerId: input.preferredRunnerId,
+    approveRiskyOps: Boolean(input.approveRiskyOps),
+    approvalTicket:
+      typeof input.approvalTicket === 'string' && input.approvalTicket.trim().length > 0
+        ? input.approvalTicket.trim()
+        : undefined,
+    reasoningEffort: input.reasoningEffort ?? 'medium',
+    attachmentCount: input.attachments.length,
+  };
+}
+
+function isModelVisibleTool(tool: ToolDefinition): boolean {
+  return MODEL_TOOL_NAME_BY_INTERNAL.has(tool.schema.name);
+}
+
+function toModelToolSchema(schema: ToolDefinition['schema']['input']): ToolSpec['inputSchema'] {
+  return {
+    ...schema,
+    additionalProperties: false,
+  };
+}
+
+function createAdapterAssistantMessage(parts: MessagePart[], parentId: string | null): AdapterMessage {
+  return {
+    id: `assistant_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    parentId,
+    role: 'assistant',
+    parts,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function createAdapterToolMessage(
+  parts: Extract<MessagePart, { type: 'tool-result' }>[],
+  parentId: string | null,
+): AdapterMessage {
+  return {
+    id: `tool_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    parentId,
+    role: 'tool',
+    parts,
+    createdAt: new Date().toISOString(),
   };
 }
 
@@ -580,49 +986,6 @@ function tokenizeCommandLine(commandLine: string): string[] {
     });
 }
 
-function shouldAttemptSemanticRuntime(message: string): boolean {
-  const trimmed = message.trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  if (isCapabilityQuestion(trimmed)) {
-    return false;
-  }
-
-  if (/(list|ls|dir|tree|read|open|cat|show|search|find|grep)/i.test(trimmed)) {
-    return true;
-  }
-
-  const zhKeywords = [
-    '\u67e5\u770b',
-    '\u770b\u770b',
-    '\u770b\u4e0b',
-    '\u8bfb\u53d6',
-    '\u6253\u5f00',
-    '\u5217\u51fa',
-    '\u76ee\u5f55',
-    '\u6587\u4ef6',
-    '\u641c\u7d22',
-    '\u67e5\u627e',
-    '\u684c\u9762',
-  ];
-  return zhKeywords.some((keyword) => trimmed.includes(keyword));
-}
-
-function isCapabilityQuestion(message: string): boolean {
-  const lowered = message.toLowerCase();
-  const zhCapability = /你能|可以|能否|是否/.test(message);
-  const zhQuestionEnding = /吗[？?]?$/.test(message);
-  if (zhCapability && zhQuestionEnding) {
-    return true;
-  }
-
-  const enCapability = /(can you|could you|are you able to|do you support)/i.test(lowered);
-  const hasQuestionMark = /[?？]$/.test(message);
-  return enCapability && hasQuestionMark;
-}
-
 function buildSystemPrompt(input: RuntimeChatInput, recalled: RecalledMemory[]): string {
   const lines = [
     input.session.systemPrompt?.trim() ||
@@ -749,13 +1112,66 @@ function resolveMaxOutputTokens(reasoningEffort: RuntimeChatInput['reasoningEffo
   return 2048;
 }
 
-function toUnifiedTokenUsage(usage: AdapterTokenUsage) {
+function toUnifiedTokenUsage(usage: AdapterTokenUsage): TokenUsage {
   return {
     promptTokens: usage.inputTokens,
     completionTokens: usage.outputTokens,
     totalTokens: usage.totalTokens,
     cacheReadTokens: usage.cacheReadTokens,
     cacheWriteTokens: usage.cacheWriteTokens,
+  };
+}
+
+function extractApprovalFromAgentRunResult(result: AgentRunResult): ApprovalRequiredPayload | null {
+  if (typeof result.error !== 'string') {
+    return null;
+  }
+  return parseApprovalRequiredErrorMessage(result.error);
+}
+
+function extractApprovalFromUnknown(error: unknown): ApprovalRequiredPayload | null {
+  if (error instanceof ApprovalRequiredError) {
+    return error.approval;
+  }
+  return extractApprovalRequiredFromError(error);
+}
+
+function toMessageEvent(message: UnifiedMessage): ChatStreamEvent {
+  return {
+    type: 'message',
+    message: {
+      ...message,
+      content: [...message.content],
+      metadata: cloneMessageMetadata(message.metadata),
+    },
+  };
+}
+
+function toApprovalRequiredEvent(approval: ApprovalRequiredPayload): ChatStreamEvent {
+  return {
+    type: 'approval_required',
+    approval,
+  };
+}
+
+function toMessageDeltaEvent(
+  message: UnifiedMessage,
+  delta: string,
+): ChatStreamMessageDeltaEvent {
+  return {
+    type: 'message_delta',
+    messageId: message.uuid,
+    delta,
+  };
+}
+
+function cloneMessageMetadata(metadata: UnifiedMessage['metadata']): UnifiedMessage['metadata'] {
+  return {
+    ...metadata,
+    extensions:
+      metadata.extensions && typeof metadata.extensions === 'object'
+        ? { ...metadata.extensions }
+        : metadata.extensions,
   };
 }
 

@@ -177,6 +177,37 @@
   cursor: not-allowed;
 }
 
+.chat-ui-suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chat-ui-suggestion-chip {
+  border: 1px solid var(--chat-border-subtle);
+  border-radius: 999px;
+  background: var(--chat-overlay-panel);
+  color: var(--chat-text-muted);
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0.34rem 0.62rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.chat-ui-suggestion-chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--chat-brand-500) 35%, white);
+  color: var(--chat-brand-600);
+  background: var(--chat-panel-hover);
+  transform: translateY(-1px);
+}
+
+.chat-ui-suggestion-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .chat-ui-send-btn {
   align-self: center;
   border: 1px solid color-mix(in srgb, var(--chat-brand-500) 52%, white);

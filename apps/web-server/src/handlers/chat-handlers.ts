@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { sendSuccess } from '../lib/response.js';
 import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
+import { AppError } from '../lib/errors.js';
 import {
   createChatBodySchema,
   messageMutationParamsSchema,
@@ -56,7 +57,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
       stream.done();
     } catch (error) {
       stream.send({
-        error: error instanceof Error ? error.message : 'Streaming failed',
+        error: toStreamErrorPayload(error),
       });
       stream.done();
     }
@@ -98,6 +99,32 @@ export async function retryChatMessageHandler(request: FastifyRequest, reply: Fa
     session: state.session,
     messages: state.messages,
   });
+}
+
+function toStreamErrorPayload(error: unknown): {
+  code: string;
+  message: string;
+  details?: unknown;
+} {
+  if (error instanceof AppError) {
+    return {
+      code: error.code,
+      message: error.message,
+      ...(error.details !== undefined ? { details: error.details } : {}),
+    };
+  }
+
+  if (error instanceof Error) {
+    return {
+      code: 'STREAM_FAILED',
+      message: error.message || 'Streaming failed',
+    };
+  }
+
+  return {
+    code: 'STREAM_FAILED',
+    message: 'Streaming failed',
+  };
 }
 
 export async function deleteChatMessageHandler(request: FastifyRequest, reply: FastifyReply) {

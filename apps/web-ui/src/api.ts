@@ -324,7 +324,50 @@ interface StreamChatOptions {
   approvalTicket?: string;
   attachments?: FilePart[];
   signal?: AbortSignal;
-  onMessage: (message: UnifiedMessage) => void;
+  onEvent: (event: ChatStreamEvent) => void;
+}
+
+export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
+
+export interface ApprovalRequiredPayload {
+  sessionId: string;
+  command: string;
+  workingDir: string;
+  riskLevel: ApprovalRiskLevel;
+  reason?: string;
+}
+
+export type ChatStreamEvent =
+  | {
+      type: 'message';
+      message: UnifiedMessage;
+    }
+  | {
+      type: 'message_delta';
+      messageId: string;
+      delta: string;
+    }
+  | {
+      type: 'approval_required';
+      approval: ApprovalRequiredPayload;
+    };
+
+interface StreamChatErrorPayload {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+export class StreamChatError extends Error {
+  readonly code: string;
+  readonly details?: unknown;
+
+  constructor(payload: StreamChatErrorPayload) {
+    super(payload.message);
+    this.name = 'StreamChatError';
+    this.code = payload.code;
+    this.details = payload.details;
+  }
 }
 
 function consumeSseBuffer(buffer: string, onData: (data: string) => void): string {
@@ -360,7 +403,7 @@ export async function streamChat({
   approvalTicket,
   attachments,
   signal,
-  onMessage,
+  onEvent,
 }: StreamChatOptions): Promise<void> {
   const token = getAccessToken();
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -403,11 +446,13 @@ export async function streamChat({
       return;
     }
 
-    const parsed = JSON.parse(payload) as UnifiedMessage | { error: string };
+    const parsed = JSON.parse(payload) as
+      | ChatStreamEvent
+      | { error: string | { code?: unknown; message?: unknown; details?: unknown } };
     if ('error' in parsed) {
-      throw new Error(parsed.error);
+      throw new StreamChatError(normalizeStreamChatError(parsed.error));
     }
-    onMessage(parsed);
+    onEvent(parsed);
   };
 
   while (!done) {
@@ -419,6 +464,26 @@ export async function streamChat({
 
   buffer += decoder.decode();
   consumeSseBuffer(buffer, handleData);
+}
+
+function normalizeStreamChatError(
+  raw: string | { code?: unknown; message?: unknown; details?: unknown },
+): StreamChatErrorPayload {
+  if (typeof raw === 'string') {
+    return {
+      code: 'STREAM_FAILED',
+      message: raw || 'Streaming failed',
+    };
+  }
+
+  const code = typeof raw.code === 'string' && raw.code.trim().length > 0 ? raw.code : 'STREAM_FAILED';
+  const message =
+    typeof raw.message === 'string' && raw.message.trim().length > 0 ? raw.message : 'Streaming failed';
+  return {
+    code,
+    message,
+    ...(raw.details !== undefined ? { details: raw.details } : {}),
+  };
 }
 
 export async function retrySessionMessage(input: {

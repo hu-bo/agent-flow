@@ -38,17 +38,6 @@ function readErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function parseApprovalCommand(message: string): string {
-  const exact = message.match(/command\s+"([^"]+)"/i)?.[1];
-  if (exact && exact.trim()) {
-    return exact.trim();
-  }
-  if (/fs\.write/i.test(message)) return 'fs.write';
-  if (/fs\.patch/i.test(message)) return 'fs.patch';
-  if (/shell\.exec/i.test(message)) return 'shell.exec';
-  return 'shell.exec';
-}
-
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -134,6 +123,9 @@ export function ChatPage() {
   const {
     messages,
     sendMessage,
+    approvePendingRequest,
+    dismissPendingApproval,
+    pendingApproval,
     loadSessionMessages,
     refreshSessionMessages,
     isConnecting,
@@ -301,6 +293,56 @@ export function ChatPage() {
     };
   }, [activeSession, bindRunnerToSession, selectedRunnerId]);
 
+  useEffect(() => {
+    if (!pendingApproval) return;
+    let cancelled = false;
+
+    const requestApproval = async () => {
+      const { approval } = pendingApproval;
+      const confirmed = window.confirm(
+        [
+          'This action is high-risk and needs your confirmation.',
+          `Command: ${approval.command}`,
+          `Working directory: ${approval.workingDir}`,
+          'Approve this turn and continue execution?',
+        ].join('\n'),
+      );
+
+      if (!confirmed) {
+        if (!cancelled) {
+          dismissPendingApproval();
+          setNotice({
+            kind: 'success',
+            message: 'Risky operation was canceled.',
+          });
+        }
+        return;
+      }
+
+      try {
+        const ticket = await issueRunnerApprovalTicket({
+          sessionId: approval.sessionId,
+          command: approval.command,
+          workingDir: approval.workingDir,
+        });
+        await approvePendingRequest(ticket.approvalTicket);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          dismissPendingApproval();
+          setNotice({
+            kind: 'error',
+            message: readErrorMessage(error, 'Failed to run approved risky operation'),
+          });
+        }
+      }
+    };
+
+    void requestApproval();
+    return () => {
+      cancelled = true;
+    };
+  }, [approvePendingRequest, dismissPendingApproval, pendingApproval]);
+
   const handleFileSelect = useCallback(async (files: File[]): Promise<FileAttachment[]> => {
     const prepared = await Promise.all(
       files.map(async (file) => {
@@ -358,44 +400,9 @@ export function ChatPage() {
           attachments,
         });
       } catch (error: unknown) {
-        const message = readErrorMessage(error, 'Failed to send message');
-        const needApproval =
-          /approval required/i.test(message) || /approveRiskyOps/i.test(message) || /APPROVAL_REQUIRED/i.test(message);
-        if (needApproval) {
-          const confirmed = window.confirm(
-            'This action is high-risk (write/patch/shell). Approve this turn and continue execution?',
-          );
-          if (confirmed) {
-            try {
-              const approvalCommand = parseApprovalCommand(message);
-              if (!targetSessionId) {
-                throw new Error('Session missing for approval flow');
-              }
-              const ticket = await issueRunnerApprovalTicket({
-                sessionId: targetSessionId,
-                command: approvalCommand,
-              });
-              await sendMessage({
-                text,
-                sessionId: targetSessionId,
-                model: selectedModelId ?? undefined,
-                reasoningEffort,
-                approvalTicket: ticket.approvalTicket,
-                attachments,
-              });
-              return;
-            } catch (retryError: unknown) {
-              setNotice({
-                kind: 'error',
-                message: readErrorMessage(retryError, 'Failed to run approved risky operation'),
-              });
-              return;
-            }
-          }
-        }
         setNotice({
           kind: 'error',
-          message,
+          message: readErrorMessage(error, 'Failed to send message'),
         });
       }
     },

@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
 import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/core/messages';
-import { fetchSession, streamChat } from '../api.js';
+import {
+  fetchSession,
+  streamChat,
+  type ApprovalRequiredPayload,
+  type ChatStreamEvent,
+} from '../api.js';
 
 interface SendMessageInput {
   text: string;
@@ -11,16 +16,37 @@ interface SendMessageInput {
   approveRiskyOps?: boolean;
   approvalTicket?: string;
   attachments?: FileAttachment[];
+  optimisticUserMessage?: boolean;
+}
+
+export interface PendingApprovalRequest {
+  approval: ApprovalRequiredPayload;
+  pendingInput: Omit<SendMessageInput, 'approvalTicket' | 'approveRiskyOps' | 'optimisticUserMessage'>;
 }
 
 interface UseChatReturn {
   messages: UnifiedMessage[];
   sendMessage: (input: SendMessageInput) => Promise<void>;
+  approvePendingRequest: (approvalTicket: string) => Promise<void>;
+  dismissPendingApproval: () => void;
+  pendingApproval: PendingApprovalRequest | null;
   loadSessionMessages: (sessionId: string | null) => Promise<void>;
   refreshSessionMessages: (sessionId: string | null) => Promise<void>;
   isConnecting: boolean;
   isStreaming: boolean;
   typingMessageId: string | null;
+}
+
+function createMessageId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(8);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  }
+  return Math.random().toString(16).slice(2, 18).padEnd(16, '0');
 }
 
 function attachmentToFilePart(attachment: FileAttachment): FilePart | null {
@@ -43,19 +69,72 @@ function createUserContent(text: string, attachments?: FileAttachment[]): Conten
   return fileParts.length ? [...content, ...fileParts] : content;
 }
 
+function upsertMessage(messages: UnifiedMessage[], message: UnifiedMessage): UnifiedMessage[] {
+  const index = messages.findIndex((candidate) => candidate.uuid === message.uuid);
+  if (index < 0) {
+    return [...messages, message];
+  }
+  const next = [...messages];
+  next[index] = message;
+  return next;
+}
+
+function upsertMessageDelta(
+  messages: UnifiedMessage[],
+  deltaEvent: Extract<ChatStreamEvent, { type: 'message_delta' }>,
+): UnifiedMessage[] {
+  const index = messages.findIndex((candidate) => candidate.uuid === deltaEvent.messageId);
+  if (index < 0) {
+    return [
+      ...messages,
+      {
+        uuid: deltaEvent.messageId,
+        parentUuid: null,
+        role: 'assistant',
+        content: [{ type: 'text', text: deltaEvent.delta }],
+        timestamp: new Date().toISOString(),
+        metadata: {},
+      },
+    ];
+  }
+
+  const target = messages[index];
+  const currentText = target.content
+    .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
+    .map((part) => part.text)
+    .join('');
+
+  const next: UnifiedMessage = {
+    ...target,
+    role: 'assistant',
+    timestamp: new Date().toISOString(),
+    content: [{ type: 'text', text: `${currentText}${deltaEvent.delta}` }],
+  };
+  const cloned = [...messages];
+  cloned[index] = next;
+  return cloned;
+}
+
 export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
+  const [pendingApproval, setPendingApproval] = useState<PendingApprovalRequest | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
   const streamAbortRef = useRef<AbortController | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const loadSequenceRef = useRef(0);
+  const pendingApprovalRef = useRef<PendingApprovalRequest | null>(null);
 
   useEffect(() => {
     return () => {
       streamAbortRef.current?.abort();
     };
+  }, []);
+
+  const commitPendingApproval = useCallback((value: PendingApprovalRequest | null) => {
+    pendingApprovalRef.current = value;
+    setPendingApproval(value);
   }, []);
 
   const loadSessionMessages = useCallback(async (sessionId: string | null) => {
@@ -71,6 +150,7 @@ export function useChat(): UseChatReturn {
       setMessages([]);
       setTypingMessageId(null);
       setIsConnecting(false);
+      commitPendingApproval(null);
       return;
     }
 
@@ -95,6 +175,7 @@ export function useChat(): UseChatReturn {
     if (!sessionId) {
       setMessages([]);
       setTypingMessageId(null);
+      commitPendingApproval(null);
       return;
     }
 
@@ -103,10 +184,21 @@ export function useChat(): UseChatReturn {
       setMessages(payload.messages);
       setTypingMessageId(null);
     }
-  }, []);
+  }, [commitPendingApproval]);
 
-  const sendMessage = useCallback(
-    async ({ text, sessionId, model, reasoningEffort, approveRiskyOps, approvalTicket, attachments }: SendMessageInput) => {
+  const streamTurn = useCallback(
+    async (
+      {
+        text,
+        sessionId,
+        model,
+        reasoningEffort,
+        approveRiskyOps,
+        approvalTicket,
+        attachments,
+        optimisticUserMessage = true,
+      }: SendMessageInput,
+    ) => {
       const userInput = text.trim();
       if (!userInput) return;
       if (streamAbortRef.current) {
@@ -115,7 +207,7 @@ export function useChat(): UseChatReturn {
 
       activeSessionRef.current = sessionId;
       const userMsg: UnifiedMessage = {
-        uuid: crypto.randomUUID(),
+        uuid: createMessageId(),
         parentUuid: null,
         role: 'user',
         content: createUserContent(userInput, attachments),
@@ -123,7 +215,10 @@ export function useChat(): UseChatReturn {
         metadata: model ? { modelId: String(model) } : {},
       };
 
-      setMessages((prev) => [...prev, userMsg]);
+      if (optimisticUserMessage) {
+        setMessages((prev) => [...prev, userMsg]);
+      }
+      commitPendingApproval(null);
       setTypingMessageId(null);
       setIsStreaming(true);
       setIsConnecting(false);
@@ -145,11 +240,34 @@ export function useChat(): UseChatReturn {
           approvalTicket,
           attachments: attachmentParts.length ? attachmentParts : undefined,
           signal: controller.signal,
-          onMessage: (msg) => {
+          onEvent: (event) => {
             if (activeSessionRef.current !== sessionId) return;
+
+            if (event.type === 'approval_required') {
+              commitPendingApproval({
+                approval: event.approval,
+                pendingInput: {
+                  text: userInput,
+                  sessionId,
+                  model,
+                  reasoningEffort,
+                  attachments,
+                },
+              });
+              setTypingMessageId(null);
+              return;
+            }
+
+            if (event.type === 'message_delta') {
+              setMessages((prev) => upsertMessageDelta(prev, event));
+              setTypingMessageId(event.messageId);
+              return;
+            }
+
+            const msg = event.message;
             // Server stream includes the user message; skip it to avoid duplicates.
             if (msg.role === 'user') return;
-            setMessages((prev) => [...prev, msg]);
+            setMessages((prev) => upsertMessage(prev, msg));
             if (msg.role === 'assistant' && !msg.metadata?.isMeta) {
               setTypingMessageId(msg.uuid);
             }
@@ -162,12 +280,45 @@ export function useChat(): UseChatReturn {
         setIsStreaming(false);
       }
     },
-    [],
+    [commitPendingApproval],
   );
+
+  const sendMessage = useCallback(
+    async (input: SendMessageInput) => {
+      await streamTurn({
+        ...input,
+        optimisticUserMessage: input.optimisticUserMessage ?? true,
+      });
+    },
+    [streamTurn],
+  );
+
+  const approvePendingRequest = useCallback(
+    async (approvalTicket: string) => {
+      const pending = pendingApprovalRef.current;
+      if (!pending) {
+        throw new Error('No pending approval request');
+      }
+      commitPendingApproval(null);
+      await streamTurn({
+        ...pending.pendingInput,
+        approvalTicket,
+        optimisticUserMessage: false,
+      });
+    },
+    [commitPendingApproval, streamTurn],
+  );
+
+  const dismissPendingApproval = useCallback(() => {
+    commitPendingApproval(null);
+  }, [commitPendingApproval]);
 
   return {
     messages,
     sendMessage,
+    approvePendingRequest,
+    dismissPendingApproval,
+    pendingApproval,
     loadSessionMessages,
     refreshSessionMessages,
     isConnecting,

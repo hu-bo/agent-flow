@@ -115,3 +115,26 @@ pnpm --filter @agent-flow/chat-ui build
 # ç±»å‹æ£€æŸ¥
 pnpm --filter @agent-flow/chat-ui typecheck
 ```
+
+## Suggestion ¿ì½İÖ¸Áî
+
+`ChatPanel` / `InputArea` ĞÂÔö `suggestions` Óë `onSuggestionSelect`£¬¿ÉÓÃÓÚ³£ÓÃ prompt ¿ì½İ°´Å¥¡£
+
+```tsx
+import { ChatPanel, type ChatSuggestion } from '@agent-flow/chat-ui';
+
+const suggestions: ChatSuggestion[] = [
+  { label: '/plan', prompt: 'ÇëÏÈ¸ø³öÖ´ĞĞ¼Æ»®', behavior: 'send' },
+  { label: '/summary', prompt: 'Çë×Ü½áµ±Ç°»á»°Òªµã', behavior: 'fill' },
+];
+
+<ChatPanel
+  messages={messages}
+  onSend={handleSend}
+  suggestions={suggestions}
+  onSuggestionSelect={(item) => console.log('selected', item)}
+/>;
+```
+
+- `behavior: 'send'`£ºµã»÷ºóÖ±½Ó·¢ËÍ¸Ã¿ì½İÖ¸Áî¡£
+- `behavior: 'fill'`£ºµã»÷ºóÖ»Ìî³äÊäÈë¿ò£¬ÓÃ»§¿É¼ÌĞø±à¼­ºó·¢ËÍ¡£

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type {
   ContentPart,
   FilePart,
@@ -21,13 +21,18 @@ export function createUnifiedMessage({
   metadata = {},
 }: CreateMessageOptions): UnifiedMessage {
   return {
-    uuid: randomUUID(),
+    uuid: createMessageId(),
     parentUuid,
     role,
     content,
     timestamp: new Date().toISOString(),
     metadata,
   };
+}
+
+function createMessageId(): string {
+  // 64-bit random id encoded as 16 lowercase hex chars.
+  return randomBytes(8).toString('hex');
 }
 
 export function createTextMessage(

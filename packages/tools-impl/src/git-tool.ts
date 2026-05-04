@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import type { ToolDefinition, ToolSchema } from '@agent-flow/core';
+import { z } from 'zod';
 
 export interface GitToolOptions {
   cwd?: string;
@@ -16,6 +17,13 @@ export interface GitExecOutput {
   stderr: string;
   exitCode: number;
 }
+
+const gitExecInputSchema = z.object({
+  args: z.array(z.string()).min(1),
+  timeoutMs: z.number().int().positive().max(120_000).optional()
+});
+
+type ParsedGitExecInput = z.infer<typeof gitExecInputSchema>;
 
 export class GitTool implements ToolDefinition<GitExecInput, GitExecOutput> {
   readonly schema: ToolSchema = {
@@ -60,11 +68,8 @@ export class GitTool implements ToolDefinition<GitExecInput, GitExecOutput> {
   }
 
   async execute(input: GitExecInput): Promise<GitExecOutput> {
-    if (!Array.isArray(input.args) || input.args.length === 0) {
-      throw new Error('Invalid input: "args" must be a non-empty string array.');
-    }
-
-    const args = input.args.map((value) => String(value));
+    const parsed = parseGitExecInput(input);
+    const args = parsed.args;
     const subcommand = args[0]?.trim().toLowerCase();
     if (!subcommand) {
       throw new Error('Git subcommand is missing.');
@@ -75,9 +80,17 @@ export class GitTool implements ToolDefinition<GitExecInput, GitExecOutput> {
 
     return runGit(args, {
       cwd: this.cwd,
-      timeoutMs: input.timeoutMs ?? 20_000
+      timeoutMs: parsed.timeoutMs ?? 20_000
     });
   }
+}
+
+function parseGitExecInput(input: unknown): ParsedGitExecInput {
+  const result = gitExecInputSchema.safeParse(input);
+  if (!result.success) {
+    throw new Error(`Invalid git.exec input: ${result.error.message}`);
+  }
+  return result.data;
 }
 
 interface RunGitOptions {

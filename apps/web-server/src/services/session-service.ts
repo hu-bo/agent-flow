@@ -86,6 +86,20 @@ export class SessionService {
     return message;
   }
 
+  upsertMessage(sessionId: string, message: UnifiedMessage) {
+    const state = this.getSessionState(sessionId);
+    const index = state.messages.findIndex((candidate) => candidate.uuid === message.uuid);
+    if (index >= 0) {
+      state.messages[index] = message;
+    } else {
+      state.messages.push(message);
+    }
+    state.session.messageCount = state.messages.length;
+    state.session.updatedAt = message.timestamp;
+    state.session.latestCheckpointId = message.uuid;
+    return message;
+  }
+
   replaceMessages(sessionId: string, messages: UnifiedMessage[]) {
     const state = this.getSessionState(sessionId);
     state.messages = [...messages];

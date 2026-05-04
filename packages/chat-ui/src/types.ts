@@ -88,6 +88,14 @@ export interface FileAttachment {
 
 export type ReasoningEffort = 'low' | 'medium' | 'high';
 
+export interface ChatSuggestion {
+  id?: string;
+  label: string;
+  prompt: string;
+  description?: string;
+  behavior?: 'fill' | 'send';
+}
+
 export interface ChatOption {
   value: string;
   label: string;

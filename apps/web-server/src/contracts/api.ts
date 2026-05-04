@@ -85,8 +85,39 @@ export interface RuntimeChatInput {
   approvalTicket?: string;
 }
 
+export interface ChatStreamMessageEvent {
+  type: 'message';
+  message: UnifiedMessage;
+}
+
+export interface ChatStreamMessageDeltaEvent {
+  type: 'message_delta';
+  messageId: string;
+  delta: string;
+}
+
+export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
+
+export interface ApprovalRequiredPayload {
+  sessionId: string;
+  command: string;
+  workingDir: string;
+  riskLevel: ApprovalRiskLevel;
+  reason?: string;
+}
+
+export interface ChatStreamApprovalRequiredEvent {
+  type: 'approval_required';
+  approval: ApprovalRequiredPayload;
+}
+
+export type ChatStreamEvent =
+  | ChatStreamMessageEvent
+  | ChatStreamMessageDeltaEvent
+  | ChatStreamApprovalRequiredEvent;
+
 export interface RuntimeGateway {
-  streamChat(input: RuntimeChatInput): AsyncGenerator<UnifiedMessage>;
+  streamChat(input: RuntimeChatInput): AsyncGenerator<ChatStreamEvent>;
 }
 
 export interface RequestContext {
