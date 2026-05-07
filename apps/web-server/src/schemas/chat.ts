@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { modelIdSchema, reasoningEffortSchema, sessionIdSchema } from './common.js';
 
-const shortMessageIdSchema = z.string().regex(/^[a-f0-9]{16}$/i, 'messageId must be 16 hex chars');
+const shortMessageIdSchema = z.string().regex(/^[a-f0-9]{16}$/i, 'msg_id must be 16 hex chars');
 const legacyUuidSchema = z.string().uuid();
 const messageIdSchema = z.union([shortMessageIdSchema, legacyUuidSchema]);
 
@@ -12,25 +12,25 @@ export const fileAttachmentSchema = z.object({
 });
 
 export const createChatBodySchema = z.object({
-  sessionId: sessionIdSchema.optional(),
+  session_id: sessionIdSchema.optional(),
   message: z.string().trim().min(1),
-  profileId: z.string().trim().min(1).max(64).optional(),
-  model: modelIdSchema.optional(),
-  reasoningEffort: reasoningEffortSchema.optional(),
+  profile_id: z.string().trim().min(1).max(64).optional(),
+  model_id: modelIdSchema.optional(),
+  reasoning_effort: reasoningEffortSchema.optional(),
   attachments: z.array(fileAttachmentSchema).max(10).optional(),
-  approveRiskyOps: z.boolean().optional().default(false),
-  approvalTicket: z.string().trim().min(1).max(256).optional(),
+  approve_risky_ops: z.boolean().optional().default(false),
+  approval_ticket: z.string().trim().min(1).max(256).optional(),
   stream: z.boolean().default(false),
-  backgroundTask: z.boolean().default(false),
+  background_task: z.boolean().default(false),
 });
 
 export const retryChatMessageBodySchema = z.object({
-  messageId: messageIdSchema,
-  model: modelIdSchema.optional(),
-  reasoningEffort: reasoningEffortSchema.optional(),
+  msg_id: messageIdSchema,
+  model_id: modelIdSchema.optional(),
+  reasoning_effort: reasoningEffortSchema.optional(),
 });
 
 export const messageMutationParamsSchema = z.object({
-  sessionId: sessionIdSchema,
-  messageId: messageIdSchema,
+  session_id: sessionIdSchema,
+  msg_id: messageIdSchema,
 });

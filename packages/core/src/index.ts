@@ -5,7 +5,7 @@ import { FixedTokenWindowManager } from './context/window/index.js';
 import { DefaultPlanExecutor, InlineRunner, RunnerRouter } from './orchestration/executor/index.js';
 import { DagGraphBuilder } from './orchestration/graph/index.js';
 import { CommandBlocklistGuardrail, GuardrailChain } from './orchestration/guardrails/index.js';
-import { StaticPlanner } from './orchestration/planner/index.js';
+import { CapabilityPlanner, CodingReplanner } from './orchestration/planner/index.js';
 import { TopologicalScheduler } from './orchestration/scheduler/index.js';
 import { LayeredPromptSystemLoader } from './prompt/system-loader/index.js';
 import { BracesVariableRenderer } from './prompt/variables/index.js';
@@ -174,7 +174,8 @@ export function createAgent(options: CreateAgentOptions = {}): AgentRuntime {
       }
     );
 
-  const planner = options.planner ?? new StaticPlanner();
+  const planner = options.planner ?? new CapabilityPlanner();
+  const replanner = options.replanner ?? new CodingReplanner();
   const guardrails =
     options.guardrails ?? new GuardrailChain([new CommandBlocklistGuardrail()]);
   const graphBuilder = options.graphBuilder ?? new DagGraphBuilder();
@@ -190,7 +191,9 @@ export function createAgent(options: CreateAgentOptions = {}): AgentRuntime {
       guardrails,
       toolExecutor,
       checkpointStore,
-      runnerRouter
+      runnerRouter,
+      replanner,
+      maxReplans: options.maxReplans
     });
 
   const promptLoader = options.promptLoader ?? new LayeredPromptSystemLoader();

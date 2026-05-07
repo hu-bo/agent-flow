@@ -4,20 +4,20 @@ import { sessionIdSchema } from './common.js';
 export const runnerIdSchema = z.string().trim().min(1).max(128);
 
 export const runnerBindingParamsSchema = z.object({
-  sessionId: sessionIdSchema,
+  session_id: sessionIdSchema,
 });
 
 export const runnerParamsSchema = z.object({
-  runnerId: runnerIdSchema,
+  runner_id: runnerIdSchema,
 });
 
 export const runnerBindingBodySchema = z.object({
-  runnerId: runnerIdSchema,
+  runner_id: runnerIdSchema,
 });
 
 export const runnerApprovalTicketBodySchema = z.object({
-  sessionId: sessionIdSchema,
-  command: z.string().trim().min(1).max(128),
-  workingDir: z.string().trim().min(1).max(1024).optional(),
-  ttlSec: z.number().int().min(30).max(600).optional(),
+  session_id: sessionIdSchema,
+  cmd: z.string().trim().min(1).max(128),
+  workdir: z.string().trim().min(1).max(1024).optional(),
+  ttl_sec: z.number().int().min(30).max(600).optional(),
 });

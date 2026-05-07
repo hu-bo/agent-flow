@@ -56,6 +56,7 @@ export interface AgentStep {
   kind: AgentStepKind;
   dependsOn: string[];
   input?: Record<string, unknown>;
+  consumes?: Record<string, string>;
   toolName?: string;
   runner?: RunnerTaskSpec;
 }
@@ -319,6 +320,22 @@ export interface ReplayStore {
   list(sessionId: string, cursor?: number): Promise<ReplayEventRecord[]>;
 }
 
+export interface ReplanContext {
+  attempt: number;
+  failedStep: AgentStep;
+  failedPlan: AgentPlan;
+  error: string;
+  request: AgentRunRequest;
+  session: AgentSession;
+  context: ContextEnvelope;
+  outputs: Record<string, unknown>;
+  checkpoints: CheckpointRecord[];
+}
+
+export interface Replanner {
+  replan(ctx: ReplanContext): Promise<AgentPlan | undefined>;
+}
+
 export interface AgentEvent {
   id: string;
   taskId: string;
@@ -326,6 +343,7 @@ export interface AgentEvent {
   type:
     | 'session.started'
     | 'session.completed'
+    | 'session.replanned'
     | 'session.failed'
     | 'step.started'
     | 'step.completed'
@@ -394,4 +412,6 @@ export interface CreateAgentOptions {
   runners?: Runner[];
   runnerSelection?: RunnerSelectionStrategy;
   maxContextTokens?: number;
+  replanner?: Replanner;
+  maxReplans?: number;
 }

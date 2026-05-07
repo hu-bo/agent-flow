@@ -20,15 +20,15 @@ export interface IssueApprovalTicketInput {
 }
 
 export interface ApprovalTicketScope {
-  sessionId: string;
-  command: string;
-  workingDir: string;
+  session_id: string;
+  cmd: string;
+  workdir: string;
 }
 
 export interface ApprovalTicketIssueResult {
-  approvalTicket: string;
-  ticketId: string;
-  expiresAt: string;
+  approval_ticket: string;
+  ticket_id: string;
+  expires_at: string;
   scope: ApprovalTicketScope;
 }
 
@@ -67,13 +67,13 @@ export class RunnerApprovalService {
     this.tickets.set(ticket, record);
 
     return {
-      approvalTicket: ticket,
-      ticketId,
-      expiresAt: new Date(record.expiresAtMs).toISOString(),
+      approval_ticket: ticket,
+      ticket_id: ticketId,
+      expires_at: new Date(record.expiresAtMs).toISOString(),
       scope: {
-        sessionId: record.sessionId,
-        command: record.command,
-        workingDir: record.workingDir,
+        session_id: record.sessionId,
+        cmd: record.command,
+        workdir: record.workingDir,
       },
     };
   }

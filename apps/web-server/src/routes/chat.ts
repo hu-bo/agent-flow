@@ -8,6 +8,6 @@ import { requireJsonBody } from '../middlewares/require-json.js';
 
 export async function registerChatRoutes(app: FastifyInstance) {
   app.post('/chat', { preHandler: requireJsonBody }, createChatHandler);
-  app.post('/chat/:sessionId/retry', { preHandler: requireJsonBody }, retryChatMessageHandler);
-  app.delete('/chat/:sessionId/messages/:messageId', deleteChatMessageHandler);
+  app.post('/chat/:session_id/retry', { preHandler: requireJsonBody }, retryChatMessageHandler);
+  app.delete('/chat/:session_id/messages/:msg_id', deleteChatMessageHandler);
 }

@@ -302,8 +302,8 @@ export function ChatPage() {
       const confirmed = window.confirm(
         [
           'This action is high-risk and needs your confirmation.',
-          `Command: ${approval.command}`,
-          `Working directory: ${approval.workingDir}`,
+          `Command: ${approval.cmd}`,
+          `Working directory: ${approval.workdir}`,
           'Approve this turn and continue execution?',
         ].join('\n'),
       );
@@ -321,11 +321,11 @@ export function ChatPage() {
 
       try {
         const ticket = await issueRunnerApprovalTicket({
-          sessionId: approval.sessionId,
-          command: approval.command,
-          workingDir: approval.workingDir,
+          session_id: approval.session_id,
+          cmd: approval.cmd,
+          workdir: approval.workdir,
         });
-        await approvePendingRequest(ticket.approvalTicket);
+        await approvePendingRequest(ticket.approval_ticket);
       } catch (error: unknown) {
         if (!cancelled) {
           dismissPendingApproval();
@@ -462,10 +462,10 @@ export function ChatPage() {
       setIsMutatingMessage(true);
       try {
         await retrySessionMessage({
-          sessionId: activeSession,
-          messageId: message.uuid,
-          model: selectedModelId ?? undefined,
-          reasoningEffort,
+          session_id: activeSession,
+          msg_id: message.uuid,
+          model_id: selectedModelId ?? undefined,
+          reasoning_effort: reasoningEffort,
         });
         await refreshSessionMessages(activeSession);
       } catch (error: unknown) {

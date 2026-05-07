@@ -67,10 +67,10 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
         extractApprovalRequiredFromError(error) ??
         (error instanceof AppError && error.code === 'APPROVAL_REQUIRED'
           ? {
-              sessionId: context.sessionId,
-              command: this.options.name,
-              workingDir: resolveWorkingDir(context.metadata),
-              riskLevel: 'high' as const,
+              session_id: context.sessionId,
+              cmd: this.options.name,
+              workdir: resolveWorkingDir(context.metadata),
+              risk: 'high' as const,
               reason: error.message,
             }
           : null);

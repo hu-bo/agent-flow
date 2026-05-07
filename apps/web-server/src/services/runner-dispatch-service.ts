@@ -172,11 +172,11 @@ export class RunnerDispatchService {
           'APPROVAL_REQUIRED',
           `Approval required before running high-risk command "${task.command}". Request an approval ticket and retry.`,
           {
-            requiredApproval: {
-              sessionId: task.sessionId,
-              command: task.command,
-              workingDir,
-              riskLevel,
+            required_approval: {
+              session_id: task.sessionId,
+              cmd: task.command,
+              workdir: workingDir,
+              risk: riskLevel,
             },
             reason: approval.reason ?? 'approval is missing',
           },

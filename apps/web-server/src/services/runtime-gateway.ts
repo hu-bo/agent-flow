@@ -24,15 +24,18 @@ import type {
 } from '@agent-flow/model-adapters/types';
 import { registerBuiltinTools } from '@agent-flow/tools-impl';
 import type {
-  ApprovalRequiredPayload,
   ChatStreamEvent,
   ChatStreamMessageDeltaEvent,
   RuntimeChatInput,
   RuntimeGateway,
 } from '../contracts/api.js';
-import { extractApprovalRequiredFromError, parseApprovalRequiredErrorMessage } from '../lib/approval.js';
+import {
+  extractApprovalRequiredFromError,
+  parseApprovalRequiredErrorMessage,
+} from '../lib/approval.js';
 import { AsyncQueue } from '../lib/async-queue.js';
 import { createTextMessage, createUnifiedMessage, summarizeMessages } from '../lib/messages.js';
+import { CODING_EFFICIENCY_SYSTEM_PROMPT } from '../prompts/coding-efficiency.js';
 import type { ModelAdapterService } from './model-adapter-service.js';
 import { registerRunnerBackedTools } from './runner-backed-tools.js';
 import type { RunnerDispatchService } from './runner-dispatch-service.js';
@@ -591,11 +594,11 @@ interface ModelToolCall {
 }
 
 class ApprovalRequiredError extends Error {
-  readonly approval: ApprovalRequiredPayload;
+  readonly approval: NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>>;
 
-  constructor(approval: ApprovalRequiredPayload) {
+  constructor(approval: NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>>) {
     super(
-      `Approval required before running high-risk command "${approval.command}" in "${approval.workingDir}".`,
+      `Approval required before running high-risk command "${approval.cmd}" in "${approval.workdir}".`,
     );
     this.name = 'ApprovalRequiredError';
     this.approval = approval;
@@ -988,8 +991,7 @@ function tokenizeCommandLine(commandLine: string): string[] {
 
 function buildSystemPrompt(input: RuntimeChatInput, recalled: RecalledMemory[]): string {
   const lines = [
-    input.session.systemPrompt?.trim() ||
-      'You are Agent Flow, a helpful AI assistant. Answer the user directly and naturally.',
+    input.session.systemPrompt?.trim() || CODING_EFFICIENCY_SYSTEM_PROMPT,
   ];
 
   if (recalled.length > 0) {
@@ -1122,14 +1124,18 @@ function toUnifiedTokenUsage(usage: AdapterTokenUsage): TokenUsage {
   };
 }
 
-function extractApprovalFromAgentRunResult(result: AgentRunResult): ApprovalRequiredPayload | null {
+function extractApprovalFromAgentRunResult(
+  result: AgentRunResult,
+): NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>> | null {
   if (typeof result.error !== 'string') {
     return null;
   }
   return parseApprovalRequiredErrorMessage(result.error);
 }
 
-function extractApprovalFromUnknown(error: unknown): ApprovalRequiredPayload | null {
+function extractApprovalFromUnknown(
+  error: unknown,
+): NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>> | null {
   if (error instanceof ApprovalRequiredError) {
     return error.approval;
   }
@@ -1138,8 +1144,8 @@ function extractApprovalFromUnknown(error: unknown): ApprovalRequiredPayload | n
 
 function toMessageEvent(message: UnifiedMessage): ChatStreamEvent {
   return {
-    type: 'message',
-    message: {
+    type: 'msg',
+    msg: {
       ...message,
       content: [...message.content],
       metadata: cloneMessageMetadata(message.metadata),
@@ -1147,9 +1153,11 @@ function toMessageEvent(message: UnifiedMessage): ChatStreamEvent {
   };
 }
 
-function toApprovalRequiredEvent(approval: ApprovalRequiredPayload): ChatStreamEvent {
+function toApprovalRequiredEvent(
+  approval: NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>>,
+): ChatStreamEvent {
   return {
-    type: 'approval_required',
+    type: 'approval_req',
     approval,
   };
 }
@@ -1159,8 +1167,8 @@ function toMessageDeltaEvent(
   delta: string,
 ): ChatStreamMessageDeltaEvent {
   return {
-    type: 'message_delta',
-    messageId: message.uuid,
+    type: 'msg_delta',
+    msg_id: message.uuid,
     delta,
   };
 }

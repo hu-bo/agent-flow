@@ -1,15 +1,18 @@
 import type {
+  AgentStep,
   AgentEvent,
   AgentPlan,
   AgentRunRequest,
   AgentRunResult,
   AgentSession,
+  CheckpointRecord,
   CheckpointStore,
   ContextEnvelope,
   ExecutePlanOptions,
   GraphBuilder,
   Guardrails,
   PlanExecutor,
+  Replanner,
   Runner,
   RunnerEvent,
   RunnerSelectionStrategy,
@@ -17,6 +20,57 @@ import type {
   Scheduler,
   ToolExecutorLike
 } from '../../types/index.js';
+
+function readOutputByRef(outputs: Record<string, unknown>, ref: string): unknown {
+  const normalized = ref.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const [stepId, ...pathParts] = normalized.split('.');
+  if (!stepId) {
+    return undefined;
+  }
+
+  let current: unknown = outputs[stepId];
+  for (const part of pathParts) {
+    if (Array.isArray(current)) {
+      const index = Number(part);
+      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
+        return undefined;
+      }
+      current = current[index];
+      continue;
+    }
+
+    if (typeof current !== 'object' || current === null) {
+      return undefined;
+    }
+
+    if (!(part in current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+
+  return current;
+}
+
+function resolveStepInput(stepInput: Record<string, unknown> | undefined, consumes: Record<string, string> | undefined, outputs: Record<string, unknown>): Record<string, unknown> {
+  const base = { ...(stepInput ?? {}) };
+  if (!consumes) {
+    return base;
+  }
+
+  for (const [key, ref] of Object.entries(consumes)) {
+    const value = readOutputByRef(outputs, ref);
+    if (value !== undefined) {
+      base[key] = value;
+    }
+  }
+
+  return base;
+}
 
 let eventCounter = 0;
 
@@ -181,6 +235,18 @@ export interface DefaultPlanExecutorOptions {
   toolExecutor: ToolExecutorLike;
   checkpointStore: CheckpointStore;
   runnerRouter: RunnerRouter;
+  replanner?: Replanner;
+  maxReplans?: number;
+}
+
+class StepExecutionError extends Error {
+  constructor(
+    message: string,
+    public readonly step: AgentStep
+  ) {
+    super(message);
+    this.name = 'StepExecutionError';
+  }
 }
 
 export class DefaultPlanExecutor implements PlanExecutor {
@@ -195,7 +261,7 @@ export class DefaultPlanExecutor implements PlanExecutor {
   ): AsyncGenerator<AgentEvent, AgentRunResult> {
     const events: AgentEvent[] = [];
     const outputs: Record<string, unknown> = {};
-    const checkpoints = [];
+    const checkpoints: CheckpointRecord[] = [];
 
     const emit = async (event: AgentEvent): Promise<AgentEvent> => {
       events.push(event);
@@ -212,13 +278,99 @@ export class DefaultPlanExecutor implements PlanExecutor {
       })
     );
 
-    try {
+    const maxReplans = Math.max(0, this.options.maxReplans ?? 1);
+    let activePlan = plan;
+    let replanAttempt = 0;
+
+    while (true) {
+      try {
+        await this.executePlanSteps(activePlan, request, session, context, executeOptions, outputs, checkpoints, emit);
+
+        yield await emit(
+          createEvent(session.taskId, session.id, 'session.completed', {
+            checkpoints: checkpoints.length,
+            replanCount: replanAttempt
+          })
+        );
+
+        return {
+          taskId: session.taskId,
+          sessionId: session.id,
+          status: 'succeeded',
+          outputs,
+          checkpoints,
+          events
+        };
+      } catch (error) {
+        const stepError = error instanceof StepExecutionError ? error : undefined;
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (stepError && this.options.replanner && replanAttempt < maxReplans) {
+          const nextPlan = await this.options.replanner.replan({
+            attempt: replanAttempt + 1,
+            failedStep: stepError.step,
+            failedPlan: activePlan,
+            error: message,
+            request,
+            session,
+            context,
+            outputs: { ...outputs },
+            checkpoints: [...checkpoints]
+          });
+
+          if (nextPlan) {
+            replanAttempt += 1;
+            yield await emit(
+              createEvent(session.taskId, session.id, 'session.replanned', {
+                attempt: replanAttempt,
+                fromPlanId: activePlan.id,
+                toPlanId: nextPlan.id,
+                failedStepId: stepError.step.id,
+                error: message
+              })
+            );
+            activePlan = nextPlan;
+            continue;
+          }
+        }
+
+        yield await emit(
+          createEvent(session.taskId, session.id, 'session.failed', {
+            error: message,
+            replanCount: replanAttempt
+          })
+        );
+
+        return {
+          taskId: session.taskId,
+          sessionId: session.id,
+          status: 'failed',
+          outputs,
+          checkpoints,
+          events,
+          error: message
+        };
+      }
+    }
+  }
+
+  private async executePlanSteps(
+    plan: AgentPlan,
+    request: AgentRunRequest,
+    session: AgentSession,
+    context: ContextEnvelope,
+    executeOptions: ExecutePlanOptions,
+    outputs: Record<string, unknown>,
+    checkpoints: CheckpointRecord[],
+    emit: (event: AgentEvent) => Promise<AgentEvent>
+  ): Promise<void> {
       const graph = this.options.graphBuilder.build(plan);
       const batches = this.options.scheduler.schedule(graph);
 
       for (const batch of batches) {
         for (const step of batch) {
-          yield await emit(
+          const resolvedInput = resolveStepInput(step.input, step.consumes, outputs);
+          await emit(
             createEvent(session.taskId, session.id, 'step.started', {
               stepId: step.id,
               title: step.title,
@@ -240,13 +392,13 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 mode: 'placeholder',
                 goal: request.goal,
                 contextTokens: context.tokenUsed,
-                stepInput: step.input ?? {}
+                stepInput: resolvedInput
               };
             } else if (step.kind === 'tool') {
               if (!step.toolName) {
                 throw new Error(`Step "${step.id}" is a tool step but has no toolName.`);
               }
-              yield await emit(
+              await emit(
                 createEvent(session.taskId, session.id, 'tool.called', {
                   stepId: step.id,
                   tool: step.toolName
@@ -255,7 +407,7 @@ export class DefaultPlanExecutor implements PlanExecutor {
               const toolResult = await this.options.toolExecutor.execute(
                 {
                   name: step.toolName,
-                  input: step.input ?? {}
+                  input: resolvedInput
                 },
                 {
                   taskId: session.taskId,
@@ -269,7 +421,7 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 }
               );
 
-              yield await emit(
+              await emit(
                 createEvent(session.taskId, session.id, 'tool.result', {
                   stepId: step.id,
                   tool: step.toolName,
@@ -287,6 +439,12 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 throw new Error(`Step "${step.id}" is a runner step but has no runner config.`);
               }
 
+              const resolvedRunnerInput = resolveStepInput(
+                step.runner.input ?? step.input,
+                step.consumes,
+                outputs
+              );
+
               const runnerTask: RunnerTask = {
                 taskId: session.taskId,
                 sessionId: session.id,
@@ -295,7 +453,7 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 args: step.runner.args ?? [],
                 timeoutMs: step.runner.timeoutMs,
                 env: step.runner.env,
-                input: step.runner.input,
+                input: resolvedRunnerInput,
                 stream: step.runner.stream ?? true,
                 metadata: {
                   ...request.metadata,
@@ -306,7 +464,7 @@ export class DefaultPlanExecutor implements PlanExecutor {
 
               let runnerOutput: unknown = undefined;
               for await (const runnerEvent of this.options.runnerRouter.execute(runnerTask, executeOptions.signal)) {
-                yield await emit(
+                await emit(
                   createEvent(session.taskId, session.id, 'runner.event', {
                     stepId: step.id,
                     runnerEvent
@@ -338,62 +496,29 @@ export class DefaultPlanExecutor implements PlanExecutor {
             });
             checkpoints.push(checkpoint);
 
-            yield await emit(
+            await emit(
               createEvent(session.taskId, session.id, 'checkpoint.created', {
                 stepId: step.id,
                 checkpointId: checkpoint.id
               })
             );
 
-            yield await emit(
+            await emit(
               createEvent(session.taskId, session.id, 'step.completed', {
                 stepId: step.id
               })
             );
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            yield await emit(
+            await emit(
               createEvent(session.taskId, session.id, 'step.failed', {
                 stepId: step.id,
                 error: message
               })
             );
-            throw error;
+            throw new StepExecutionError(message, step);
           }
         }
       }
-
-      yield await emit(
-        createEvent(session.taskId, session.id, 'session.completed', {
-          checkpoints: checkpoints.length
-        })
-      );
-
-      return {
-        taskId: session.taskId,
-        sessionId: session.id,
-        status: 'succeeded',
-        outputs,
-        checkpoints,
-        events
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      yield await emit(
-        createEvent(session.taskId, session.id, 'session.failed', {
-          error: message
-        })
-      );
-
-      return {
-        taskId: session.taskId,
-        sessionId: session.id,
-        status: 'failed',
-        outputs,
-        checkpoints,
-        events,
-        error: message
-      };
-    }
   }
 }

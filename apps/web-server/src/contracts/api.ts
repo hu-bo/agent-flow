@@ -1,4 +1,5 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
+import type { ApprovalRequiredPayload } from '../lib/approval.js';
 
 export type ReasoningEffort = 'low' | 'medium' | 'high';
 export type TaskStatus =
@@ -86,35 +87,38 @@ export interface RuntimeChatInput {
 }
 
 export interface ChatStreamMessageEvent {
-  type: 'message';
-  message: UnifiedMessage;
+  type: 'msg';
+  msg: UnifiedMessage;
 }
 
 export interface ChatStreamMessageDeltaEvent {
-  type: 'message_delta';
-  messageId: string;
+  type: 'msg_delta';
+  msg_id: string;
   delta: string;
 }
 
-export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
-
-export interface ApprovalRequiredPayload {
-  sessionId: string;
-  command: string;
-  workingDir: string;
-  riskLevel: ApprovalRiskLevel;
-  reason?: string;
-}
+export type ApprovalRiskLevel = ApprovalRequiredPayload['risk'];
+export type ChatStreamApprovalPayload = ApprovalRequiredPayload;
 
 export interface ChatStreamApprovalRequiredEvent {
-  type: 'approval_required';
-  approval: ApprovalRequiredPayload;
+  type: 'approval_req';
+  approval: ChatStreamApprovalPayload;
+}
+
+export interface ChatStreamErrorEvent {
+  type: 'error';
+  err: {
+    code: string;
+    msg: string;
+    details?: unknown;
+  };
 }
 
 export type ChatStreamEvent =
   | ChatStreamMessageEvent
   | ChatStreamMessageDeltaEvent
-  | ChatStreamApprovalRequiredEvent;
+  | ChatStreamApprovalRequiredEvent
+  | ChatStreamErrorEvent;
 
 export interface RuntimeGateway {
   streamChat(input: RuntimeChatInput): AsyncGenerator<ChatStreamEvent>;

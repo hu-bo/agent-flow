@@ -56,8 +56,8 @@ export class ChatService {
     this.sessionService.appendMessage(prepared.session.sessionId, prepared.userMessage);
     await this.recordMemory(prepared.session.sessionId, prepared.userMessage);
     yield {
-      type: 'message',
-      message: prepared.userMessage,
+      type: 'msg',
+      msg: prepared.userMessage,
     };
 
     for await (const message of this.runtimeGateway.streamChat({
@@ -74,10 +74,10 @@ export class ChatService {
       approveRiskyOps: input.approveRiskyOps,
       approvalTicket: input.approvalTicket,
     })) {
-      if (message.type === 'message') {
-        this.sessionService.upsertMessage(prepared.session.sessionId, message.message);
-        if (!isStreamingMessage(message.message)) {
-          await this.recordMemory(prepared.session.sessionId, message.message);
+      if (message.type === 'msg') {
+        this.sessionService.upsertMessage(prepared.session.sessionId, message.msg);
+        if (!isStreamingMessage(message.msg)) {
+          await this.recordMemory(prepared.session.sessionId, message.msg);
         }
       }
       yield message;
@@ -97,8 +97,8 @@ export class ChatService {
         session = step.value;
         break;
       }
-      if (step.value.type === 'message') {
-        messages.push(step.value.message);
+      if (step.value.type === 'msg') {
+        messages.push(step.value.msg);
       }
     }
 

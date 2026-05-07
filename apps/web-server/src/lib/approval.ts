@@ -3,10 +3,10 @@ import { AppError } from './errors.js';
 export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
 
 export interface ApprovalRequiredPayload {
-  sessionId: string;
-  command: string;
-  workingDir: string;
-  riskLevel: ApprovalRiskLevel;
+  session_id: string;
+  cmd: string;
+  workdir: string;
+  risk: ApprovalRiskLevel;
   reason?: string;
 }
 
@@ -48,16 +48,16 @@ export function extractApprovalRequiredFromError(error: unknown): ApprovalRequir
 
 function normalizeApprovalPayload(value: unknown): ApprovalRequiredPayload | null {
   const candidate =
-    isRecord(value) && isRecord(value.requiredApproval) ? { ...value.requiredApproval, reason: value.reason } : value;
+    isRecord(value) && isRecord(value.required_approval) ? { ...value.required_approval, reason: value.reason } : value;
 
   if (!isRecord(candidate)) {
     return null;
   }
 
-  const sessionId = asNonEmptyString(candidate.sessionId);
-  const command = asNonEmptyString(candidate.command);
-  const workingDir = asNonEmptyString(candidate.workingDir);
-  const riskLevel = asRiskLevel(candidate.riskLevel);
+  const sessionId = asNonEmptyString(candidate.session_id);
+  const command = asNonEmptyString(candidate.cmd);
+  const workingDir = asNonEmptyString(candidate.workdir);
+  const riskLevel = asRiskLevel(candidate.risk);
   const reason = asNonEmptyString(candidate.reason);
 
   if (!sessionId || !command || !workingDir) {
@@ -65,10 +65,10 @@ function normalizeApprovalPayload(value: unknown): ApprovalRequiredPayload | nul
   }
 
   return {
-    sessionId,
-    command,
-    workingDir,
-    riskLevel,
+    session_id: sessionId,
+    cmd: command,
+    workdir: workingDir,
+    risk: riskLevel,
     ...(reason ? { reason } : {}),
   };
 }

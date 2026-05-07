@@ -4,7 +4,7 @@ import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/core/mes
 import {
   fetchSession,
   streamChat,
-  type ApprovalRequiredPayload,
+  type ApprovalReqPayload,
   type ChatStreamEvent,
 } from '../api.js';
 
@@ -20,7 +20,7 @@ interface SendMessageInput {
 }
 
 export interface PendingApprovalRequest {
-  approval: ApprovalRequiredPayload;
+  approval: ApprovalReqPayload;
   pendingInput: Omit<SendMessageInput, 'approvalTicket' | 'approveRiskyOps' | 'optimisticUserMessage'>;
 }
 
@@ -81,14 +81,14 @@ function upsertMessage(messages: UnifiedMessage[], message: UnifiedMessage): Uni
 
 function upsertMessageDelta(
   messages: UnifiedMessage[],
-  deltaEvent: Extract<ChatStreamEvent, { type: 'message_delta' }>,
+  deltaEvent: Extract<ChatStreamEvent, { type: 'msg_delta' }>,
 ): UnifiedMessage[] {
-  const index = messages.findIndex((candidate) => candidate.uuid === deltaEvent.messageId);
+  const index = messages.findIndex((candidate) => candidate.uuid === deltaEvent.msg_id);
   if (index < 0) {
     return [
       ...messages,
       {
-        uuid: deltaEvent.messageId,
+        uuid: deltaEvent.msg_id,
         parentUuid: null,
         role: 'assistant',
         content: [{ type: 'text', text: deltaEvent.delta }],
@@ -233,17 +233,17 @@ export function useChat(): UseChatReturn {
       try {
         await streamChat({
           message: userInput,
-          model,
-          reasoningEffort,
-          sessionId,
-          approveRiskyOps,
-          approvalTicket,
+          model_id: model,
+          reasoning_effort: reasoningEffort,
+          session_id: sessionId,
+          approve_risky_ops: approveRiskyOps,
+          approval_ticket: approvalTicket,
           attachments: attachmentParts.length ? attachmentParts : undefined,
           signal: controller.signal,
           onEvent: (event) => {
             if (activeSessionRef.current !== sessionId) return;
 
-            if (event.type === 'approval_required') {
+            if (event.type === 'approval_req') {
               commitPendingApproval({
                 approval: event.approval,
                 pendingInput: {
@@ -258,13 +258,16 @@ export function useChat(): UseChatReturn {
               return;
             }
 
-            if (event.type === 'message_delta') {
+            if (event.type === 'msg_delta') {
               setMessages((prev) => upsertMessageDelta(prev, event));
-              setTypingMessageId(event.messageId);
+              setTypingMessageId(event.msg_id);
               return;
             }
+            if (event.type === 'error') {
+              throw new Error(event.err.msg || 'Streaming failed');
+            }
 
-            const msg = event.message;
+            const msg = event.msg;
             // Server stream includes the user message; skip it to avoid duplicates.
             if (msg.role === 'user') return;
             setMessages((prev) => upsertMessage(prev, msg));

@@ -64,13 +64,13 @@ export interface RunnerTokenIssueResult {
 }
 
 export interface RunnerApprovalTicketResult {
-  approvalTicket: string;
-  ticketId: string;
-  expiresAt: string;
+  approval_ticket: string;
+  ticket_id: string;
+  expires_at: string;
   scope: {
-    sessionId: string;
-    command: string;
-    workingDir: string;
+    session_id: string;
+    cmd: string;
+    workdir: string;
   };
 }
 
@@ -292,10 +292,10 @@ export async function rotateRunnerToken(): Promise<RunnerTokenIssueResult> {
 }
 
 export async function issueRunnerApprovalTicket(input: {
-  sessionId: string;
-  command: string;
-  workingDir?: string;
-  ttlSec?: number;
+  session_id: string;
+  cmd: string;
+  workdir?: string;
+  ttl_sec?: number;
 }): Promise<RunnerApprovalTicketResult> {
   return requestJson({
     url: '/api/runners/approval-ticket',
@@ -305,23 +305,23 @@ export async function issueRunnerApprovalTicket(input: {
 }
 
 export async function bindSessionRunner(sessionId: string, runnerId: string): Promise<{
-  sessionId: string;
-  runnerId: string;
+  session_id: string;
+  runner_id: string;
 }> {
   return requestJson({
     url: `/api/sessions/${sessionId}/runner-binding`,
     method: 'POST',
-    data: { runnerId },
+    data: { runner_id: runnerId },
   });
 }
 
 interface StreamChatOptions {
   message: string;
-  model?: string | number;
-  reasoningEffort?: 'low' | 'medium' | 'high';
-  sessionId: string;
-  approveRiskyOps?: boolean;
-  approvalTicket?: string;
+  model_id?: string | number;
+  reasoning_effort?: 'low' | 'medium' | 'high';
+  session_id: string;
+  approve_risky_ops?: boolean;
+  approval_ticket?: string;
   attachments?: FilePart[];
   signal?: AbortSignal;
   onEvent: (event: ChatStreamEvent) => void;
@@ -329,46 +329,36 @@ interface StreamChatOptions {
 
 export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
 
-export interface ApprovalRequiredPayload {
-  sessionId: string;
-  command: string;
-  workingDir: string;
-  riskLevel: ApprovalRiskLevel;
+export interface ApprovalReqPayload {
+  session_id: string;
+  cmd: string;
+  workdir: string;
+  risk: ApprovalRiskLevel;
   reason?: string;
 }
 
 export type ChatStreamEvent =
   | {
-      type: 'message';
-      message: UnifiedMessage;
+      type: 'msg';
+      msg: UnifiedMessage;
     }
   | {
-      type: 'message_delta';
-      messageId: string;
+      type: 'msg_delta';
+      msg_id: string;
       delta: string;
     }
   | {
-      type: 'approval_required';
-      approval: ApprovalRequiredPayload;
+      type: 'approval_req';
+      approval: ApprovalReqPayload;
+    }
+  | {
+      type: 'error';
+      err: {
+        code: string;
+        msg: string;
+        details?: unknown;
+      };
     };
-
-interface StreamChatErrorPayload {
-  code: string;
-  message: string;
-  details?: unknown;
-}
-
-export class StreamChatError extends Error {
-  readonly code: string;
-  readonly details?: unknown;
-
-  constructor(payload: StreamChatErrorPayload) {
-    super(payload.message);
-    this.name = 'StreamChatError';
-    this.code = payload.code;
-    this.details = payload.details;
-  }
-}
 
 function consumeSseBuffer(buffer: string, onData: (data: string) => void): string {
   let current = buffer;
@@ -396,11 +386,11 @@ function consumeSseBuffer(buffer: string, onData: (data: string) => void): strin
 
 export async function streamChat({
   message,
-  model,
-  reasoningEffort,
-  sessionId,
-  approveRiskyOps,
-  approvalTicket,
+  model_id,
+  reasoning_effort,
+  session_id,
+  approve_risky_ops,
+  approval_ticket,
   attachments,
   signal,
   onEvent,
@@ -416,11 +406,11 @@ export async function streamChat({
     headers,
     body: JSON.stringify({
       message,
-      model,
-      reasoningEffort,
-      sessionId,
-      approveRiskyOps: Boolean(approveRiskyOps),
-      approvalTicket,
+      model_id,
+      reasoning_effort,
+      session_id,
+      approve_risky_ops: Boolean(approve_risky_ops),
+      approval_ticket,
       attachments,
       stream: true,
     }),
@@ -446,11 +436,9 @@ export async function streamChat({
       return;
     }
 
-    const parsed = JSON.parse(payload) as
-      | ChatStreamEvent
-      | { error: string | { code?: unknown; message?: unknown; details?: unknown } };
-    if ('error' in parsed) {
-      throw new StreamChatError(normalizeStreamChatError(parsed.error));
+    const parsed = JSON.parse(payload) as ChatStreamEvent;
+    if (parsed.type === 'error') {
+      throw new Error(parsed.err.msg || 'Streaming failed');
     }
     onEvent(parsed);
   };
@@ -466,49 +454,29 @@ export async function streamChat({
   consumeSseBuffer(buffer, handleData);
 }
 
-function normalizeStreamChatError(
-  raw: string | { code?: unknown; message?: unknown; details?: unknown },
-): StreamChatErrorPayload {
-  if (typeof raw === 'string') {
-    return {
-      code: 'STREAM_FAILED',
-      message: raw || 'Streaming failed',
-    };
-  }
-
-  const code = typeof raw.code === 'string' && raw.code.trim().length > 0 ? raw.code : 'STREAM_FAILED';
-  const message =
-    typeof raw.message === 'string' && raw.message.trim().length > 0 ? raw.message : 'Streaming failed';
-  return {
-    code,
-    message,
-    ...(raw.details !== undefined ? { details: raw.details } : {}),
-  };
-}
-
 export async function retrySessionMessage(input: {
-  sessionId: string;
-  messageId: string;
-  model?: string | number;
-  reasoningEffort?: 'low' | 'medium' | 'high';
+  session_id: string;
+  msg_id: string;
+  model_id?: string | number;
+  reasoning_effort?: 'low' | 'medium' | 'high';
 }): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
   return requestJson({
-    url: `/api/chat/${input.sessionId}/retry`,
+    url: `/api/chat/${input.session_id}/retry`,
     method: 'POST',
     data: {
-      messageId: input.messageId,
-      model: input.model,
-      reasoningEffort: input.reasoningEffort,
+      msg_id: input.msg_id,
+      model_id: input.model_id,
+      reasoning_effort: input.reasoning_effort,
     },
   });
 }
 
 export async function deleteSessionMessage(
-  sessionId: string,
-  messageId: string,
+  session_id: string,
+  msg_id: string,
 ): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
   return requestJson({
-    url: `/api/chat/${sessionId}/messages/${messageId}`,
+    url: `/api/chat/${session_id}/messages/${msg_id}`,
     method: 'DELETE',
   });
 }

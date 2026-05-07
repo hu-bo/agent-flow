@@ -19,7 +19,7 @@ export async function listRunnersHandler(request: FastifyRequest, reply: Fastify
 
 export async function deleteRunnerHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = parseWithSchema(runnerParamsSchema, request.params, 'params');
-  await request.server.services.runnerRegistryService.removeRunnerForUser(request.auth.userId, params.runnerId);
+  await request.server.services.runnerRegistryService.removeRunnerForUser(request.auth.userId, params.runner_id);
   reply.status(204).send();
 }
 
@@ -100,16 +100,16 @@ export async function bindSessionRunnerHandler(request: FastifyRequest, reply: F
 
   const runner = await request.server.services.runnerRegistryService.getRunnerForUser(
     request.auth.userId,
-    body.runnerId,
+    body.runner_id,
   );
   if (runner.status !== 'online') {
     throw new AppError(409, 'RUNNER_OFFLINE', `Runner is offline: ${runner.runnerId}`);
   }
-  const boundRunnerId = request.server.services.sessionService.bindRunner(params.sessionId, runner.runnerId);
+  const boundRunnerId = request.server.services.sessionService.bindRunner(params.session_id, runner.runnerId);
 
   return sendSuccess(reply, {
-    sessionId: params.sessionId,
-    runnerId: boundRunnerId,
+    session_id: params.session_id,
+    runner_id: boundRunnerId,
   });
 }
 
@@ -122,13 +122,13 @@ export async function getRunnerDownloadsHandler(request: FastifyRequest, reply: 
 
 export async function issueRunnerApprovalTicketHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(runnerApprovalTicketBodySchema, request.body, 'body');
-  const session = request.server.services.sessionService.getSession(body.sessionId);
+  const session = request.server.services.sessionService.getSession(body.session_id);
   const issued = request.server.services.runnerApprovalService.issue({
     ownerUserId: request.auth.userId,
-    sessionId: body.sessionId,
-    command: body.command,
-    workingDir: body.workingDir ?? session.cwd,
-    ttlSec: body.ttlSec,
+    sessionId: body.session_id,
+    command: body.cmd,
+    workingDir: body.workdir ?? session.cwd,
+    ttlSec: body.ttl_sec,
   });
   return sendSuccess(reply, issued, { statusCode: 201, message: 'Created' });
 }

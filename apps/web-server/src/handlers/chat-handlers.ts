@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { ChatStreamEvent } from '../contracts/api.js';
 import { sendSuccess } from '../lib/response.js';
 import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
@@ -12,12 +13,12 @@ import {
 export async function createChatHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(createChatBodySchema, request.body, 'body');
 
-  if (body.backgroundTask) {
+  if (body.background_task) {
     const task = request.server.services.taskService.createTask({
       prompt: body.message,
-      profileId: body.profileId,
-      modelId: body.model,
-      sessionId: body.sessionId,
+      profileId: body.profile_id,
+      modelId: body.model_id,
+      sessionId: body.session_id,
       type: 'chat',
       config: {
         userId: request.auth.userId,
@@ -37,14 +38,14 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
     try {
       const generator = request.server.services.chatService.streamTurn({
         userId: request.auth.userId,
-        sessionId: body.sessionId,
+        sessionId: body.session_id,
         message: body.message,
-        profileId: body.profileId,
-        modelId: body.model,
-        reasoningEffort: body.reasoningEffort,
+        profileId: body.profile_id,
+        modelId: body.model_id,
+        reasoningEffort: body.reasoning_effort,
         attachments: body.attachments,
-        approveRiskyOps: body.approveRiskyOps,
-        approvalTicket: body.approvalTicket,
+        approveRiskyOps: body.approve_risky_ops,
+        approvalTicket: body.approval_ticket,
         requestId: request.requestContext.requestId,
       });
 
@@ -56,9 +57,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
 
       stream.done();
     } catch (error) {
-      stream.send({
-        error: toStreamErrorPayload(error),
-      });
+      stream.send(toStreamErrorEvent(error));
       stream.done();
     }
 
@@ -67,14 +66,14 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
 
   const result = await request.server.services.chatService.runTurn({
     userId: request.auth.userId,
-    sessionId: body.sessionId,
+    sessionId: body.session_id,
     message: body.message,
-    profileId: body.profileId,
-    modelId: body.model,
-    reasoningEffort: body.reasoningEffort,
+    profileId: body.profile_id,
+    modelId: body.model_id,
+    reasoningEffort: body.reasoning_effort,
     attachments: body.attachments,
-    approveRiskyOps: body.approveRiskyOps,
-    approvalTicket: body.approvalTicket,
+    approveRiskyOps: body.approve_risky_ops,
+    approvalTicket: body.approval_ticket,
     requestId: request.requestContext.requestId,
   });
 
@@ -87,14 +86,14 @@ export async function retryChatMessageHandler(request: FastifyRequest, reply: Fa
 
   await request.server.services.chatService.retryFromMessage({
     userId: request.auth.userId,
-    sessionId: params.sessionId,
-    messageId: body.messageId,
-    modelId: body.model,
-    reasoningEffort: body.reasoningEffort,
+    sessionId: params.session_id,
+    messageId: body.msg_id,
+    modelId: body.model_id,
+    reasoningEffort: body.reasoning_effort,
     requestId: request.requestContext.requestId,
   });
 
-  const state = request.server.services.sessionService.getSessionState(params.sessionId);
+  const state = request.server.services.sessionService.getSessionState(params.session_id);
   return sendSuccess(reply, {
     session: state.session,
     messages: state.messages,
@@ -127,11 +126,23 @@ function toStreamErrorPayload(error: unknown): {
   };
 }
 
+function toStreamErrorEvent(error: unknown): ChatStreamEvent {
+  const payload = toStreamErrorPayload(error);
+  return {
+    type: 'error',
+    err: {
+      code: payload.code,
+      msg: payload.message,
+      ...(payload.details !== undefined ? { details: payload.details } : {}),
+    },
+  };
+}
+
 export async function deleteChatMessageHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = parseWithSchema(messageMutationParamsSchema, request.params, 'params');
-  request.server.services.chatService.deleteMessage(params.sessionId, params.messageId);
+  request.server.services.chatService.deleteMessage(params.session_id, params.msg_id);
 
-  const state = request.server.services.sessionService.getSessionState(params.sessionId);
+  const state = request.server.services.sessionService.getSessionState(params.session_id);
   return sendSuccess(reply, {
     session: state.session,
     messages: state.messages,
