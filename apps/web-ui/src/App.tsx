@@ -7,19 +7,23 @@ import { AuthToolbar } from './auth';
 export function App() {
   const activeSessionId = useChatStore((state) => state.activeSessionId);
   const setActiveSession = useChatStore((state) => state.setActiveSession);
+  const setPendingNewChatProject = useChatStore((state) => state.setPendingNewChatProject);
+  const setPendingNewChatPlacement = useChatStore((state) => state.setPendingNewChatPlacement);
   const location = useLocation();
   const navigate = useNavigate();
 
-  const handleSelectSession = (sessionId: string | null) => {
+  const handleSelectSession = (sessionId: string | null, mode: 'vibe' | 'spec' = 'vibe') => {
     setActiveSession(sessionId);
 
     if (sessionId) {
-      const nextPath = `/chat/${sessionId}`;
+      setPendingNewChatProject(null);
+      setPendingNewChatPlacement(null);
+      const nextPath = mode === 'spec' ? `/spec/${sessionId}` : `/chat/${sessionId}`;
       navigate(nextPath, { replace: location.pathname === nextPath });
       return;
     }
 
-    if (location.pathname.startsWith('/chat')) {
+    if (location.pathname.startsWith('/chat') || location.pathname.startsWith('/spec')) {
       navigate('/chat', { replace: location.pathname === '/chat' });
     }
   };

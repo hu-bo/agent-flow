@@ -429,7 +429,8 @@ function deriveSandboxPolicy(
   workingDir: string,
   input: Record<string, unknown> | undefined,
 ): PendingSandboxPolicy {
-  const semanticFsReadOnly = command === 'fs.read' || command === 'fs.list' || command === 'fs.search';
+  const semanticFsReadOnly =
+    command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots';
   const semanticFsWrite = command === 'fs.write' || command === 'fs.patch';
   const shellExec = command === 'shell.exec';
   const enabled = semanticFsReadOnly || semanticFsWrite || shellExec || !isKnownSafeCommand(command);
@@ -477,14 +478,14 @@ function classifyRiskLevel(command: string): 'low' | 'medium' | 'high' {
   if (command === 'shell.exec') {
     return 'high';
   }
-  if (command === 'fs.read' || command === 'fs.list' || command === 'fs.search') {
+  if (command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots') {
     return 'medium';
   }
   return 'high';
 }
 
 function isKnownSafeCommand(command: string): boolean {
-  return command === 'fs.read' || command === 'fs.list' || command === 'fs.search';
+  return command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots';
 }
 
 function isRiskyApprovalGranted(metadata: Record<string, unknown> | undefined): boolean {

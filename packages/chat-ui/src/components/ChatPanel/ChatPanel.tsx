@@ -1,4 +1,5 @@
 import './ChatPanel.less';
+import type { ReactNode } from 'react';
 import type {
   ChatMessage,
   ChatOption,
@@ -31,6 +32,7 @@ export interface ChatPanelProps {
   compactContextLabel?: string;
   suggestions?: ChatSuggestion[];
   onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
+  actionPrompt?: ReactNode;
   theme?: 'light' | 'dark';
   registry?: ContentRendererRegistry;
   rendererContext?: ContentRendererContext;
@@ -58,6 +60,7 @@ export function ChatPanel({
   compactContextLabel,
   suggestions,
   onSuggestionSelect,
+  actionPrompt,
   theme = 'light',
   registry,
   rendererContext,
@@ -76,6 +79,7 @@ export function ChatPanel({
         onDeleteMessage={onDeleteMessage}
         messageActionDisabled={messageActionDisabled}
       />
+      {actionPrompt}
       <InputArea
         onSend={onSend}
         selectedModel={selectedModel}

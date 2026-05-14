@@ -17,13 +17,40 @@ interface ApiSuccessEnvelope<T> {
 
 export interface SessionRecord {
   sessionId: string;
+  projectId?: string;
+  title?: string;
   createdAt: string;
   updatedAt: string;
   modelId: number;
+  mode: 'vibe' | 'spec';
   cwd: string;
   messageCount: number;
   systemPrompt?: string;
+  boundRunnerId?: string;
+  specWorkflow?: SpecWorkflowState;
 }
+
+export interface ProjectRecord {
+  projectId: string;
+  name: string;
+  rootPath: string;
+  defaultRunnerId: string;
+  createdAt: string;
+  updatedAt: string;
+  chatCount: number;
+  latestSession?: SessionRecord;
+}
+
+export interface SpecWorkflowState {
+  phase: 'requirements' | 'design' | 'tasks';
+  awaitingConfirm: boolean;
+  requirementsMsgId?: string;
+  designMsgId?: string;
+  taskListMsgId?: string;
+  documents?: Partial<Record<SpecDocType, string>>;
+}
+
+export type SpecDocType = SpecWorkflowState['phase'];
 
 export interface ModelDescriptor {
   modelId: number;
@@ -72,6 +99,13 @@ export interface RunnerApprovalTicketResult {
     cmd: string;
     workdir: string;
   };
+}
+
+export interface RunnerDirectoryEntry {
+  path: string;
+  name: string;
+  type: 'directory' | 'file';
+  size?: number;
 }
 
 const AUTH_APP_NAME = import.meta.env.VITE_CASDOOR_APP_NAME || 'aflow';
@@ -154,6 +188,30 @@ export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
   return requestJson({ url: '/api/sessions', method: 'GET' });
 }
 
+export async function fetchProjects(): Promise<{ projects: ProjectRecord[] }> {
+  return requestJson({ url: '/api/projects', method: 'GET' });
+}
+
+export async function createProject(input: {
+  name?: string;
+  rootPath: string;
+  runnerId: string;
+}): Promise<{ project: ProjectRecord }> {
+  return requestJson({
+    url: '/api/projects',
+    method: 'POST',
+    data: input,
+  });
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  await requestNoContent({ url: `/api/projects/${projectId}`, method: 'DELETE' });
+}
+
+export async function fetchProjectSessions(projectId: string): Promise<{ sessions: SessionRecord[] }> {
+  return requestJson({ url: `/api/projects/${projectId}/sessions`, method: 'GET' });
+}
+
 export async function fetchModels(): Promise<{ currentModel: number; models: ModelDescriptor[] }> {
   return requestJson({ url: '/api/models', method: 'GET' });
 }
@@ -166,14 +224,20 @@ export async function fetchSession(
 
 export async function createSession(opts?: {
   model?: string | number;
+  mode?: 'vibe' | 'spec';
+  title?: string;
   systemPrompt?: string;
+  projectId?: string;
 }): Promise<{ session: SessionRecord }> {
   return requestJson({
     url: '/api/sessions',
     method: 'POST',
     data: {
       modelId: opts?.model,
+      mode: opts?.mode,
+      title: opts?.title,
       systemPrompt: opts?.systemPrompt,
+      projectId: opts?.projectId,
     },
   });
 }
@@ -315,11 +379,36 @@ export async function bindSessionRunner(sessionId: string, runnerId: string): Pr
   });
 }
 
+export async function fetchRunnerRoots(runnerId: string): Promise<{ roots: RunnerDirectoryEntry[] }> {
+  return requestJson({
+    url: `/api/runners/${runnerId}/fs/roots`,
+    method: 'POST',
+    data: {},
+  });
+}
+
+export async function fetchRunnerDirectory(input: {
+  runnerId: string;
+  path: string;
+  includeHidden?: boolean;
+}): Promise<{ path: string; entries: RunnerDirectoryEntry[]; total: number }> {
+  return requestJson({
+    url: `/api/runners/${input.runnerId}/fs/list`,
+    method: 'POST',
+    data: {
+      path: input.path,
+      includeHidden: input.includeHidden,
+    },
+  });
+}
+
 interface StreamChatOptions {
   message: string;
   model_id?: string | number;
   reasoning_effort?: 'low' | 'medium' | 'high';
   session_id: string;
+  project_id?: string;
+  mode?: 'vibe' | 'spec';
   approve_risky_ops?: boolean;
   approval_ticket?: string;
   attachments?: FilePart[];
@@ -346,6 +435,14 @@ export type ChatStreamEvent =
       type: 'msg_delta';
       msg_id: string;
       delta: string;
+    }
+  | {
+      type: 'spec_doc_update';
+      msg_id: string;
+      doc_type: SpecDocType;
+      content: string;
+      delta?: string;
+      done: boolean;
     }
   | {
       type: 'approval_req';
@@ -389,6 +486,8 @@ export async function streamChat({
   model_id,
   reasoning_effort,
   session_id,
+  project_id,
+  mode,
   approve_risky_ops,
   approval_ticket,
   attachments,
@@ -409,6 +508,8 @@ export async function streamChat({
       model_id,
       reasoning_effort,
       session_id,
+      project_id,
+      mode,
       approve_risky_ops: Boolean(approve_risky_ops),
       approval_ticket,
       attachments,
@@ -478,5 +579,35 @@ export async function deleteSessionMessage(
   return requestJson({
     url: `/api/chat/${session_id}/messages/${msg_id}`,
     method: 'DELETE',
+  });
+}
+
+export async function fetchSpecState(sessionId: string): Promise<{
+  sessionId: string;
+  mode: 'spec';
+  specWorkflow: SpecWorkflowState;
+}> {
+  return requestJson({
+    url: `/api/spec/${sessionId}/state`,
+    method: 'GET',
+  });
+}
+
+export async function confirmSpecPhase(
+  sessionId: string,
+  input?: { selectedArtifacts?: string[]; actionAnswer?: string },
+): Promise<{
+  session: SessionRecord;
+  messages: UnifiedMessage[];
+  specWorkflow: SpecWorkflowState;
+  progressed: boolean;
+}> {
+  return requestJson({
+    url: `/api/spec/${sessionId}/confirm`,
+    method: 'POST',
+    data: {
+      selected_artifacts: input?.selectedArtifacts,
+      action_answer: input?.actionAnswer,
+    },
   });
 }

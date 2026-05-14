@@ -8,10 +8,12 @@ import { ModelService } from './model-service.js';
 import { SessionService } from './session-service.js';
 
 export interface CreateTaskInput {
+  ownerUserId: string;
   prompt: string;
   profileId?: string;
   modelId?: number;
   sessionId?: string;
+  projectId?: string;
   type?: TaskType;
   config?: Record<string, unknown>;
   maxRetries?: number;
@@ -40,16 +42,19 @@ export class TaskService {
     );
   }
 
-  createTask(input: CreateTaskInput) {
+  async createTask(input: CreateTaskInput) {
     const modelId = input.modelId ?? this.modelService.resolveModelIdForProfile(input.profileId);
     this.modelService.getModel(modelId);
 
     const session =
       input.sessionId != null
-        ? this.sessionService.getSession(input.sessionId)
-        : this.sessionService.createSession({
+        ? await this.sessionService.getSession(input.sessionId, input.ownerUserId)
+        : await this.sessionService.createSession({
+            ownerUserId: input.ownerUserId,
+            projectId: input.projectId,
             modelId,
-            cwd: process.cwd(),
+            mode: 'vibe',
+            cwd: input.projectId ? undefined : process.cwd(),
           });
 
     const now = new Date().toISOString();

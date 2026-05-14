@@ -6,6 +6,8 @@ export const modelIdSchema = z.coerce.number().int().positive();
 export const providerModelNameSchema = z.string().trim().min(1).max(128);
 export const isoDateTimeSchema = z.string().datetime({ offset: true });
 export const reasoningEffortSchema = z.enum(['low', 'medium', 'high']);
+export const sessionModeSchema = z.enum(['vibe', 'spec']);
+export const specWorkflowPhaseSchema = z.enum(['requirements', 'design', 'tasks']);
 export const taskStatusSchema = z.enum([
   'pending',
   'running',

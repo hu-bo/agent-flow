@@ -1,133 +1,304 @@
 import { randomUUID } from 'node:crypto';
 import type { UnifiedMessage } from '@agent-flow/core/messages';
-import type { SessionRecord, SessionState } from '../contracts/api.js';
+import type { Repository } from 'typeorm';
+import type { AppDataSource } from '../db/data-source.js';
+import { ChatMessageEntity } from '../db/entities/chat-message.entity.js';
+import { ChatSessionEntity } from '../db/entities/chat-session.entity.js';
+import { ProjectEntity } from '../db/entities/project.entity.js';
+import type { SessionMode, SessionRecord, SessionState, SpecWorkflowState } from '../contracts/api.js';
 import { NotFoundError } from '../lib/errors.js';
 
 interface CreateSessionInput {
+  ownerUserId: string;
+  projectId?: string;
   modelId: number;
+  mode: SessionMode;
   cwd: string;
   systemPrompt?: string;
+  title?: string;
+}
+
+const MAX_SESSION_TITLE_LENGTH = 30;
+
+function normalizeSessionTitle(text: string | undefined): string | undefined {
+  const normalized = (text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return undefined;
+  return normalized.length > MAX_SESSION_TITLE_LENGTH
+    ? `${normalized.slice(0, MAX_SESSION_TITLE_LENGTH).trimEnd()}...`
+    : normalized;
+}
+
+function extractUserQueryTitle(messages: UnifiedMessage[]): string | undefined {
+  const firstUserMessage = messages.find((message) => message.role === 'user');
+  const text = firstUserMessage?.content
+    .filter(
+      (part): part is Extract<UnifiedMessage['content'][number], { type: 'text' }> =>
+        part.type === 'text',
+    )
+    .map((part) => part.text)
+    .join(' ');
+
+  return normalizeSessionTitle(text);
 }
 
 export class SessionService {
-  private readonly sessions = new Map<string, SessionState>();
-  private readonly runnerBindings = new Map<string, string>();
+  private readonly sessionRepository: Repository<ChatSessionEntity>;
+  private readonly messageRepository: Repository<ChatMessageEntity>;
+  private readonly projectRepository: Repository<ProjectEntity>;
 
-  constructor(private readonly defaultCwd: string) {}
-
-  listSessions() {
-    return Array.from(this.sessions.values())
-      .map((state) => state.session)
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  constructor(
+    db: AppDataSource,
+    private readonly defaultCwd: string,
+  ) {
+    this.sessionRepository = db.getRepository(ChatSessionEntity);
+    this.messageRepository = db.getRepository(ChatMessageEntity);
+    this.projectRepository = db.getRepository(ProjectEntity);
   }
 
-  createSession(input: Partial<CreateSessionInput> & Pick<CreateSessionInput, 'modelId'>) {
-    const now = new Date().toISOString();
-    const session: SessionRecord = {
+  async listSessions(ownerUserId: string, options: { projectId?: string } = {}): Promise<SessionRecord[]> {
+    const sessions = await this.sessionRepository.find({
+      where: {
+        ownerUserId,
+        ...(options.projectId ? { projectId: options.projectId } : {}),
+      },
+      order: { updatedAt: 'DESC' },
+    });
+    return sessions.map(toSessionRecord);
+  }
+
+  async createSession(input: Partial<CreateSessionInput> & Pick<CreateSessionInput, 'modelId' | 'ownerUserId'>): Promise<SessionRecord> {
+    const project = input.projectId
+      ? await this.projectRepository.findOne({
+          where: {
+            projectId: input.projectId,
+            ownerUserId: input.ownerUserId,
+          },
+        })
+      : null;
+    if (input.projectId && !project) {
+      throw new NotFoundError(`Project not found: ${input.projectId}`);
+    }
+
+    const entity = this.sessionRepository.create({
       sessionId: randomUUID(),
-      createdAt: now,
-      updatedAt: now,
+      ownerUserId: input.ownerUserId,
+      projectId: project?.projectId ?? null,
       modelId: input.modelId,
-      cwd: input.cwd ?? this.defaultCwd,
+      mode: input.mode ?? 'vibe',
+      cwd: input.cwd ?? project?.rootPath ?? this.defaultCwd,
       messageCount: 0,
-      systemPrompt: input.systemPrompt,
+      title: normalizeSessionTitle(input.title) ?? null,
+      systemPrompt: input.systemPrompt ?? null,
       latestCheckpointId: '',
-    };
+      boundRunnerId: project?.defaultRunnerId ?? null,
+      specWorkflow:
+        input.mode === 'spec'
+          ? {
+              phase: 'requirements',
+              awaitingConfirm: false,
+              documents: {},
+            } satisfies SpecWorkflowState
+          : null,
+    });
 
-    const state: SessionState = {
-      session,
-      messages: [],
-    };
-
-    this.sessions.set(session.sessionId, state);
-    return session;
-  }
-
-  getSessionState(sessionId: string) {
-    const state = this.sessions.get(sessionId);
-    if (!state) {
-      throw new NotFoundError(`Session not found: ${sessionId}`);
+    const saved = await this.sessionRepository.save(entity);
+    if (project) {
+      project.updatedAt = new Date();
+      await this.projectRepository.save(project);
     }
-    return state;
+    return toSessionRecord(saved);
   }
 
-  getSession(sessionId: string) {
-    return this.getSessionState(sessionId).session;
+  async getSessionState(sessionId: string, ownerUserId?: string): Promise<SessionState> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
+    const messages = await this.listMessages(sessionId);
+    return {
+      session: toSessionRecord(session),
+      messages,
+    };
   }
 
-  getLatestSession() {
-    return this.listSessions()[0];
+  async getSession(sessionId: string, ownerUserId?: string): Promise<SessionRecord> {
+    return toSessionRecord(await this.getSessionEntity(sessionId, ownerUserId));
   }
 
-  deleteSession(sessionId: string) {
-    if (!this.sessions.delete(sessionId)) {
-      throw new NotFoundError(`Session not found: ${sessionId}`);
-    }
-    this.runnerBindings.delete(sessionId);
+  async getLatestSession(ownerUserId: string): Promise<SessionRecord | undefined> {
+    const latest = await this.sessionRepository.findOne({
+      where: { ownerUserId },
+      order: { updatedAt: 'DESC' },
+    });
+    return latest ? toSessionRecord(latest) : undefined;
   }
 
-  updateSessionModel(sessionId: string, modelId: number) {
-    const state = this.getSessionState(sessionId);
-    state.session.modelId = modelId;
-    state.session.updatedAt = new Date().toISOString();
-    return state.session;
+  async deleteSession(sessionId: string, ownerUserId?: string): Promise<void> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
+    await this.sessionRepository.delete({ sessionId: session.sessionId });
   }
 
-  listMessages(sessionId: string) {
-    return [...this.getSessionState(sessionId).messages];
+  async updateSessionModel(sessionId: string, modelId: number, ownerUserId?: string): Promise<SessionRecord> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
+    session.modelId = modelId;
+    session.updatedAt = new Date();
+    return toSessionRecord(await this.sessionRepository.save(session));
   }
 
-  appendMessage(sessionId: string, message: UnifiedMessage) {
-    const state = this.getSessionState(sessionId);
-    state.messages.push(message);
-    state.session.messageCount = state.messages.length;
-    state.session.updatedAt = message.timestamp;
-    state.session.latestCheckpointId = message.uuid;
+  async listMessages(sessionId: string): Promise<UnifiedMessage[]> {
+    const rows = await this.messageRepository.find({
+      where: { sessionId },
+      order: { sequence: 'ASC' },
+    });
+    return rows.map((row) => row.payload);
+  }
+
+  async appendMessage(sessionId: string, message: UnifiedMessage): Promise<UnifiedMessage> {
+    const session = await this.getSessionEntity(sessionId);
+    const count = await this.messageRepository.count({ where: { sessionId } });
+    await this.messageRepository.save(
+      this.messageRepository.create({
+        messageId: message.uuid,
+        sessionId,
+        sequence: count + 1,
+        role: message.role,
+        timestamp: new Date(message.timestamp),
+        payload: message,
+      }),
+    );
+    await this.syncSessionAfterMessages(session, [...(await this.listMessages(sessionId))]);
     return message;
   }
 
-  upsertMessage(sessionId: string, message: UnifiedMessage) {
-    const state = this.getSessionState(sessionId);
-    const index = state.messages.findIndex((candidate) => candidate.uuid === message.uuid);
-    if (index >= 0) {
-      state.messages[index] = message;
+  async upsertMessage(sessionId: string, message: UnifiedMessage): Promise<UnifiedMessage> {
+    const session = await this.getSessionEntity(sessionId);
+    const existing = await this.messageRepository.findOne({ where: { messageId: message.uuid } });
+    if (existing) {
+      existing.role = message.role;
+      existing.timestamp = new Date(message.timestamp);
+      existing.payload = message;
+      await this.messageRepository.save(existing);
     } else {
-      state.messages.push(message);
+      const count = await this.messageRepository.count({ where: { sessionId } });
+      await this.messageRepository.save(
+        this.messageRepository.create({
+          messageId: message.uuid,
+          sessionId,
+          sequence: count + 1,
+          role: message.role,
+          timestamp: new Date(message.timestamp),
+          payload: message,
+        }),
+      );
     }
-    state.session.messageCount = state.messages.length;
-    state.session.updatedAt = message.timestamp;
-    state.session.latestCheckpointId = message.uuid;
+    await this.syncSessionAfterMessages(session, await this.listMessages(sessionId));
     return message;
   }
 
-  replaceMessages(sessionId: string, messages: UnifiedMessage[]) {
-    const state = this.getSessionState(sessionId);
-    state.messages = [...messages];
-    state.session.messageCount = state.messages.length;
-    state.session.updatedAt = new Date().toISOString();
-    state.session.latestCheckpointId = state.messages.at(-1)?.uuid ?? '';
-    return state.session;
+  async replaceMessages(sessionId: string, messages: UnifiedMessage[]): Promise<SessionRecord> {
+    const session = await this.getSessionEntity(sessionId);
+    await this.messageRepository.delete({ sessionId });
+    const rows = messages.map((message, index) =>
+      this.messageRepository.create({
+        messageId: message.uuid,
+        sessionId,
+        sequence: index + 1,
+        role: message.role,
+        timestamp: new Date(message.timestamp),
+        payload: message,
+      }),
+    );
+    if (rows.length > 0) {
+      await this.messageRepository.save(rows);
+    }
+    await this.syncSessionAfterMessages(session, messages, true);
+    return toSessionRecord(session);
   }
 
-  findMessageIndex(sessionId: string, messageId: string) {
-    const state = this.getSessionState(sessionId);
-    return state.messages.findIndex((message) => message.uuid === messageId);
+  async findMessageIndex(sessionId: string, messageId: string): Promise<number> {
+    const messages = await this.listMessages(sessionId);
+    return messages.findIndex((message) => message.uuid === messageId);
   }
 
-  truncateMessages(sessionId: string, count: number) {
-    const state = this.getSessionState(sessionId);
-    const safeCount = Math.max(0, Math.min(count, state.messages.length));
-    return this.replaceMessages(sessionId, state.messages.slice(0, safeCount));
+  async truncateMessages(sessionId: string, count: number): Promise<SessionRecord> {
+    const messages = await this.listMessages(sessionId);
+    const safeCount = Math.max(0, Math.min(count, messages.length));
+    return this.replaceMessages(sessionId, messages.slice(0, safeCount));
   }
 
-  bindRunner(sessionId: string, runnerId: string) {
-    this.getSession(sessionId);
-    this.runnerBindings.set(sessionId, runnerId);
+  async bindRunner(sessionId: string, runnerId: string, ownerUserId?: string): Promise<string> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
+    session.boundRunnerId = runnerId;
+    session.updatedAt = new Date();
+    await this.sessionRepository.save(session);
     return runnerId;
   }
 
-  getBoundRunner(sessionId: string): string | undefined {
-    this.getSession(sessionId);
-    return this.runnerBindings.get(sessionId);
+  async getBoundRunner(sessionId: string): Promise<string | undefined> {
+    const session = await this.getSessionEntity(sessionId);
+    return session.boundRunnerId ?? undefined;
   }
+
+  async saveSession(session: SessionRecord): Promise<SessionRecord> {
+    const entity = await this.getSessionEntity(session.sessionId);
+    entity.title = session.title ?? null;
+    entity.modelId = session.modelId;
+    entity.mode = session.mode;
+    entity.cwd = session.cwd;
+    entity.messageCount = session.messageCount;
+    entity.systemPrompt = session.systemPrompt ?? null;
+    entity.latestCheckpointId = session.latestCheckpointId ?? null;
+    entity.boundRunnerId = session.boundRunnerId ?? null;
+    entity.specWorkflow = session.specWorkflow ?? null;
+    entity.updatedAt = new Date(session.updatedAt);
+    return toSessionRecord(await this.sessionRepository.save(entity));
+  }
+
+  private async getSessionEntity(sessionId: string, ownerUserId?: string): Promise<ChatSessionEntity> {
+    const session = await this.sessionRepository.findOne({
+      where: {
+        sessionId,
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
+    });
+    if (!session) {
+      throw new NotFoundError(`Session not found: ${sessionId}`);
+    }
+    return session;
+  }
+
+  private async syncSessionAfterMessages(
+    session: ChatSessionEntity,
+    messages: UnifiedMessage[],
+    forceTitleSync = false,
+  ): Promise<void> {
+    session.messageCount = messages.length;
+    session.updatedAt = new Date();
+    session.latestCheckpointId = messages.at(-1)?.uuid ?? '';
+    if (forceTitleSync || !session.title) {
+      session.title = extractUserQueryTitle(messages) ?? null;
+    }
+    await this.sessionRepository.save(session);
+    if (session.projectId) {
+      await this.projectRepository.update({ projectId: session.projectId }, { updatedAt: new Date() });
+    }
+  }
+}
+
+export function toSessionRecord(entity: ChatSessionEntity): SessionRecord {
+  return {
+    sessionId: entity.sessionId,
+    ...(entity.projectId ? { projectId: entity.projectId } : {}),
+    ...(entity.title ? { title: entity.title } : {}),
+    createdAt: entity.createdAt.toISOString(),
+    updatedAt: entity.updatedAt.toISOString(),
+    modelId: entity.modelId,
+    mode: entity.mode,
+    cwd: entity.cwd,
+    messageCount: entity.messageCount,
+    ...(entity.systemPrompt ? { systemPrompt: entity.systemPrompt } : {}),
+    latestCheckpointId: entity.latestCheckpointId ?? '',
+    ...(entity.boundRunnerId ? { boundRunnerId: entity.boundRunnerId } : {}),
+    ...(entity.specWorkflow ? { specWorkflow: entity.specWorkflow } : {}),
+  };
 }

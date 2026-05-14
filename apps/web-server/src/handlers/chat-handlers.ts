@@ -14,11 +14,13 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   const body = parseWithSchema(createChatBodySchema, request.body, 'body');
 
   if (body.background_task) {
-    const task = request.server.services.taskService.createTask({
+    const task = await request.server.services.taskService.createTask({
+      ownerUserId: request.auth.userId,
       prompt: body.message,
       profileId: body.profile_id,
       modelId: body.model_id,
       sessionId: body.session_id,
+      projectId: body.project_id,
       type: 'chat',
       config: {
         userId: request.auth.userId,
@@ -39,6 +41,8 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
       const generator = request.server.services.chatService.streamTurn({
         userId: request.auth.userId,
         sessionId: body.session_id,
+        projectId: body.project_id,
+        mode: body.mode,
         message: body.message,
         profileId: body.profile_id,
         modelId: body.model_id,
@@ -67,6 +71,8 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   const result = await request.server.services.chatService.runTurn({
     userId: request.auth.userId,
     sessionId: body.session_id,
+    projectId: body.project_id,
+    mode: body.mode,
     message: body.message,
     profileId: body.profile_id,
     modelId: body.model_id,
@@ -93,7 +99,7 @@ export async function retryChatMessageHandler(request: FastifyRequest, reply: Fa
     requestId: request.requestContext.requestId,
   });
 
-  const state = request.server.services.sessionService.getSessionState(params.session_id);
+  const state = await request.server.services.sessionService.getSessionState(params.session_id, request.auth.userId);
   return sendSuccess(reply, {
     session: state.session,
     messages: state.messages,
@@ -140,9 +146,9 @@ function toStreamErrorEvent(error: unknown): ChatStreamEvent {
 
 export async function deleteChatMessageHandler(request: FastifyRequest, reply: FastifyReply) {
   const params = parseWithSchema(messageMutationParamsSchema, request.params, 'params');
-  request.server.services.chatService.deleteMessage(params.session_id, params.msg_id);
+  await request.server.services.chatService.deleteMessage(params.session_id, params.msg_id);
 
-  const state = request.server.services.sessionService.getSessionState(params.session_id);
+  const state = await request.server.services.sessionService.getSessionState(params.session_id, request.auth.userId);
   return sendSuccess(reply, {
     session: state.session,
     messages: state.messages,

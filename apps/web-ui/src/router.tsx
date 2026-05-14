@@ -4,6 +4,7 @@ import { AgentPage } from './pages/AgentPage';
 import { ChatPage } from './pages/ChatPage';
 import { FlowPage } from './pages/FlowPage';
 import { RunnerPage } from './pages/RunnerPage';
+import { SpecPage } from './pages/SpecPage';
 import { AuthCallbackPage, AuthGate } from './auth';
 
 export function AppRouter() {
@@ -21,6 +22,8 @@ export function AppRouter() {
         <Route index element={<Navigate to="/chat" replace />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="chat/:sessionId" element={<ChatPage />} />
+        <Route path="spec" element={<SpecPage />} />
+        <Route path="spec/:sessionId" element={<SpecPage />} />
         <Route path="runners" element={<RunnerPage />} />
         <Route path="agent" element={<AgentPage />} />
         <Route path="flow" element={<FlowPage />} />

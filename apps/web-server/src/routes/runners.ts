@@ -5,6 +5,8 @@ import {
   getRunnerDownloadsHandler,
   issueRunnerApprovalTicketHandler,
   issueRunnerTokenHandler,
+  listRunnerDirectoryHandler,
+  listRunnerRootsHandler,
   listRunnersHandler,
   streamRunnersHandler,
   rotateRunnerTokenHandler,
@@ -19,5 +21,7 @@ export async function registerRunnerRoutes(app: FastifyInstance) {
   app.post('/runners/approval-ticket', { preHandler: requireJsonBody }, issueRunnerApprovalTicketHandler);
   app.post('/runners/token', issueRunnerTokenHandler);
   app.post('/runners/token/rotate', rotateRunnerTokenHandler);
+  app.post('/runners/:runner_id/fs/roots', listRunnerRootsHandler);
+  app.post('/runners/:runner_id/fs/list', { preHandler: requireJsonBody }, listRunnerDirectoryHandler);
   app.post('/sessions/:session_id/runner-binding', { preHandler: requireJsonBody }, bindSessionRunnerHandler);
 }

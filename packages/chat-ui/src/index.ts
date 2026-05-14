@@ -9,6 +9,14 @@ export { MessageBubble } from './components/MessageBubble/MessageBubble';
 export { InputArea } from './components/InputArea/InputArea';
 export { SelectField } from './components/SelectField/SelectField';
 export type { SelectFieldProps, SelectFieldOption } from './components/SelectField/SelectField';
+export { ActionPrompt } from './components/ActionPrompt/ActionPrompt';
+export type {
+  ActionPromptOption,
+  ActionPromptProps,
+  ActionPromptSubmitPayload,
+  ActionPromptCustomInput,
+  ActionPromptToggle,
+} from './components/ActionPrompt/ActionPrompt';
 export { ThoughtChain } from './components/ThoughtChain/ThoughtChain';
 export type {
   ThoughtChainProps,

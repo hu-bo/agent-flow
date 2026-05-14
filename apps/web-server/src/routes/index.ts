@@ -6,8 +6,10 @@ import { registerChatRoutes } from './chat.js';
 import { registerCompactRoutes } from './compact.js';
 import { registerHealthRoutes } from './health.js';
 import { registerModelRoutes } from './models.js';
+import { registerProjectRoutes } from './projects.js';
 import { registerRunnerRoutes } from './runners.js';
 import { registerSessionRoutes } from './sessions.js';
+import { registerSpecRoutes } from './spec.js';
 import { registerTaskRoutes } from './tasks.js';
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -25,10 +27,12 @@ export async function registerRoutes(app: FastifyInstance) {
       protectedApi.addHook('preHandler', requireBearerAuth);
       await registerAdminRoutes(protectedApi);
       await registerModelRoutes(protectedApi);
+      await registerProjectRoutes(protectedApi);
       await registerSessionRoutes(protectedApi);
       await registerRunnerRoutes(protectedApi);
       await registerCompactRoutes(protectedApi);
       await registerChatRoutes(protectedApi);
+      await registerSpecRoutes(protectedApi);
       await registerTaskRoutes(protectedApi);
     });
   }, { prefix: '/api' });

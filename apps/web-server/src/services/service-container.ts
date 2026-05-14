@@ -9,6 +9,8 @@ import { CompactService } from './compact-service.js';
 import { ModelAdminService } from './model-admin-service.js';
 import { ModelAdapterService } from './model-adapter-service.js';
 import { ModelService } from './model-service.js';
+import { ProjectService } from './project-service.js';
+import { RunnerDirectoryService } from './runner-directory-service.js';
 import { RunnerRegistrationService } from './runner-registration-service.js';
 import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
@@ -16,6 +18,7 @@ import { RunnerApprovalService } from './runner-approval-service.js';
 import { RemoteRunner } from './remote-runner.js';
 import { CoreRuntimeGateway, createCoreAgentRuntimeBundle } from './runtime-gateway.js';
 import { SessionService } from './session-service.js';
+import { SpecWorkflowService } from './spec-workflow-service.js';
 import { TaskService } from './task-service.js';
 
 export async function createServices(env: AppEnv, db: AppDataSource) {
@@ -37,7 +40,6 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   modelService.setRoutingPolicyWriter(modelAdminService);
   await modelService.initialize();
 
-  const sessionService = new SessionService(process.cwd());
   const runnerRegistrationService = new RunnerRegistrationService(db, {
     runnerServerAddr: env.runnerServerAddr,
     runnerGrpcServerAddr: env.runnerGrpcServerAddr,
@@ -46,6 +48,9 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const runnerRegistryService = new RunnerRegistryService(db, runnerRegistrationService);
   const runnerApprovalService = new RunnerApprovalService();
   const runnerDispatchService = new RunnerDispatchService(runnerRegistryService, runnerApprovalService, logger);
+  const projectService = new ProjectService(db, runnerRegistryService);
+  const sessionService = new SessionService(db, process.cwd());
+  const runnerDirectoryService = new RunnerDirectoryService(runnerDispatchService, runnerRegistryService);
   const remoteRunner = new RemoteRunner(runnerDispatchService);
   const runtimeBundle = createCoreAgentRuntimeBundle({
     cwd: process.cwd(),
@@ -64,7 +69,14 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   });
   const taskService = new TaskService(modelService, sessionService, runtime, logger, tracer);
   const compactService = new CompactService(sessionService, new AutoCompactor());
-  const chatService = new ChatService(sessionService, modelService, runtimeGateway, memoryService);
+  const specWorkflowService = new SpecWorkflowService(sessionService);
+  const chatService = new ChatService(
+    sessionService,
+    modelService,
+    runtimeGateway,
+    specWorkflowService,
+    memoryService,
+  );
   const authService = new AuthService(db, {
     authApiBaseUrl: env.authApiBaseUrl,
     appName: env.authAppName,
@@ -74,13 +86,16 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     modelService,
     modelAdapterService,
     modelAdminService,
+    projectService,
     sessionService,
     runnerRegistrationService,
     runnerRegistryService,
     runnerApprovalService,
+    runnerDirectoryService,
     runnerDispatchService,
     taskService,
     compactService,
+    specWorkflowService,
     chatService,
     authService,
   };

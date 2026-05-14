@@ -8,6 +8,7 @@ export async function compactSessionHandler(request: FastifyRequest, reply: Fast
   const result = await request.server.services.compactService.compactSession(
     body.sessionId,
     body.trigger,
+    request.auth.userId,
   );
   return sendSuccess(reply, result);
 }

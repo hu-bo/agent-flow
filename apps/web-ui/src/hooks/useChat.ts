@@ -4,6 +4,7 @@ import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/core/mes
 import {
   fetchSession,
   streamChat,
+  type SessionRecord,
   type ApprovalReqPayload,
   type ChatStreamEvent,
 } from '../api.js';
@@ -11,12 +12,15 @@ import {
 interface SendMessageInput {
   text: string;
   sessionId: string;
+  projectId?: string;
+  mode?: 'vibe' | 'spec';
   model?: string | number;
   reasoningEffort?: ReasoningEffort;
   approveRiskyOps?: boolean;
   approvalTicket?: string;
   attachments?: FileAttachment[];
   optimisticUserMessage?: boolean;
+  onSpecDocUpdate?: (event: Extract<ChatStreamEvent, { type: 'spec_doc_update' }>) => void;
 }
 
 export interface PendingApprovalRequest {
@@ -26,6 +30,7 @@ export interface PendingApprovalRequest {
 
 interface UseChatReturn {
   messages: UnifiedMessage[];
+  sessionRecord: SessionRecord | null;
   sendMessage: (input: SendMessageInput) => Promise<void>;
   approvePendingRequest: (approvalTicket: string) => Promise<void>;
   dismissPendingApproval: () => void;
@@ -117,6 +122,7 @@ function upsertMessageDelta(
 
 export function useChat(): UseChatReturn {
   const [messages, setMessages] = useState<UnifiedMessage[]>([]);
+  const [sessionRecord, setSessionRecord] = useState<SessionRecord | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApprovalRequest | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -138,6 +144,10 @@ export function useChat(): UseChatReturn {
   }, []);
 
   const loadSessionMessages = useCallback(async (sessionId: string | null) => {
+    if (streamAbortRef.current && activeSessionRef.current === sessionId) {
+      return;
+    }
+
     activeSessionRef.current = sessionId;
     loadSequenceRef.current += 1;
     const currentLoad = loadSequenceRef.current;
@@ -148,6 +158,7 @@ export function useChat(): UseChatReturn {
 
     if (!sessionId) {
       setMessages([]);
+      setSessionRecord(null);
       setTypingMessageId(null);
       setIsConnecting(false);
       commitPendingApproval(null);
@@ -163,6 +174,7 @@ export function useChat(): UseChatReturn {
       // Avoid overriding optimistic stream state while a response is still in flight.
       if (streamAbortRef.current) return;
       setMessages(payload.messages);
+      setSessionRecord(payload.session);
       setTypingMessageId(null);
     } finally {
       if (loadSequenceRef.current === currentLoad) {
@@ -174,6 +186,7 @@ export function useChat(): UseChatReturn {
   const refreshSessionMessages = useCallback(async (sessionId: string | null) => {
     if (!sessionId) {
       setMessages([]);
+      setSessionRecord(null);
       setTypingMessageId(null);
       commitPendingApproval(null);
       return;
@@ -182,6 +195,7 @@ export function useChat(): UseChatReturn {
     const payload = await fetchSession(sessionId);
     if (activeSessionRef.current === sessionId && !streamAbortRef.current) {
       setMessages(payload.messages);
+      setSessionRecord(payload.session);
       setTypingMessageId(null);
     }
   }, [commitPendingApproval]);
@@ -191,12 +205,15 @@ export function useChat(): UseChatReturn {
       {
         text,
         sessionId,
+        projectId,
+        mode,
         model,
         reasoningEffort,
         approveRiskyOps,
         approvalTicket,
         attachments,
         optimisticUserMessage = true,
+        onSpecDocUpdate,
       }: SendMessageInput,
     ) => {
       const userInput = text.trim();
@@ -236,6 +253,8 @@ export function useChat(): UseChatReturn {
           model_id: model,
           reasoning_effort: reasoningEffort,
           session_id: sessionId,
+          project_id: projectId,
+          mode,
           approve_risky_ops: approveRiskyOps,
           approval_ticket: approvalTicket,
           attachments: attachmentParts.length ? attachmentParts : undefined,
@@ -249,12 +268,20 @@ export function useChat(): UseChatReturn {
                 pendingInput: {
                   text: userInput,
                   sessionId,
+                  projectId,
+                  mode,
                   model,
                   reasoningEffort,
                   attachments,
+                  onSpecDocUpdate,
                 },
               });
               setTypingMessageId(null);
+              return;
+            }
+
+            if (event.type === 'spec_doc_update') {
+              onSpecDocUpdate?.(event);
               return;
             }
 
@@ -318,6 +345,7 @@ export function useChat(): UseChatReturn {
 
   return {
     messages,
+    sessionRecord,
     sendMessage,
     approvePendingRequest,
     dismissPendingApproval,

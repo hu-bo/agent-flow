@@ -7,6 +7,53 @@ import {
   type ContentRendererContext,
 } from '../../registry';
 
+function RetryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="chat-ui-action-icon" aria-hidden="true">
+      <path
+        d="M20 11a8 8 0 1 0-2.34 5.66"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 4v7h-7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="chat-ui-action-icon" aria-hidden="true">
+      <rect
+        x="9"
+        y="9"
+        width="11"
+        height="11"
+        rx="2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
@@ -27,7 +74,7 @@ export function MessageBubble({
   rendererContext,
   onRetry,
   onCopy,
-  onDelete,
+  onDelete: _onDelete,
   actionDisabled,
 }: MessageBubbleProps) {
   const reg = useMemo(() => registry ?? createDefaultRegistry(), [registry]);
@@ -44,7 +91,7 @@ export function MessageBubble({
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
   const roleClass = isUser ? 'is-user' : isTool ? 'is-tool' : 'is-assistant';
-  const showActions = !isUser && !isTool && Boolean(onRetry || onCopy || onDelete);
+  const showActions = !isUser && !isTool && Boolean(onRetry || onCopy);
 
   return (
     <div className={`chat-ui-message-row ${roleClass}`}>
@@ -79,8 +126,10 @@ export function MessageBubble({
                   void onRetry(message);
                 }}
                 disabled={actionDisabled}
+                aria-label="Retry message"
+                title="Retry"
               >
-                Retry
+                <RetryIcon />
               </button>
             )}
             {onCopy && (
@@ -91,20 +140,10 @@ export function MessageBubble({
                   void onCopy(message);
                 }}
                 disabled={actionDisabled}
+                aria-label="Copy message"
+                title="Copy"
               >
-                Copy
-              </button>
-            )}
-            {onDelete && (
-              <button
-                type="button"
-                className="chat-ui-action-btn danger"
-                onClick={() => {
-                  void onDelete(message);
-                }}
-                disabled={actionDisabled}
-              >
-                Delete
+                <CopyIcon />
               </button>
             )}
           </div>

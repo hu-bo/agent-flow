@@ -5,7 +5,7 @@
 ## Scope
 
 - unified runner node execution (no local/remote split in runtime semantics)
-- semantic command router (`fs.read`, `fs.write`, `fs.patch`, `fs.list`, `fs.search`, `shell.exec`)
+- semantic command router (`fs.roots`, `fs.read`, `fs.write`, `fs.patch`, `fs.list`, `fs.search`, `shell.exec`)
 - host execution engine (`runner/exec`)
 - docker execution engine (`runner/docker`)
 - sandbox policy guard (`runner/sandbox`)

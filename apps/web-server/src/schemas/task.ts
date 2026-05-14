@@ -42,6 +42,7 @@ export const createTaskBodySchema = z.object({
   profileId: z.string().trim().min(1).max(64).optional(),
   model: modelIdSchema.optional(),
   sessionId: sessionIdSchema.optional(),
+  projectId: z.string().uuid().optional(),
   type: z.enum(['chat', 'workflow', 'compact']).default('chat'),
   config: z.record(z.string(), z.unknown()).optional(),
   maxRetries: z.number().int().min(0).max(10).optional(),

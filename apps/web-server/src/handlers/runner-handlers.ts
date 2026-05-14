@@ -6,6 +6,8 @@ import { AppError } from '../lib/errors.js';
 import {
   runnerBindingBodySchema,
   runnerBindingParamsSchema,
+  runnerFsListBodySchema,
+  runnerFsParamsSchema,
   runnerParamsSchema,
   runnerApprovalTicketBodySchema,
 } from '../schemas/runner.js';
@@ -105,7 +107,11 @@ export async function bindSessionRunnerHandler(request: FastifyRequest, reply: F
   if (runner.status !== 'online') {
     throw new AppError(409, 'RUNNER_OFFLINE', `Runner is offline: ${runner.runnerId}`);
   }
-  const boundRunnerId = request.server.services.sessionService.bindRunner(params.session_id, runner.runnerId);
+  const boundRunnerId = await request.server.services.sessionService.bindRunner(
+    params.session_id,
+    runner.runnerId,
+    request.auth.userId,
+  );
 
   return sendSuccess(reply, {
     session_id: params.session_id,
@@ -122,7 +128,7 @@ export async function getRunnerDownloadsHandler(request: FastifyRequest, reply: 
 
 export async function issueRunnerApprovalTicketHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(runnerApprovalTicketBodySchema, request.body, 'body');
-  const session = request.server.services.sessionService.getSession(body.session_id);
+  const session = await request.server.services.sessionService.getSession(body.session_id, request.auth.userId);
   const issued = request.server.services.runnerApprovalService.issue({
     ownerUserId: request.auth.userId,
     sessionId: body.session_id,
@@ -131,6 +137,27 @@ export async function issueRunnerApprovalTicketHandler(request: FastifyRequest, 
     ttlSec: body.ttl_sec,
   });
   return sendSuccess(reply, issued, { statusCode: 201, message: 'Created' });
+}
+
+export async function listRunnerRootsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(runnerFsParamsSchema, request.params, 'params');
+  const result = await request.server.services.runnerDirectoryService.listRoots({
+    ownerUserId: request.auth.userId,
+    runnerId: params.runner_id,
+  });
+  return sendSuccess(reply, result);
+}
+
+export async function listRunnerDirectoryHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(runnerFsParamsSchema, request.params, 'params');
+  const body = parseWithSchema(runnerFsListBodySchema, request.body ?? {}, 'body');
+  const result = await request.server.services.runnerDirectoryService.listDirectory({
+    ownerUserId: request.auth.userId,
+    runnerId: params.runner_id,
+    path: body.path,
+    includeHidden: body.includeHidden,
+  });
+  return sendSuccess(reply, result);
 }
 
 function toRunnerView(runner: {

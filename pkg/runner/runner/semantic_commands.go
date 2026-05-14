@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -64,7 +65,7 @@ func (r *ControllerImpl) runSemanticCommand(ctx context.Context, req types.TaskR
 	switch strings.TrimSpace(req.Command) {
 	case "shell.exec":
 		return true, r.runShellExec(ctx, req, sink)
-	case "fs.read", "fs.write", "fs.patch", "fs.list", "fs.search":
+	case "fs.roots", "fs.read", "fs.write", "fs.patch", "fs.list", "fs.search":
 		return true, r.runSemanticFS(ctx, req, sink)
 	default:
 		return false, nil
@@ -175,6 +176,8 @@ func runFSOp(req types.TaskRequest) (map[string]any, error) {
 	switch req.Command {
 	case "fs.read":
 		return fsRead(req)
+	case "fs.roots":
+		return fsRoots()
 	case "fs.write":
 		return fsWrite(req)
 	case "fs.patch":
@@ -186,6 +189,52 @@ func runFSOp(req types.TaskRequest) (map[string]any, error) {
 	default:
 		return nil, fmt.Errorf("unsupported semantic fs command: %s", req.Command)
 	}
+}
+
+func fsRoots() (map[string]any, error) {
+	roots := make([]map[string]any, 0)
+	seen := map[string]bool{}
+	appendRoot := func(path string) {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" || seen[path] {
+			return
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			return
+		}
+		seen[path] = true
+		roots = append(roots, map[string]any{
+			"path": path,
+			"name": rootDisplayName(path),
+			"type": "directory",
+		})
+	}
+
+	if runtime.GOOS == "windows" {
+		for drive := 'A'; drive <= 'Z'; drive++ {
+			appendRoot(fmt.Sprintf("%c:\\", drive))
+		}
+	} else {
+		appendRoot("/")
+		if home, err := os.UserHomeDir(); err == nil {
+			appendRoot(home)
+			appendRoot(filepath.Join(home, "workspace"))
+			appendRoot(filepath.Join(home, "work"))
+			appendRoot(filepath.Join(home, "projects"))
+		}
+		if cwd, err := os.Getwd(); err == nil {
+			appendRoot(cwd)
+		}
+	}
+
+	sort.Slice(roots, func(i, j int) bool {
+		return fmt.Sprint(roots[i]["path"]) < fmt.Sprint(roots[j]["path"])
+	})
+
+	return map[string]any{
+		"roots": roots,
+	}, nil
 }
 
 func fsRead(req types.TaskRequest) (map[string]any, error) {
@@ -575,4 +624,22 @@ func typeLabel(info fs.FileInfo) string {
 		return "directory"
 	}
 	return "file"
+}
+
+func rootDisplayName(path string) string {
+	clean := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		volume := filepath.VolumeName(clean)
+		if volume != "" {
+			return volume + "\\"
+		}
+	}
+	if clean == string(filepath.Separator) {
+		return clean
+	}
+	name := filepath.Base(clean)
+	if name == "." || name == string(filepath.Separator) {
+		return clean
+	}
+	return name
 }

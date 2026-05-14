@@ -1,404 +1,152 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChatPanel } from '@agent-flow/chat-ui';
-import type {
-  ChatMessage,
-  FileAttachment,
-  ReasoningEffort,
-  TokenUsageSummary,
-} from '@agent-flow/chat-ui';
+import type { FileAttachment } from '@agent-flow/chat-ui';
+import { MessageCircle, NotebookPen } from 'lucide-react';
 
-import {
-  bindSessionRunner,
-  createSession,
-  deleteSessionMessage,
-  fetchModels,
-  issueRunnerApprovalTicket,
-  retrySessionMessage,
-  streamRunners,
-  type RunnerRecord,
-  switchModel,
-  triggerCompact,
-} from '../api';
-import { useChat } from '../hooks/useChat';
+import { createSession, triggerCompact } from '../api';
+import { useMessageActions } from '../hooks/useMessageActions';
+import { useWorkspaceChatRuntime } from '../hooks/useWorkspaceChatRuntime';
 import { useChatStore } from '../store/chat-store';
+import { buildRunnerLabel, readErrorMessage } from './chat-page-utils';
 import './pages.less';
-
-type NoticeState = { kind: 'success' | 'error'; message: string } | null;
-type ModelSelectOption = {
-  value: string;
-  label: string;
-  maxInputTokens?: number;
-};
-
-function readErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return fallback;
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(reader.error ?? new Error(`Failed to read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
-}
-
-function buildTokenUsage(messages: ChatMessage[], tokenBudget: number | null): TokenUsageSummary {
-  const usedTokens = messages.reduce((sum, message) => {
-    return sum + (message.metadata?.tokenUsage?.totalTokens ?? 0);
-  }, 0);
-  const remainingTokens = tokenBudget === null ? null : Math.max(0, tokenBudget - usedTokens);
-  return { usedTokens, remainingTokens, tokenBudget };
-}
-
-function buildRunnerLabel(runner: RunnerRecord): string {
-  const host = runner.hostName || runner.host || runner.hostIp;
-  if (host && host.trim()) {
-    return `${host} (${runner.runnerId})`;
-  }
-  return runner.runnerId;
-}
-
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
-
-function stringifyMessageForCopy(message: ChatMessage): string {
-  return message.content
-    .map((part) => {
-      if (part.type === 'text') return part.text;
-      if (part.type === 'thinking') return part.text;
-      if (part.type === 'file') return `[file:${part.mimeType}]`;
-      if (part.type === 'image') return '[image]';
-      if (part.type === 'tool-call') return `[tool-call:${part.toolName}] ${safeJsonStringify(part.input)}`;
-      if (part.type === 'tool-result') return `[tool-result:${part.toolName}] ${safeJsonStringify(part.output)}`;
-      if (part.type === 'code-diff') {
-        return [
-          `[code-diff:${part.filename ?? 'untitled'}.${part.language}]`,
-          '--- OLD ---',
-          part.oldCode,
-          '--- NEW ---',
-          part.newCode,
-        ].join('\n');
-      }
-      return safeJsonStringify(part);
-    })
-    .filter((value) => value.trim().length > 0)
-    .join('\n\n')
-    .trim();
-}
-
-async function copyToClipboard(content: string): Promise<void> {
-  if (!content.trim()) return;
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(content);
-    return;
-  }
-
-  const textarea = document.createElement('textarea');
-  textarea.value = content;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
-  const copied = document.execCommand('copy');
-  document.body.removeChild(textarea);
-  if (!copied) {
-    throw new Error('Clipboard is unavailable');
-  }
-}
 
 export function ChatPage() {
   const { sessionId: routeSessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const runtime = useWorkspaceChatRuntime({ routeSessionId });
   const {
     messages,
+    sessionRecord,
+    activeSession,
+    setActiveSession,
     sendMessage,
-    approvePendingRequest,
-    dismissPendingApproval,
-    pendingApproval,
-    loadSessionMessages,
     refreshSessionMessages,
     isConnecting,
     isStreaming,
-    typingMessageId,
-  } = useChat();
-  const activeSession = useChatStore((state) => state.activeSessionId);
-  const setActiveSession = useChatStore((state) => state.setActiveSession);
-  const [modelOptions, setModelOptions] = useState<ModelSelectOption[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
-  const [notice, setNotice] = useState<NoticeState>(null);
-  const [runners, setRunners] = useState<RunnerRecord[]>([]);
-  const [selectedRunnerId, setSelectedRunnerId] = useState('');
-  const [isBindingRunner, setIsBindingRunner] = useState(false);
+    modelOptions,
+    selectedModelId,
+    handleModelChange,
+    reasoningEffort,
+    setReasoningEffort,
+    notice,
+    setNotice,
+    onlineRunners,
+    runnerOnlineCount,
+    selectedRunnerId,
+    runnerSwitchDisabled,
+    handleRunnerChange,
+    bindRunnerToSession,
+    handleFileSelect,
+    tokenUsage,
+    rendererContext,
+  } = runtime;
+  const [pendingMode, setPendingMode] = useState<'vibe' | 'spec'>('vibe');
   const [isCompacting, setIsCompacting] = useState(false);
-  const [isMutatingMessage, setIsMutatingMessage] = useState(false);
-  const boundRunnerBySessionRef = useRef<Map<string, string>>(new Map());
-  const onlineRunners = useMemo(
-    () => runners.filter((runner) => runner.status === 'online'),
-    [runners],
-  );
-  const runnerOnlineCount = onlineRunners.length;
+  const refreshSessionList = useChatStore((state) => state.refreshSessionList);
+  const activeProjectId = useChatStore((state) => state.activeProjectId);
+  const pendingNewChatProjectId = useChatStore((state) => state.pendingNewChatProjectId);
+  const pendingNewChatPlacement = useChatStore((state) => state.pendingNewChatPlacement);
+  const setPendingNewChatProject = useChatStore((state) => state.setPendingNewChatProject);
+  const setPendingNewChatPlacement = useChatStore((state) => state.setPendingNewChatPlacement);
 
   useEffect(() => {
-    const nextSessionId = routeSessionId ?? null;
-    if (activeSession !== nextSessionId) {
-      setActiveSession(nextSessionId);
+    if (!activeSession || !sessionRecord) return;
+    if (sessionRecord.mode === 'spec') {
+      navigate(`/spec/${activeSession}`, { replace: true });
     }
-  }, [activeSession, routeSessionId, setActiveSession]);
+  }, [activeSession, navigate, sessionRecord]);
 
-  useEffect(() => {
-    async function syncSessionMessages() {
-      try {
-        await loadSessionMessages(activeSession);
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to load session'),
-        });
-      }
-    }
-
-    syncSessionMessages();
-  }, [activeSession, loadSessionMessages]);
-
-  useEffect(() => {
-    async function syncModels() {
-      try {
-        const payload = await fetchModels();
-        const options = payload.models.map((model) => ({
-          value: String(model.modelId),
-          label: model.displayName,
-          maxInputTokens: model.maxInputTokens,
-        }));
-        setModelOptions(options);
-        // Keep user choice when route switches unless selected model is missing.
-        if (
-          selectedModelId === null ||
-          !options.some((option) => Number(option.value) === selectedModelId)
-        ) {
-          setSelectedModelId(payload.currentModel);
-        }
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to load models'),
-        });
-      }
-    }
-
-    syncModels();
-  }, [selectedModelId]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => {
-      setNotice(null);
-    }, 3600);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let retryTimer: number | null = null;
-    let controller: AbortController | null = null;
-
-    const connect = () => {
-      if (cancelled) return;
-      controller = new AbortController();
-
-      void streamRunners({
-        signal: controller.signal,
-        onRunners: (next) => {
-          if (cancelled) return;
-          setRunners(next);
-        },
-      })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          if (error instanceof Error && error.name === 'AbortError') {
-            return;
-          }
-        })
-        .finally(() => {
-          if (cancelled) return;
-          retryTimer = window.setTimeout(connect, 1500);
-        });
-    };
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      controller?.abort();
-      if (retryTimer !== null) {
-        window.clearTimeout(retryTimer);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    setSelectedRunnerId((current) => {
-      if (current && onlineRunners.some((runner) => runner.runnerId === current)) {
-        return current;
-      }
-      return onlineRunners[0]?.runnerId ?? '';
-    });
-  }, [onlineRunners]);
-
-  const bindRunnerToSession = useCallback(async (sessionId: string, runnerId: string) => {
-    const boundRunnerId = boundRunnerBySessionRef.current.get(sessionId);
-    if (boundRunnerId === runnerId) {
-      return;
-    }
-    setIsBindingRunner(true);
-    try {
-      await bindSessionRunner(sessionId, runnerId);
-      boundRunnerBySessionRef.current.set(sessionId, runnerId);
-    } finally {
-      setIsBindingRunner(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!activeSession || !selectedRunnerId) return;
-    let cancelled = false;
-
-    const bindOnSessionInit = async () => {
-      try {
-        await bindRunnerToSession(activeSession, selectedRunnerId);
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setNotice({
-            kind: 'error',
-            message: readErrorMessage(error, 'Failed to bind session runner'),
-          });
-        }
-      }
-    };
-
-    void bindOnSessionInit();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSession, bindRunnerToSession, selectedRunnerId]);
-
-  useEffect(() => {
-    if (!pendingApproval) return;
-    let cancelled = false;
-
-    const requestApproval = async () => {
-      const { approval } = pendingApproval;
-      const confirmed = window.confirm(
-        [
-          'This action is high-risk and needs your confirmation.',
-          `Command: ${approval.cmd}`,
-          `Working directory: ${approval.workdir}`,
-          'Approve this turn and continue execution?',
-        ].join('\n'),
-      );
-
-      if (!confirmed) {
-        if (!cancelled) {
-          dismissPendingApproval();
-          setNotice({
-            kind: 'success',
-            message: 'Risky operation was canceled.',
-          });
-        }
-        return;
-      }
-
-      try {
-        const ticket = await issueRunnerApprovalTicket({
-          session_id: approval.session_id,
-          cmd: approval.cmd,
-          workdir: approval.workdir,
-        });
-        await approvePendingRequest(ticket.approval_ticket);
-      } catch (error: unknown) {
-        if (!cancelled) {
-          dismissPendingApproval();
-          setNotice({
-            kind: 'error',
-            message: readErrorMessage(error, 'Failed to run approved risky operation'),
-          });
-        }
-      }
-    };
-
-    void requestApproval();
-    return () => {
-      cancelled = true;
-    };
-  }, [approvePendingRequest, dismissPendingApproval, pendingApproval]);
-
-  const handleFileSelect = useCallback(async (files: File[]): Promise<FileAttachment[]> => {
-    const prepared = await Promise.all(
-      files.map(async (file) => {
-        const dataUrl = await fileToDataUrl(file);
-        return {
-          id: crypto.randomUUID(),
-          name: file.name,
-          type: file.type || 'application/octet-stream',
-          size: file.size,
-          url: dataUrl,
-          previewUrl: file.type.startsWith('image/') ? dataUrl : undefined,
-        } satisfies FileAttachment;
-      }),
-    );
-    return prepared;
-  }, []);
-
-  const handleModelChange = useCallback(
-    async (value: string) => {
-      try {
-        const modelId = Number(value);
-        await switchModel(modelId);
-        setSelectedModelId(modelId);
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to switch model'),
-        });
-      }
-    },
-    [],
-  );
+  const {
+    handleRetryMessage,
+    handleCopyMessage,
+    handleDeleteMessage,
+    messageActionsDisabled,
+  } = useMessageActions({
+    activeSession,
+    selectedModelId,
+    reasoningEffort,
+    isConnecting,
+    isStreaming,
+    refreshSessionMessages,
+    setNotice,
+  });
 
   const handleSend = useCallback(
     async (text: string, attachments?: FileAttachment[]) => {
       let targetSessionId = activeSession;
+      let shouldBindSelectedRunner = Boolean(activeSession && selectedRunnerId);
+      const targetProjectId = !targetSessionId
+        ? pendingNewChatPlacement === 'project'
+          ? pendingNewChatProjectId ?? activeProjectId ?? undefined
+          : undefined
+        : sessionRecord?.projectId ?? activeProjectId ?? undefined;
+      let createdNewSession = false;
       try {
         if (!targetSessionId) {
           const created = await createSession({
             model: selectedModelId ?? undefined,
+            mode: pendingMode,
+            title: text,
+            projectId: targetProjectId,
           });
           targetSessionId = created.session.sessionId;
-          setActiveSession(targetSessionId);
-          navigate(`/chat/${targetSessionId}`, { replace: true });
+          createdNewSession = true;
+          if (created.session.mode === 'spec') {
+            setActiveSession(targetSessionId);
+            setPendingNewChatProject(null);
+            setPendingNewChatPlacement(null);
+            refreshSessionList();
+            navigate(`/spec/${targetSessionId}`, {
+              replace: true,
+              state: {
+                initialPrompt: {
+                  text,
+                  attachments,
+                  modelId: selectedModelId,
+                  reasoningEffort,
+                  runnerId: created.session.boundRunnerId ? undefined : selectedRunnerId || undefined,
+                },
+              },
+            });
+            return;
+          }
+        } else if (sessionRecord?.mode === 'spec') {
+          shouldBindSelectedRunner = Boolean(selectedRunnerId);
+          navigate(`/spec/${targetSessionId}`, {
+            replace: true,
+            state: {
+              initialPrompt: {
+                text,
+                attachments,
+                modelId: selectedModelId,
+                reasoningEffort,
+                runnerId: selectedRunnerId || undefined,
+              },
+            },
+          });
+          return;
         }
-        if (selectedRunnerId) {
+        if (selectedRunnerId && shouldBindSelectedRunner) {
           await bindRunnerToSession(targetSessionId, selectedRunnerId);
         }
 
         await sendMessage({
           text,
           sessionId: targetSessionId,
+          projectId: targetProjectId,
+          mode: 'vibe',
           model: selectedModelId ?? undefined,
           reasoningEffort,
           attachments,
         });
+        if (createdNewSession) {
+          setActiveSession(targetSessionId);
+          setPendingNewChatProject(null);
+          setPendingNewChatPlacement(null);
+          navigate(`/chat/${targetSessionId}`, { replace: true });
+        }
+        refreshSessionList();
       } catch (error: unknown) {
         setNotice({
           kind: 'error',
@@ -408,13 +156,22 @@ export function ChatPage() {
     },
     [
       activeSession,
+      activeProjectId,
       bindRunnerToSession,
       navigate,
+      pendingMode,
+      pendingNewChatPlacement,
+      pendingNewChatProjectId,
       reasoningEffort,
       selectedModelId,
       selectedRunnerId,
       sendMessage,
+      sessionRecord,
       setActiveSession,
+      setPendingNewChatPlacement,
+      setPendingNewChatProject,
+      setNotice,
+      refreshSessionList,
     ],
   );
 
@@ -443,114 +200,13 @@ export function ChatPage() {
     } finally {
       setIsCompacting(false);
     }
-  }, [activeSession, refreshSessionMessages]);
+  }, [activeSession, refreshSessionMessages, setNotice]);
 
-  const handleRunnerChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    setSelectedRunnerId(event.target.value);
-  }, []);
-
-  const handleRetryMessage = useCallback(
-    async (message: ChatMessage) => {
-      if (!activeSession) {
-        setNotice({ kind: 'error', message: 'Session is not ready for retry.' });
-        return;
-      }
-      if (isStreaming || isConnecting || isMutatingMessage) {
-        return;
-      }
-
-      setIsMutatingMessage(true);
-      try {
-        await retrySessionMessage({
-          session_id: activeSession,
-          msg_id: message.uuid,
-          model_id: selectedModelId ?? undefined,
-          reasoning_effort: reasoningEffort,
-        });
-        await refreshSessionMessages(activeSession);
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to retry message'),
-        });
-      } finally {
-        setIsMutatingMessage(false);
-      }
-    },
-    [
-      activeSession,
-      isConnecting,
-      isMutatingMessage,
-      isStreaming,
-      reasoningEffort,
-      refreshSessionMessages,
-      selectedModelId,
-    ],
-  );
-
-  const handleCopyMessage = useCallback(async (message: ChatMessage) => {
-    const content = stringifyMessageForCopy(message);
-    if (!content) {
-      setNotice({ kind: 'error', message: 'Message has no copyable content.' });
-      return;
-    }
-    try {
-      await copyToClipboard(content);
-      setNotice({ kind: 'success', message: 'Message copied to clipboard.' });
-    } catch (error: unknown) {
-      setNotice({
-        kind: 'error',
-        message: readErrorMessage(error, 'Failed to copy message'),
-      });
-    }
-  }, []);
-
-  const handleDeleteMessage = useCallback(
-    async (message: ChatMessage) => {
-      if (!activeSession) {
-        setNotice({ kind: 'error', message: 'Session is not ready for delete.' });
-        return;
-      }
-      if (isStreaming || isConnecting || isMutatingMessage) {
-        return;
-      }
-      const confirmed = window.confirm('Delete this message and following conversation?');
-      if (!confirmed) {
-        return;
-      }
-
-      setIsMutatingMessage(true);
-      try {
-        await deleteSessionMessage(activeSession, message.uuid);
-        await refreshSessionMessages(activeSession);
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to delete message'),
-        });
-      } finally {
-        setIsMutatingMessage(false);
-      }
-    },
-    [activeSession, isConnecting, isMutatingMessage, isStreaming, refreshSessionMessages],
-  );
-
-  const tokenBudget =
-    modelOptions.find((model) => Number(model.value) === selectedModelId)?.maxInputTokens ?? null;
-  const chatMessages = useMemo(() => messages as ChatMessage[], [messages]);
-  const rendererContext = useMemo(
-    () => ({
-      chatUiTypingMessageId: typingMessageId,
-    }),
-    [typingMessageId],
-  );
-  const tokenUsage = buildTokenUsage(chatMessages, tokenBudget);
   const compactDisabled = !activeSession || isConnecting || isStreaming || isCompacting;
-  const messageActionsDisabled = isConnecting || isStreaming || isMutatingMessage;
-  const runnerSwitchDisabled = onlineRunners.length === 0 || isBindingRunner;
+  const showModeGate = !activeSession && !isStreaming;
 
   return (
-    < >
+    <>
       <header className="workspace-header">
         <div className="workspace-header-left">
           <span className="workspace-path">Pages / Chat</span>
@@ -584,27 +240,64 @@ export function ChatPage() {
         )}
         {notice && <div className={`workspace-notice workspace-notice-${notice.kind}`}>{notice.message}</div>}
 
-        <ChatPanel
-          className="playground-chat-panel"
-          messages={chatMessages}
-          rendererContext={rendererContext}
-          onSend={handleSend}
-          onRetryMessage={handleRetryMessage}
-          onCopyMessage={handleCopyMessage}
-          onDeleteMessage={handleDeleteMessage}
-          messageActionDisabled={messageActionsDisabled}
-          selectedModel={selectedModelId === null ? undefined : String(selectedModelId)}
-          modelOptions={modelOptions}
-          onModelChange={handleModelChange}
-          reasoningEffort={reasoningEffort}
-          onReasoningEffortChange={setReasoningEffort}
-          tokenUsage={tokenUsage}
-          isStreaming={isStreaming}
-          isConnecting={isConnecting}
-          onCompactContext={handleCompact}
-          compactContextDisabled={compactDisabled}
-          onFileSelect={handleFileSelect}
-        />
+        <div className="chat-entry-shell">
+          {showModeGate && (
+            <div className="mode-gate-overlay">
+              <div className="mode-gate-hero">
+                <div className="mode-gate-icon-wrap">
+                  <NotebookPen size={20} />
+                </div>
+                <h2>Let&apos;s build</h2>
+                <p>Plan, search, or build anything</p>
+              </div>
+              <div className="mode-gate-grid">
+                <button
+                  type="button"
+                  className={`mode-gate-card ${pendingMode === 'vibe' ? 'is-selected' : ''}`}
+                  onClick={() => setPendingMode('vibe')}
+                >
+                  <div className="mode-gate-title">
+                    <MessageCircle size={16} />
+                    <span>Vibe</span>
+                  </div>
+                  <p>Chat first, then build. Explore ideas and iterate as you discover needs.</p>
+                </button>
+                <button
+                  type="button"
+                  className={`mode-gate-card ${pendingMode === 'spec' ? 'is-selected' : ''}`}
+                  onClick={() => setPendingMode('spec')}
+                >
+                  <div className="mode-gate-title">
+                    <NotebookPen size={16} />
+                    <span>Spec</span>
+                  </div>
+                  <p>Plan first, then build. Create requirements and design before coding starts.</p>
+                </button>
+              </div>
+            </div>
+          )}
+          <ChatPanel
+            className="playground-chat-panel"
+            messages={messages}
+            rendererContext={rendererContext}
+            onSend={handleSend}
+            onRetryMessage={handleRetryMessage}
+            onCopyMessage={handleCopyMessage}
+            onDeleteMessage={handleDeleteMessage}
+            messageActionDisabled={messageActionsDisabled}
+            selectedModel={selectedModelId === null ? undefined : String(selectedModelId)}
+            modelOptions={modelOptions}
+            onModelChange={handleModelChange}
+            reasoningEffort={reasoningEffort}
+            onReasoningEffortChange={setReasoningEffort}
+            tokenUsage={tokenUsage}
+            isStreaming={isStreaming}
+            isConnecting={isConnecting}
+            onCompactContext={handleCompact}
+            compactContextDisabled={compactDisabled}
+            onFileSelect={handleFileSelect}
+          />
+        </div>
       </section>
     </>
   );

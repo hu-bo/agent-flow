@@ -2,6 +2,9 @@ import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { ApprovalRequiredPayload } from '../lib/approval.js';
 
 export type ReasoningEffort = 'low' | 'medium' | 'high';
+export type SessionMode = 'vibe' | 'spec';
+export type SpecWorkflowPhase = 'requirements' | 'design' | 'tasks';
+export type SpecDocType = SpecWorkflowPhase;
 export type TaskStatus =
   | 'pending'
   | 'running'
@@ -21,13 +24,55 @@ export type TaskEventType =
 
 export interface SessionRecord {
   sessionId: string;
+  projectId?: string;
+  title?: string;
   createdAt: string;
   updatedAt: string;
   modelId: number;
+  mode: SessionMode;
   cwd: string;
   messageCount: number;
   systemPrompt?: string;
   latestCheckpointId?: string;
+  boundRunnerId?: string;
+  specWorkflow?: SpecWorkflowState;
+}
+
+export interface ProjectRecord {
+  projectId: string;
+  name: string;
+  rootPath: string;
+  defaultRunnerId: string;
+  createdAt: string;
+  updatedAt: string;
+  chatCount: number;
+  latestSession?: SessionRecord;
+}
+
+export interface RunnerDirectoryEntry {
+  path: string;
+  name: string;
+  type: 'directory' | 'file';
+  size?: number;
+}
+
+export interface RunnerRootsResult {
+  roots: RunnerDirectoryEntry[];
+}
+
+export interface RunnerDirectoryListResult {
+  path: string;
+  entries: RunnerDirectoryEntry[];
+  total: number;
+}
+
+export interface SpecWorkflowState {
+  phase: SpecWorkflowPhase;
+  awaitingConfirm: boolean;
+  requirementsMsgId?: string;
+  designMsgId?: string;
+  taskListMsgId?: string;
+  documents?: Partial<Record<SpecDocType, string>>;
 }
 
 export interface SessionState {
@@ -97,6 +142,15 @@ export interface ChatStreamMessageDeltaEvent {
   delta: string;
 }
 
+export interface ChatStreamSpecDocUpdateEvent {
+  type: 'spec_doc_update';
+  msg_id: string;
+  doc_type: SpecDocType;
+  content: string;
+  delta?: string;
+  done: boolean;
+}
+
 export type ApprovalRiskLevel = ApprovalRequiredPayload['risk'];
 export type ChatStreamApprovalPayload = ApprovalRequiredPayload;
 
@@ -117,6 +171,7 @@ export interface ChatStreamErrorEvent {
 export type ChatStreamEvent =
   | ChatStreamMessageEvent
   | ChatStreamMessageDeltaEvent
+  | ChatStreamSpecDocUpdateEvent
   | ChatStreamApprovalRequiredEvent
   | ChatStreamErrorEvent;
 

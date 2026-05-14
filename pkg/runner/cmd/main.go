@@ -33,7 +33,7 @@ const (
 	defaultVersion    = "0.1.0"
 	defaultRunnerKind = "local"
 	defaultGRPCServer = "127.0.0.1:9201"
-	defaultCaps       = "shell.exec,fs.read,fs.write,fs.patch,fs.list,fs.search"
+	defaultCaps       = "shell.exec,fs.roots,fs.read,fs.write,fs.patch,fs.list,fs.search"
 	reconnectBaseWait = time.Second
 	reconnectMaxWait  = 30 * time.Second
 )
@@ -139,7 +139,7 @@ func runStart(args []string) error {
 		HostName:     strings.TrimSpace(*hostName),
 		HostIP:       strings.TrimSpace(*hostIP),
 		Version:      strings.TrimSpace(*version),
-		Capabilities: parseCSV(*capabilities),
+		Capabilities: normalizeCapabilities(parseCSV(*capabilities)),
 		OnRegistered: persistRegistration,
 	}
 
@@ -256,6 +256,23 @@ func parseCSV(raw string) []string {
 			continue
 		}
 		out = append(out, value)
+	}
+	return out
+}
+
+func normalizeCapabilities(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values)+1)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	if seen["fs.list"] && !seen["fs.roots"] {
+		out = append(out, "fs.roots")
 	}
 	return out
 }

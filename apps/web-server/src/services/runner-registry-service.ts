@@ -107,10 +107,11 @@ export class RunnerRegistryService {
       if (options.preferredRunnerKind && runner.kind !== options.preferredRunnerKind) {
         return false;
       }
-      if (!Array.isArray(runner.capabilities) || runner.capabilities.length === 0) {
+      const capabilities = normalizeCapabilities(runner.capabilities);
+      if (capabilities.length === 0) {
         return true;
       }
-      return runner.capabilities.includes(command);
+      return capabilities.includes(command);
     });
   }
 
@@ -169,7 +170,7 @@ export class RunnerRegistryService {
     runner.hostName = hostName ?? runner.hostName ?? null;
     runner.hostIp = hostIp ?? runner.hostIp ?? null;
     runner.version = normalizeText(input.version) ?? runner.version ?? null;
-    runner.capabilities = input.capabilities ?? runner.capabilities ?? [];
+    runner.capabilities = normalizeCapabilities(input.capabilities ?? runner.capabilities ?? []);
     runner.lastSeenAt = new Date();
     return this.runnerRepository.save(runner);
   }
@@ -211,4 +212,12 @@ function createRunnerId(): string {
 function normalizeText(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
+}
+
+function normalizeCapabilities(capabilities: string[] | undefined): string[] {
+  const normalized = new Set((capabilities ?? []).map((capability) => capability.trim()).filter(Boolean));
+  if (normalized.has('fs.list')) {
+    normalized.add('fs.roots');
+  }
+  return [...normalized];
 }

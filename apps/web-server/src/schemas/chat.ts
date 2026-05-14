@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { modelIdSchema, reasoningEffortSchema, sessionIdSchema } from './common.js';
+import { modelIdSchema, reasoningEffortSchema, sessionIdSchema, sessionModeSchema } from './common.js';
 
 const shortMessageIdSchema = z.string().regex(/^[a-f0-9]{16}$/i, 'msg_id must be 16 hex chars');
 const legacyUuidSchema = z.string().uuid();
@@ -13,6 +13,8 @@ export const fileAttachmentSchema = z.object({
 
 export const createChatBodySchema = z.object({
   session_id: sessionIdSchema.optional(),
+  project_id: z.string().uuid().optional(),
+  mode: sessionModeSchema.optional().default('vibe'),
   message: z.string().trim().min(1),
   profile_id: z.string().trim().min(1).max(64).optional(),
   model_id: modelIdSchema.optional(),

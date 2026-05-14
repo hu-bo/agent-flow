@@ -17,11 +17,13 @@ export async function listTasksHandler(request: FastifyRequest, reply: FastifyRe
 
 export async function createTaskHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(createTaskBodySchema, request.body, 'body');
-  const task = request.server.services.taskService.createTask({
+  const task = await request.server.services.taskService.createTask({
+    ownerUserId: request.auth.userId,
     prompt: body.prompt,
     profileId: body.profileId,
     modelId: body.model,
     sessionId: body.sessionId,
+    projectId: body.projectId,
     type: body.type,
     config: body.config,
     maxRetries: body.maxRetries,

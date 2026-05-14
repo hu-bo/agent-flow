@@ -27,10 +27,13 @@ export class CompactService {
   async compactSession(
     sessionId?: string,
     trigger: 'auto' | 'manual' | 'model-switch' = 'manual',
+    ownerUserId?: string,
   ): Promise<CompactSessionResult> {
     const targetSession = sessionId
-      ? this.sessionService.getSession(sessionId)
-      : this.sessionService.getLatestSession();
+      ? await this.sessionService.getSession(sessionId, ownerUserId)
+      : ownerUserId
+        ? await this.sessionService.getLatestSession(ownerUserId)
+        : undefined;
 
     if (!targetSession) {
       return {
@@ -49,7 +52,7 @@ export class CompactService {
       };
     }
 
-    const messages = this.sessionService.listMessages(targetSession.sessionId);
+    const messages = await this.sessionService.listMessages(targetSession.sessionId);
     if (messages.length <= 6) {
       const baselineTokens = estimateItemsTokens(toCompactItems(messages));
       return {
@@ -125,7 +128,7 @@ export class CompactService {
     );
 
     const nextMessages = [summaryMessage, ...preservedTail];
-    this.sessionService.replaceMessages(targetSession.sessionId, nextMessages);
+    await this.sessionService.replaceMessages(targetSession.sessionId, nextMessages);
     const afterTokenEstimate = estimateItemsTokens(toCompactItems(nextMessages));
 
     return {

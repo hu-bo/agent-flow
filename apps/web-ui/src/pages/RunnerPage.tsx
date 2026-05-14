@@ -275,12 +275,12 @@ export function RunnerPage() {
             >
               Download Runner
             </a>
-            <button className="workspace-action-btn" onClick={() => void handleGenerate(false)} disabled={isCreatingToken}>
+            {/* <button className="workspace-action-btn" onClick={() => void handleGenerate(false)} disabled={isCreatingToken}>
               Generate Start Command
             </button>
             <button className="workspace-action-btn" onClick={() => void handleGenerate(true)} disabled={isCreatingToken}>
               Rotate Token
-            </button>
+            </button> */}
             <button className="workspace-action-btn" onClick={() => void handleRefresh()} disabled={isLoading}>
               Refresh Status
             </button>
