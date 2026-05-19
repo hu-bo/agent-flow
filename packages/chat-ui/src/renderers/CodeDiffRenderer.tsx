@@ -4,6 +4,60 @@ import { diffLines } from 'diff';
 import type { ContentRendererProps } from '../registry';
 import type { CodeDiffPart } from '../types';
 
+export interface CodeDiffPreviewLine {
+  type: 'context' | 'add' | 'del';
+  text: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+export interface CodeDiffPreviewHunk {
+  header: string;
+  lines: CodeDiffPreviewLine[];
+}
+
+interface CodeDiffPreviewProps {
+  filename?: string;
+  language?: string;
+  hunks: CodeDiffPreviewHunk[];
+}
+
+function formatLineNumber(value: number | null): string {
+  return value === null ? '' : String(value);
+}
+
+export function CodeDiffPreview({ filename, language, hunks }: CodeDiffPreviewProps) {
+  return (
+    <div className="chat-ui-diff">
+      {filename && (
+        <div className="chat-ui-diff-header">
+          {filename}
+          {language && <span className="chat-ui-diff-language">{language}</span>}
+        </div>
+      )}
+      <div className="chat-ui-diff-hunks">
+        {hunks.map((hunk, hunkIndex) => (
+          <div key={hunkIndex} className="chat-ui-diff-hunk">
+            <div className="chat-ui-diff-hunk-header">{hunk.header}</div>
+            <div className="chat-ui-diff-hunk-lines">
+              {hunk.lines.map((line, lineIndex) => (
+                <div key={lineIndex} className={`chat-ui-diff-hunk-line is-${line.type}`}>
+                  <span className="chat-ui-diff-line-no">{formatLineNumber(line.oldLine)}</span>
+                  <span className="chat-ui-diff-line-no">{formatLineNumber(line.newLine)}</span>
+                  <span className="chat-ui-diff-line-prefix">
+                    {line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' '}
+                  </span>
+                  <span className="chat-ui-diff-line-text">{line.text || ' '}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CodeDiffRenderer({ part }: ContentRendererProps) {
   const { oldCode, newCode, filename, language } = part as CodeDiffPart;
 

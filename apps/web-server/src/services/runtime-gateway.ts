@@ -36,6 +36,7 @@ import {
 import { AsyncQueue } from '../lib/async-queue.js';
 import { createTextMessage, createUnifiedMessage, summarizeMessages } from '../lib/messages.js';
 import { CODING_EFFICIENCY_SYSTEM_PROMPT } from '../prompts/coding-efficiency.js';
+import { createToolResultOutputEnhancer } from '../tools/result-output-enhancer.js';
 import type { ModelAdapterService } from './model-adapter-service.js';
 import { registerRunnerBackedTools } from './runner-backed-tools.js';
 import type { RunnerDispatchService } from './runner-dispatch-service.js';
@@ -540,6 +541,9 @@ export class CoreRuntimeGateway implements RuntimeGateway {
     index: number,
   ): Promise<Extract<MessagePart, { type: 'tool-result' }>> {
     const internalToolName = INTERNAL_TOOL_NAME_BY_MODEL.get(toolCall.toolName) ?? toolCall.toolName;
+    const toolInput = isPlainObject(toolCall.args) ? toolCall.args : {};
+    const stepId = `model_tool_${index + 1}`;
+    const metadata = buildToolContextMetadata(input);
     if (!this.toolExecutor) {
       return {
         type: 'tool-result',
@@ -550,16 +554,28 @@ export class CoreRuntimeGateway implements RuntimeGateway {
       };
     }
 
+    const outputEnhancer = await createToolResultOutputEnhancer({
+      toolExecutor: this.toolExecutor,
+      toolName: internalToolName,
+      toolInput,
+      toolContext: {
+        taskId: input.requestId,
+        sessionId: input.session.sessionId,
+        stepId,
+        metadata,
+      },
+    });
+
     const result = await this.toolExecutor.execute(
       {
         name: internalToolName,
-        input: isPlainObject(toolCall.args) ? toolCall.args : {},
+        input: toolInput,
       },
       {
         taskId: input.requestId,
         sessionId: input.session.sessionId,
-        stepId: `model_tool_${index + 1}`,
-        metadata: buildToolContextMetadata(input),
+        stepId,
+        metadata,
       },
       {
         retries: 0,
@@ -572,11 +588,16 @@ export class CoreRuntimeGateway implements RuntimeGateway {
       }
     }
 
+    let output: unknown = result.ok ? result.output : { error: result.error ?? 'Tool execution failed.' };
+    if (result.ok && outputEnhancer) {
+      output = await outputEnhancer.finalize(output);
+    }
+
     return {
       type: 'tool-result',
       callId: toolCall.callId,
       toolName: toolCall.toolName,
-      result: result.ok ? result.output : { error: result.error ?? 'Tool execution failed.' },
+      result: output,
       isError: !result.ok,
     };
   }

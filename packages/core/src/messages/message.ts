@@ -34,6 +34,48 @@ export interface ToolResultPart {
   isError?: boolean;
 }
 
+export interface RunnerFilesChangedLine {
+  type: 'context' | 'add' | 'del';
+  text: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+export interface RunnerFilesChangedHunk {
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: RunnerFilesChangedLine[];
+}
+
+export interface RunnerFilesChangedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  diffPreview: {
+    contextLines: number;
+    hunks: RunnerFilesChangedHunk[];
+  } | null;
+  truncated: boolean;
+  unavailableReason?: string;
+}
+
+export interface RunnerFilesChangedPayload {
+  type: 'runner-files-changed';
+  version: 1;
+  source: 'runner-host';
+  summary: {
+    filesChanged: number;
+    additions: number;
+    deletions: number;
+    truncated: boolean;
+  };
+  files: RunnerFilesChangedFile[];
+  rawOutput: unknown;
+}
+
 export interface FilePart {
   type: 'file';
   mimeType: string;
