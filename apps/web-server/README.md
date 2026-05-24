@@ -1,50 +1,78 @@
 # @agent-flow/web-server
 
-Agent Flow 的 Fastify BFF/API 服务层，为前端应用（web-ui / console）提供统一 HTTP 接口与 SSE 流式输出。
+`@agent-flow/web-server` 是 Agent Flow 的 Fastify BFF/API 服务层，为 `web-ui` / `console` 提供统一 HTTP 接口与 SSE 流式能力。
 
 ## 技术栈
 
-- Fastify 5 + TypeScript
-- Zod（请求参数校验）
-- TypeORM + PostgreSQL（数据持久化）
-- 依赖 `@agent-flow/core`、`@agent-flow/compact`、`@agent-flow/events`、`@agent-flow/memory`、`@agent-flow/tools-impl`
+- Fastify 5 + TypeScript (ESM)
+- Zod（请求校验）
+- TypeORM + PostgreSQL
+- `@agent-flow/core` / `@agent-flow/memory` / `@agent-flow/events` / `@agent-flow/compact` / `@agent-flow/tools-impl`
 
-## 功能
+## 重构后的分层
 
-- **会话管理** — 创建 / 查询 / 删除会话
-- **聊天** — 支持普通请求与 SSE 流式输出
-- **上下文压缩** — 调用 compact 策略压缩长对话
-- **模型管理** — 查询 / 切换可用模型
-- **任务系统** — 创建任务、执行动作、SSE 事件订阅
-- **健康检查** — 服务状态探针
+本次重构后，聊天主链路拆成了更清晰的两层引擎：
 
-## 项目结构
+1. `chat/turn/*`：负责 turn 级业务编排（prepare、落库、memory、spec 协调、retry）。
+2. `runtime/*`：负责运行时模式路由（`chat` / `autonomous` / `runner`）、core runtime 调用与事件映射。
 
-```
+`services/chat-service.ts` 现在是薄封装，核心逻辑在 `ChatTurnEngine` 与 `RuntimeTurnEngine`。
+
+## 项目结构（关键路径）
+
+```text
 apps/web-server/src/
-├─ app.ts                 # Fastify app 装配
-├─ server.ts              # 启动监听
-├─ index.ts               # 入口
-├─ config/env.ts          # 环境变量解析（zod）
-├─ contracts/api.ts       # 领域类型与协议约定
-├─ db/                    # TypeORM 数据源、实体、迁移
-├─ middlewares/            # requestId、JSON 校验
-├─ plugins/               # 错误处理、服务容器挂载
-├─ schemas/               # 各接口 zod schema
-├─ routes/                # 路由注册（按模块拆分）
-├─ handlers/              # HTTP handler（薄层）
-├─ services/              # 业务逻辑
-├─ lib/                   # 错误、校验、消息、SSE 工具
-└─ types/fastify.d.ts     # Fastify 扩展声明
+├─ app.ts                         # Fastify app 装配
+├─ server.ts                      # 启动监听
+├─ index.ts                       # 入口
+├─ config/env.ts                  # 环境变量解析
+├─ contracts/api.ts               # 后端 API 契约类型
+├─ db/                            # TypeORM 数据源、实体、迁移
+├─ middlewares/                   # auth / request-context / require-json
+├─ plugins/                       # db/http/services 挂载
+├─ routes/                        # 路由注册
+├─ handlers/                      # HTTP handler（薄层）
+├─ services/                      # 业务服务和容器装配
+├─ chat/
+│  └─ turn/
+│     ├─ chat-turn-engine.ts      # turn 编排核心
+│     ├─ turn-preparer.ts         # session/history/user message 准备
+│     ├─ spec-stream-coordinator.ts
+│     ├─ memory-recorder.ts
+│     └─ retry-policy.ts
+├─ runtime/
+│  ├─ runtime-turn-engine.ts      # runtime 总引擎
+│  ├─ runtime-router.ts           # chat/autonomous/runner 模式路由
+│  ├─ runtime-request-builder.ts  # RuntimeChatInput -> AgentRunRequest
+│  ├─ model-chat-driver.ts        # 模型聊天流式驱动
+│  ├─ model-tool-runner.ts        # 模型工具调用执行
+│  ├─ message-mappers.ts          # 事件/消息映射
+│  ├─ core-runtime-factory.ts     # core runtime 装配
+│  └─ llm-step-executor.ts        # core llm step 的模型执行器
+├─ lib/                           # 错误、校验、SSE、消息工具
+├─ prompts/                       # 系统 prompt
+└─ types/fastify.d.ts             # Fastify 扩展声明
 ```
 
-## 开发
+## 聊天主链路（简版）
+
+1. `POST /api/chat` 进入 `handlers/chat-handlers.ts`。
+2. `ChatService.streamTurn()` 委托给 `chat/turn/chat-turn-engine.ts`。
+3. `ChatTurnEngine` 处理 session/history/message/spec/memory，然后调用 `RuntimeGateway`。
+4. `CoreRuntimeGateway` 进入 `runtime/runtime-turn-engine.ts`。
+5. `RuntimeTurnEngine` 按消息语义选择：
+   - `chat`：模型直接对话。
+   - `autonomous`：走 `@agent-flow/core` 的 plan/executor。
+   - `runner`：`/run ...` 指令走 runner 计划。
+6. 输出统一为 `ChatStreamEvent`（`msg` / `msg_delta` / `spec_doc_update` / `approval_req` / `error`）。
+
+## 本地开发
 
 ```bash
-# 安装依赖（在 monorepo 根目录）
+# 在 monorepo 根目录执行
 pnpm install
 
-# 本地开发（tsx watch）
+# 启动 web-server（watch）
 pnpm --filter @agent-flow/web-server dev
 
 # 类型检查
@@ -53,35 +81,77 @@ pnpm --filter @agent-flow/web-server typecheck
 # 构建
 pnpm --filter @agent-flow/web-server build
 
-# 启动生产
+# 生产启动
 pnpm --filter @agent-flow/web-server start
 ```
 
-### 环境变量
+## 环境变量
+
+以 `src/config/env.ts` 为准：
 
 | 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `9200` | 服务端口 |
+| --- | --- | --- |
+| `PORT` | `9200` | HTTP 端口 |
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `NODE_ENV` | `development` | 运行环境 |
-| `AGENT_FLOW_MODEL` | `gpt-4o` | 默认模型 ID |
-| `AGENT_FLOW_CORS_ORIGIN` | `*` | CORS 白名单 |
+| `AGENT_FLOW_MODEL` | `gpt-4o` | 默认模型名 |
+| `AGENT_FLOW_CORS_ORIGIN` | `*` | CORS 白名单（可逗号分隔） |
+| `DATABASE_URL` | `postgres://aflow_user:...` | PostgreSQL 连接串 |
+| `AUTH_API_BASE_URL` | `http://auth.8and1.cn` | Auth 服务地址 |
+| `AUTH_APP_NAME` | `aflow` | Auth 应用名 |
+| `RUNNER_SERVER_ADDR` | `127.0.0.1:9200` | Runner 反向连接地址 |
+| `RUNNER_GRPC_HOST` | `0.0.0.0` | Runner gRPC 监听 host |
+| `RUNNER_GRPC_PORT` | `9201` | Runner gRPC 监听端口 |
+| `RUNNER_GRPC_SERVER_ADDR` | `127.0.0.1:9201` | Runner gRPC 公网/可达地址 |
+| `RUNNER_DOWNLOAD_BASE_URL` | `https://downloads.8and1.cn/agent-flow` | Runner 下载基地址 |
 
-### 主要接口
+## 主要 API（节选）
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/health` | 健康检查 |
-| GET/POST | `/api/sessions` | 会话管理 |
-| POST | `/api/chat` | 聊天（支持 SSE） |
-| POST | `/api/compact` | 上下文压缩 |
-| GET/POST | `/api/models` | 模型管理 |
-| GET/POST | `/api/tasks` | 任务管理 |
-| GET | `/api/tasks/:taskId/events` | 任务事件 SSE |
+所有业务接口都在 `/api/*` 下。`/api/health` 与 `/api/auth/*` 之外的接口默认需要 Bearer Token。
 
-### API 响应约定
+### Health / Auth
 
-普通 JSON 接口统一返回 envelope：
+- `GET /api/health`
+- `POST /api/apps/:appName/oauth/authorize-url`
+- `POST /api/apps/:appName/oauth/signup-url`
+- `POST /api/apps/:appName/oauth/token`
+- `POST /api/apps/:appName/oauth/token/refresh`
+- `GET /api/me`
+- `GET /api/auth/me`
+
+### Sessions / Chat / Spec
+
+- `GET /api/sessions`
+- `GET /api/sessions/:sessionId`
+- `POST /api/sessions`
+- `DELETE /api/sessions/:sessionId`
+- `POST /api/chat`
+- `POST /api/chat/:session_id/retry`
+- `DELETE /api/chat/:session_id/messages/:msg_id`
+- `GET /api/spec/:session_id/state`
+- `POST /api/spec/:session_id/confirm`
+
+### Models / Projects / Runners / Tasks
+
+- `GET /api/models`
+- `POST /api/model`
+- `GET /api/projects`
+- `POST /api/projects`
+- `PATCH /api/projects/:projectId`
+- `DELETE /api/projects/:projectId`
+- `GET /api/projects/:projectId/sessions`
+- `GET /api/runners`
+- `GET /api/runners/events`（SSE）
+- `POST /api/runners/approval-ticket`
+- `POST /api/sessions/:session_id/runner-binding`
+- `GET /api/tasks`
+- `GET /api/tasks/:taskId`
+- `GET /api/tasks/:taskId/events`（SSE）
+- `POST /api/tasks`
+
+## 响应约定
+
+普通 JSON 接口统一 envelope：
 
 ```json
 {
@@ -92,7 +162,7 @@ pnpm --filter @agent-flow/web-server start
 }
 ```
 
-错误响应统一格式：
+异常响应：
 
 ```json
 {
@@ -104,13 +174,7 @@ pnpm --filter @agent-flow/web-server start
 }
 ```
 
-例外约定：
-- `SSE` 接口（如 `/api/chat` 的流式模式、`/api/tasks/:taskId/events`）返回事件流，不包 `code/data/message`。
-- `204 No Content` 接口（如 delete 场景）不返回 body。
+例外：
 
-## 提供的能力
-
-- 为 web-ui 和 console 提供统一的后端 API 层
-- SSE 流式输出支持实时对话与任务事件推送
-- 服务容器模式组织业务逻辑，便于扩展与替换
-- 预留 `core/runner` 真实执行链路的接入边界
+1. SSE 接口（如 `/api/chat` 流式模式、`/api/runners/events`、`/api/tasks/:taskId/events`）返回事件流，不使用 envelope。
+2. `204 No Content` 接口（如部分删除场景）不返回 body。

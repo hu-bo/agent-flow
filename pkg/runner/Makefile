@@ -1,4 +1,4 @@
-.PHONY: proto proto-types proto-all tidy test run
+.PHONY: proto proto-types proto-all tidy test run package
 
 proto:
 	protoc --proto_path=../.. \
@@ -19,3 +19,6 @@ test:
 
 run:
 	go run ./cmd
+
+package:
+	powershell -ExecutionPolicy Bypass -File ./scripts/package.ps1

@@ -16,7 +16,7 @@ import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
 import { RunnerApprovalService } from './runner-approval-service.js';
 import { RemoteRunner } from './remote-runner.js';
-import { CoreRuntimeGateway, createCoreAgentRuntimeBundle } from './runtime-gateway.js';
+import { CoreRuntimeGateway, ModelBackedLlmStepExecutor, createCoreAgentRuntimeBundle } from './runtime-gateway.js';
 import { SessionService } from './session-service.js';
 import { SpecWorkflowService } from './spec-workflow-service.js';
 import { TaskService } from './task-service.js';
@@ -56,6 +56,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     cwd: process.cwd(),
     runners: [remoteRunner],
     runnerDispatchService,
+    llmExecutor: new ModelBackedLlmStepExecutor(modelAdapterService),
   });
   const { runtime, toolRegistry, toolExecutor } = runtimeBundle;
   const runtimeGateway = new CoreRuntimeGateway({

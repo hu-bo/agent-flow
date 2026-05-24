@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,8 +9,8 @@ import (
 )
 
 const (
-	configDirName  = "agent-flow"
-	configFileName = "runner.json"
+	configDirName  = ".aflow-runner"
+	configFileName = "config.json"
 )
 
 type LocalConfig struct {
@@ -23,20 +24,15 @@ func LoadLocalConfig() (LocalConfig, error) {
 	if err != nil {
 		return LocalConfig{}, err
 	}
+	return loadConfigFile(path)
+}
 
-	raw, err := os.ReadFile(path)
+func LoadExecutableDirConfig() (LocalConfig, error) {
+	path, err := resolveExecutableConfigFilePath()
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return LocalConfig{}, nil
-		}
 		return LocalConfig{}, err
 	}
-
-	var cfg LocalConfig
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return LocalConfig{}, err
-	}
-	return cfg, nil
+	return loadConfigFile(path)
 }
 
 func SaveLocalConfig(cfg LocalConfig) error {
@@ -56,9 +52,34 @@ func SaveLocalConfig(cfg LocalConfig) error {
 }
 
 func resolveConfigFilePath() (string, error) {
-	base, err := os.UserConfigDir()
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, configDirName, configFileName), nil
+	return filepath.Join(home, configDirName, configFileName), nil
+}
+
+func resolveExecutableConfigFilePath() (string, error) {
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(executablePath), configFileName), nil
+}
+
+func loadConfigFile(path string) (LocalConfig, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return LocalConfig{}, nil
+		}
+		return LocalConfig{}, err
+	}
+	raw = bytes.TrimPrefix(raw, []byte{0xEF, 0xBB, 0xBF})
+
+	var cfg LocalConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return LocalConfig{}, err
+	}
+	return cfg, nil
 }

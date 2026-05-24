@@ -5,16 +5,19 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/agent-flow/runner/internal/auth"
+	"github.com/agent-flow/runner/internal/autostart"
 	"github.com/agent-flow/runner/internal/grpcclient"
 	"github.com/agent-flow/runner/internal/model"
 	"github.com/agent-flow/runner/internal/server"
@@ -39,11 +42,45 @@ const (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	logFile := initLogger()
+	if logFile != nil {
+		defer logFile.Close()
+	}
 	if err := run(); err != nil {
 		slog.Error("runner exited with error", "err", err)
 		os.Exit(1)
 	}
+}
+
+func initLogger() *os.File {
+	writer := io.Writer(os.Stdout)
+	logFile, err := openRunnerLogFile()
+	if err == nil {
+		writer = io.MultiWriter(os.Stdout, logFile)
+	}
+
+	slog.SetDefault(slog.New(slog.NewJSONHandler(writer, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	if err != nil {
+		slog.Warn("failed to open runner log file", "err", err)
+		return nil
+	}
+	return logFile
+}
+
+func openRunnerLogFile() (*os.File, error) {
+	home := strings.TrimSpace(os.Getenv("USERPROFILE"))
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+	}
+	logDir := filepath.Join(home, ".aflow-runner")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(filepath.Join(logDir, "runner.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 }
 
 func run() error {
@@ -57,6 +94,12 @@ func run() error {
 		return runStart(args[1:])
 	case "serve":
 		return runServe(args[1:])
+	case "install-autostart":
+		return runInstallAutostart(args[1:])
+	case "uninstall-autostart":
+		return runUninstallAutostart()
+	case "print-autostart":
+		return runPrintAutostart(args[1:])
 	case "-h", "--help", "help":
 		printUsage()
 		return nil
@@ -73,7 +116,10 @@ func runStart(args []string) error {
 	fs := flag.NewFlagSet("start", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 
-	cfg, _ := model.LoadLocalConfig()
+	cfg, err := loadRunnerConfig()
+	if err != nil {
+		return err
+	}
 	defaultToken := strings.TrimSpace(cfg.RunnerToken)
 	defaultHost := strings.TrimSpace(cfg.ServerAddr)
 	if defaultHost == "" {
@@ -228,6 +274,49 @@ func runServe(args []string) error {
 	return grpcServer.Serve(listener)
 }
 
+func runInstallAutostart(args []string) error {
+	opts, err := parseStartOptions(args)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(opts.RPCToken) == "" {
+		return errors.New("rpc_token is required")
+	}
+	path, err := autostart.Install(toAutostartOptions(opts))
+	if err != nil {
+		return err
+	}
+	slog.Info("runner autostart installed", "path", path)
+	fmt.Println(path)
+	return nil
+}
+
+func runUninstallAutostart() error {
+	path, err := autostart.Uninstall()
+	if err != nil {
+		return err
+	}
+	slog.Info("runner autostart removed", "path", path)
+	fmt.Println(path)
+	return nil
+}
+
+func runPrintAutostart(args []string) error {
+	opts, err := parseStartOptions(args)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(opts.RPCToken) == "" {
+		return errors.New("rpc_token is required")
+	}
+	content, err := autostart.Describe(toAutostartOptions(opts))
+	if err != nil {
+		return err
+	}
+	fmt.Println(content)
+	return nil
+}
+
 func newController(dockerBinary string) (runnercore.Controller, error) {
 	hostExec := exec.NewHostExecutor("host-default")
 	dockerExec := docker.NewExecutor("docker-default", dockerBinary)
@@ -237,6 +326,17 @@ func newController(dockerBinary string) (runnercore.Controller, error) {
 		DockerExecutor: dockerExec,
 		Guard:          sandboxGuard,
 	})
+}
+
+func loadRunnerConfig() (model.LocalConfig, error) {
+	cfg, err := model.LoadExecutableDirConfig()
+	if err != nil {
+		return cfg, err
+	}
+	if strings.TrimSpace(cfg.RunnerToken) != "" {
+		return cfg, nil
+	}
+	return model.LoadLocalConfig()
 }
 
 func resolveVersion() string {
@@ -275,6 +375,79 @@ func normalizeCapabilities(values []string) []string {
 		out = append(out, "fs.roots")
 	}
 	return out
+}
+
+type startOptions struct {
+	RPCHost      string
+	RPCToken     string
+	RunnerID     string
+	Kind         string
+	Host         string
+	HostName     string
+	HostIP       string
+	Version      string
+	Capabilities []string
+	DockerBinary string
+}
+
+func parseStartOptions(args []string) (startOptions, error) {
+	fs := flag.NewFlagSet("start", flag.ContinueOnError)
+	fs.SetOutput(os.Stdout)
+
+	cfg, err := loadRunnerConfig()
+	if err != nil {
+		return startOptions{}, err
+	}
+	defaultToken := strings.TrimSpace(cfg.RunnerToken)
+	defaultHost := strings.TrimSpace(cfg.ServerAddr)
+	if defaultHost == "" {
+		defaultHost = defaultGRPCServer
+	}
+
+	rpcHost := fs.String("rpc_host", defaultHost, "web-server grpc host:port")
+	rpcToken := fs.String("rpc_token", defaultToken, "runner token issued by web-server")
+	runnerID := fs.String("runner_id", strings.TrimSpace(cfg.RunnerID), "runner id for reconnect")
+	kind := fs.String("kind", defaultRunnerKind, "runner kind: local|remote|sandbox")
+	defaultHostName := localHostname()
+	defaultHostIP := localHostIP()
+	hostLabel := fs.String("host", defaultHostName, "runner host label")
+	hostName := fs.String("host_name", defaultHostName, "runner host name used for per-host identity")
+	hostIP := fs.String("host_ip", defaultHostIP, "runner host ip address")
+	version := fs.String("version", resolveVersion(), "runner version")
+	capabilities := fs.String("capabilities", defaultCaps, "comma-separated capability list")
+	dockerBinary := fs.String("docker_bin", os.Getenv("RUNNER_DOCKER_BIN"), "docker binary path")
+
+	if err := fs.Parse(args); err != nil {
+		return startOptions{}, err
+	}
+
+	return startOptions{
+		RPCHost:      strings.TrimSpace(*rpcHost),
+		RPCToken:     strings.TrimSpace(*rpcToken),
+		RunnerID:     strings.TrimSpace(*runnerID),
+		Kind:         strings.TrimSpace(*kind),
+		Host:         strings.TrimSpace(*hostLabel),
+		HostName:     strings.TrimSpace(*hostName),
+		HostIP:       strings.TrimSpace(*hostIP),
+		Version:      strings.TrimSpace(*version),
+		Capabilities: normalizeCapabilities(parseCSV(*capabilities)),
+		DockerBinary: strings.TrimSpace(*dockerBinary),
+	}, nil
+}
+
+func toAutostartOptions(opts startOptions) autostart.Options {
+	return autostart.Options{
+		RPCHost:      opts.RPCHost,
+		RPCToken:     opts.RPCToken,
+		RunnerID:     opts.RunnerID,
+		Kind:         opts.Kind,
+		Host:         opts.Host,
+		HostName:     opts.HostName,
+		HostIP:       opts.HostIP,
+		Version:      opts.Version,
+		Capabilities: opts.Capabilities,
+		DockerBinary: opts.DockerBinary,
+	}
 }
 
 func localHostname() string {
@@ -371,9 +544,15 @@ func printUsage() {
 Usage:
   runner start --rpc_host 127.0.0.1:9201 --rpc_token <token>
   runner serve --addr :8091 --auth_token <token>
+  runner install-autostart --rpc_host 127.0.0.1:9201 --rpc_token <token>
+  runner uninstall-autostart
+  runner print-autostart --rpc_host 127.0.0.1:9201 --rpc_token <token>
 
 Commands:
-  start   Connect to web-server and execute tasks over gRPC Connect stream.
-  serve   Legacy gRPC server mode.
+  start               Connect to web-server and execute tasks over gRPC Connect stream.
+  serve               Legacy gRPC server mode.
+  install-autostart   Install a per-user login autostart entry on Windows/macOS.
+  uninstall-autostart Remove the installed autostart entry.
+  print-autostart     Print the generated startup script/plist without installing it.
 `)
 }
