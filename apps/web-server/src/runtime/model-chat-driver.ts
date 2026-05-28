@@ -193,7 +193,7 @@ export class ModelChatDriver {
             finishReason = event.finishReason;
             usage = event.usage;
           } else if (event.type === 'error') {
-            throw new Error(event.message);
+            throw event.error instanceof Error ? event.error : new Error(event.message, { cause: event.error });
           }
         }
 

@@ -48,11 +48,13 @@ If `--rpc_host` / `--rpc_token` are omitted, the runner loads config from:
 - Windows: `%USERPROFILE%\.aflow-runner\config.json`
 - macOS: `~/.aflow-runner/config.json`
 
+`runnerId` can be omitted. When missing, runner computes a stable device fingerprint
+and generates `runner_dev_<hash>` automatically (still overrideable with `--runner_id`).
+
 Example config file:
 
 ```json
 {
-  "runnerId": "runner-user-001",
   "runnerToken": "rtk_xxxxxxxxxxxxxxxxxxxx",
   "serverAddr": "127.0.0.1:9201"
 }
@@ -126,8 +128,7 @@ cd e:\Project\my-project\agent-flow\pkg\runner
 powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 `
   -Version 0.1.0 `
   -ServerAddr 127.0.0.1:9201 `
-  -RunnerToken afr_bK5nADjjhz7RBShIe1SgzSOYAkvsHPWlWFOyU7BnSMg `
-  -RunnerId runner-user-001
+  -RunnerToken afr_bK5nADjjhz7RBShIe1SgzSOYAkvsHPWlWFOyU7BnSMg
 ```
 
 Or via Makefile:

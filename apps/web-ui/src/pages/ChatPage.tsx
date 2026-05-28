@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ChatPanel } from '@agent-flow/chat-ui';
 import type { FileAttachment } from '@agent-flow/chat-ui';
-import { MessageCircle, NotebookPen } from 'lucide-react';
+import { Activity, MessageCircle, NotebookPen } from 'lucide-react';
 
 import { createSession, triggerCompact } from '../api';
 import { useMessageActions } from '../hooks/useMessageActions';
@@ -40,6 +40,8 @@ export function ChatPage() {
     handleFileSelect,
     tokenUsage,
     rendererContext,
+    runtimeTraceEnabled,
+    toggleRuntimeTraceEnabled,
   } = runtime;
   const [pendingMode, setPendingMode] = useState<'vibe' | 'spec'>('vibe');
   const [isCompacting, setIsCompacting] = useState(false);
@@ -213,6 +215,16 @@ export function ChatPage() {
           <h1 className="workspace-title">AGENT_COLLAB_LIGHT</h1>
         </div>
         <div className="workspace-header-right">
+          <button
+            type="button"
+            className={`workspace-action-btn workspace-toggle-btn${runtimeTraceEnabled ? ' is-active' : ''}`}
+            onClick={toggleRuntimeTraceEnabled}
+            aria-pressed={runtimeTraceEnabled}
+            title="Trace / 执行轨迹"
+          >
+            <Activity size={14} />
+            <span>Trace</span>
+          </button>
           <select
             className="workspace-runner-select"
             value={selectedRunnerId}

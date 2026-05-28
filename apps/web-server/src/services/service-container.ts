@@ -1,6 +1,7 @@
 import type { AppEnv } from '../config/env.js';
+import { resolve } from 'node:path';
 import { AutoCompactor } from '@agent-flow/compact';
-import { ConsoleEventSink, StructuredLogger, Tracer } from '@agent-flow/events';
+import { StructuredLogger, Tracer } from '@agent-flow/events';
 import { MemoryService } from '@agent-flow/memory';
 import type { AppDataSource } from '../db/data-source.js';
 import { AuthService } from './auth-service.js';
@@ -16,14 +17,26 @@ import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
 import { RunnerApprovalService } from './runner-approval-service.js';
 import { RemoteRunner } from './remote-runner.js';
-import { CoreRuntimeGateway, ModelBackedLlmStepExecutor, createCoreAgentRuntimeBundle } from './runtime-gateway.js';
+import { ModelBackedLlmStepExecutor, createCoreAgentRuntimeBundle, createCoreRuntimeTurnEngine } from './runtime-gateway.js';
 import { SessionService } from './session-service.js';
 import { SpecWorkflowService } from './spec-workflow-service.js';
 import { TaskService } from './task-service.js';
+import { PinoEventSink } from '../lib/pino-event-sink.js';
+
+const LOG_LEVEL = 'info' as const;
 
 export async function createServices(env: AppEnv, db: AppDataSource) {
+  const LOG_DIR = resolve(process.cwd(), 'logs');
   const logger = new StructuredLogger({
-    sinks: [new ConsoleEventSink()],
+    sinks: [
+      new PinoEventSink({
+        service: '@agent-flow/web-server',
+        logLevel: LOG_LEVEL,
+        logDir: LOG_DIR,
+        output: 'file',
+        envLabel: env.nodeEnv,
+      }),
+    ],
     defaultAttributes: {
       service: '@agent-flow/web-server',
     },
@@ -59,7 +72,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     llmExecutor: new ModelBackedLlmStepExecutor(modelAdapterService),
   });
   const { runtime, toolRegistry, toolExecutor } = runtimeBundle;
-  const runtimeGateway = new CoreRuntimeGateway({
+  const runtimeTurnEngine = createCoreRuntimeTurnEngine({
     runtime,
     memoryService,
     modelAdapterService,
@@ -74,7 +87,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const chatService = new ChatService(
     sessionService,
     modelService,
-    runtimeGateway,
+    runtimeTurnEngine,
     specWorkflowService,
     memoryService,
   );

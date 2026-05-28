@@ -8,6 +8,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
+import { aggregateRuntimeTraceMessages } from '@agent-flow/chat-ui';
 import type { ChatMessage, FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
 import {
   bindSessionRunner,
@@ -27,6 +28,7 @@ import {
   type ModelSelectOption,
   type NoticeState,
 } from '../pages/chat-page-utils';
+import type { UnifiedMessage } from '@agent-flow/core/messages';
 
 interface UseWorkspaceChatRuntimeOptions {
   routeSessionId?: string;
@@ -37,6 +39,9 @@ interface UseWorkspaceChatRuntimeResult {
   sessionRecord: SessionRecord | null;
   activeSession: string | null;
   setActiveSession: (sessionId: string | null) => void;
+  runtimeTraceEnabled: boolean;
+  setRuntimeTraceEnabled: (enabled: boolean) => void;
+  toggleRuntimeTraceEnabled: () => void;
   refreshSessionMessages: ReturnType<typeof useChat>['refreshSessionMessages'];
   sendMessage: ReturnType<typeof useChat>['sendMessage'];
   isConnecting: boolean;
@@ -80,6 +85,9 @@ export function useWorkspaceChatRuntime({
   const activeSession = useChatStore((state) => state.activeSessionId);
   const setActiveSession = useChatStore((state) => state.setActiveSession);
   const setActiveProject = useChatStore((state) => state.setActiveProject);
+  const runtimeTraceEnabled = useChatStore((state) => state.runtimeTraceEnabled);
+  const setRuntimeTraceEnabled = useChatStore((state) => state.setRuntimeTraceEnabled);
+  const toggleRuntimeTraceEnabled = useChatStore((state) => state.toggleRuntimeTraceEnabled);
   const [modelOptions, setModelOptions] = useState<ModelSelectOption[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
@@ -320,7 +328,13 @@ export function useWorkspaceChatRuntime({
     () => modelOptions.find((model) => Number(model.value) === selectedModelId)?.maxInputTokens ?? null,
     [modelOptions, selectedModelId],
   );
-  const chatMessages = useMemo(() => messages as ChatMessage[], [messages]);
+  const chatMessages = useMemo(() => {
+    if (runtimeTraceEnabled) {
+      return aggregateRuntimeTraceMessages(messages);
+    }
+    return messages
+      .filter((message) => !isRuntimeMetaToolMessage(message) && message.metadata?.extensions?.runtimeTrace !== true) as unknown as ChatMessage[];
+  }, [messages, runtimeTraceEnabled]);
   const tokenUsage = useMemo(
     () => buildTokenUsage(chatMessages, tokenBudget),
     [chatMessages, tokenBudget],
@@ -337,6 +351,9 @@ export function useWorkspaceChatRuntime({
     sessionRecord,
     activeSession,
     setActiveSession,
+    runtimeTraceEnabled,
+    setRuntimeTraceEnabled,
+    toggleRuntimeTraceEnabled,
     refreshSessionMessages,
     sendMessage,
     isConnecting,
@@ -358,4 +375,10 @@ export function useWorkspaceChatRuntime({
     tokenUsage,
     rendererContext,
   };
+}
+
+function isRuntimeMetaToolMessage(message: UnifiedMessage): boolean {
+  if (message.role !== 'tool') return false;
+  if (message.metadata?.isMeta !== true || message.metadata.provider !== 'core-runtime') return false;
+  return message.content.some((part) => part.type === 'tool-call' || part.type === 'tool-result');
 }

@@ -108,6 +108,7 @@ const runnerBackedInputSchemas = {
     path: z.string().trim().min(1),
     encoding: z.literal('utf8').optional(),
     maxBytes: z.number().int().positive().max(10_000_000).optional(),
+    allowMissing: z.boolean().optional(),
   }),
   fsWrite: z.object({
     path: z.string().trim().min(1),
@@ -175,6 +176,7 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
           path: { type: 'string', description: 'Workspace-relative file path.' },
           encoding: { type: 'string', description: 'Encoding. Only utf8 is supported.' },
           maxBytes: { type: 'number', description: 'Maximum readable file size in bytes.' },
+          allowMissing: { type: 'boolean', description: 'Return an empty result when the file is missing.' },
         },
       },
     }),

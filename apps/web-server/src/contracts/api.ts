@@ -42,7 +42,7 @@ export interface ProjectRecord {
   projectId: string;
   name: string;
   rootPath: string;
-  defaultRunnerId: string;
+  defaultRunnerId: string | null;
   createdAt: string;
   updatedAt: string;
   chatCount: number;
@@ -174,10 +174,6 @@ export type ChatStreamEvent =
   | ChatStreamSpecDocUpdateEvent
   | ChatStreamApprovalRequiredEvent
   | ChatStreamErrorEvent;
-
-export interface RuntimeGateway {
-  streamChat(input: RuntimeChatInput): AsyncGenerator<ChatStreamEvent>;
-}
 
 export interface RequestContext {
   requestId: string;

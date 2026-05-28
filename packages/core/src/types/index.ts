@@ -105,6 +105,20 @@ export interface RunnerTask {
   metadata?: Record<string, unknown>;
 }
 
+export interface LlmStepRequest {
+  request: AgentRunRequest;
+  session: AgentSession;
+  step: AgentStep;
+  input: Record<string, unknown>;
+  context: ContextEnvelope;
+  outputs: Record<string, unknown>;
+  signal?: AbortSignal;
+}
+
+export interface LlmStepExecutorLike {
+  execute(request: LlmStepRequest): Promise<unknown>;
+}
+
 export interface RunnerCapabilities {
   streaming: boolean;
   sandboxed: boolean;
@@ -404,6 +418,7 @@ export interface CreateAgentOptions {
   contextBuilder?: ContextBuilderLike;
   toolRegistry?: ToolRegistryLike;
   toolExecutor?: ToolExecutorLike;
+  llmExecutor?: LlmStepExecutorLike;
   promptLoader?: PromptSystemLoader;
   promptRenderer?: PromptVariableRenderer;
   sessionStore?: SessionStore;

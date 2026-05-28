@@ -4,6 +4,8 @@ export interface EventError {
   name: string;
   message: string;
   stack?: string;
+  cause?: unknown;
+  extra?: Record<string, unknown>;
 }
 
 export interface EventRecord {

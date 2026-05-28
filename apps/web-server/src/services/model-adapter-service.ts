@@ -1,4 +1,5 @@
 import { createAnthropicAdapter } from '@agent-flow/model-adapters/anthropic';
+import type { AiSdkGenerationMode } from '@agent-flow/model-adapters/ai-sdk';
 import { createOpenAiAdapter } from '@agent-flow/model-adapters/openai';
 import type { ModelAdapter } from '@agent-flow/model-adapters/types';
 import type { AppDataSource } from '../db/data-source.js';
@@ -42,6 +43,7 @@ export class ModelAdapterService {
     }
 
     const baseURL = readMetadataString(model.provider.metadata, 'baseUrl');
+    const generationMode = readGenerationMode(model.provider.metadata);
     const providerType = model.provider.type.toLowerCase();
     const providerName = model.provider.name;
 
@@ -50,6 +52,7 @@ export class ModelAdapterService {
         model: model.model,
         providerId: providerName,
         apiKey,
+        generationMode,
         ...(baseURL ? { baseURL } : {}),
       });
     }
@@ -58,7 +61,8 @@ export class ModelAdapterService {
       model: model.model,
       providerId: providerName,
       apiKey,
-      compatibility: providerType === 'openai' ? 'strict' : 'compatible',
+      generationMode,
+      compatibility: resolveOpenAiCompatibility(providerType, baseURL),
       ...(baseURL ? { baseURL } : {}),
     });
   }
@@ -71,4 +75,41 @@ function readMetadataString(metadata: Record<string, unknown> | null, key: strin
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+export function readGenerationMode(metadata: Record<string, unknown> | null): AiSdkGenerationMode {
+  const value = readMetadataString(metadata, 'generationMode');
+  if (value === 'nonstream') {
+    return 'nonstream';
+  }
+  return 'stream';
+}
+
+export function resolveOpenAiCompatibility(
+  providerType: string,
+  baseURL: string | undefined,
+): 'strict' | 'compatible' {
+  if (providerType !== 'openai') {
+    return 'compatible';
+  }
+
+  if (!baseURL) {
+    // No override means default OpenAI endpoint.
+    return 'strict';
+  }
+
+  const host = tryReadHostname(baseURL);
+  if (host === 'api.openai.com') {
+    return 'strict';
+  }
+
+  return 'compatible';
+}
+
+function tryReadHostname(baseURL: string): string | undefined {
+  try {
+    return new URL(baseURL).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
 }

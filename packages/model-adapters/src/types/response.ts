@@ -43,4 +43,5 @@ export type StreamEvent =
   | {
       type: 'error';
       message: string;
+      error?: unknown;
     };

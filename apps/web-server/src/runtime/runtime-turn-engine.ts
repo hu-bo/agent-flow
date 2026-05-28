@@ -1,4 +1,4 @@
-import type { AgentRuntime } from '@agent-flow/core';
+import type { AgentEvent, AgentRuntime } from '@agent-flow/core';
 import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import type { MemoryService, RecalledMemory } from '@agent-flow/memory';
 import type { ChatStreamEvent, RuntimeChatInput } from '../contracts/api.js';
@@ -11,7 +11,7 @@ import { ModelChatDriver } from './model-chat-driver.js';
 import { buildAgentRequest } from './runtime-request-builder.js';
 import { parseRunnerDirective, resolveRuntimeMode } from './runtime-router.js';
 import { isRuntimeDiagnosticText } from './runtime-diagnostics.js';
-import { extractRuntimeSteps, renderAssistantText } from './runtime-renderers.js';
+import { extractRuntimeStepTraces, extractRuntimeSteps, renderAssistantText } from './runtime-renderers.js';
 import {
   MAX_AUTONOMOUS_MODEL_TOOL_ROUNDS,
   type RunnerDirective,
@@ -140,17 +140,44 @@ export class RuntimeTurnEngine {
   ): Promise<void> {
     const { input, parentUuid, queue, span } = context;
     const eventCountByType = new Map<string, number>();
+    const emittedEventIds = new Set<string>();
     const runRequest = buildAgentRequest(input, recalled, runnerDirective, runtimeMode);
+    const emitRuntimeProgress = (event: AgentEvent) => {
+      emittedEventIds.add(event.id);
+      const progressMessage = toProgressMessage(input, parentUuid, event);
+      if (progressMessage) {
+        queue.push(toMessageEvent(progressMessage));
+      }
+    };
 
     const result = await this.runtime.run(runRequest, {
       onEvent: async (event) => {
         eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
-        const progressMessage = toProgressMessage(input, parentUuid, event);
-        if (progressMessage) {
-          queue.push(toMessageEvent(progressMessage));
-        }
+        // Emit raw runtime events for end-to-end traceability. Enable via LOG_LEVEL=debug.
+        void this.logger?.debug('runtime.event', 'core runtime event', {
+          traceId: span?.traceId,
+          spanId: span?.spanId,
+          attributes: {
+            sessionId: input.session.sessionId,
+            requestId: input.requestId,
+            eventType: event.type,
+            payload: event.payload,
+          },
+        });
+        emitRuntimeProgress(event);
       },
     });
+
+    // Some executors expose fine-grained events only on the final result. Flush any events
+    // missed by live onEvent delivery so the UI can always reconstruct the runtime trace.
+    for (const event of result.events) {
+      if (emittedEventIds.has(event.id)) {
+        continue;
+      }
+      eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
+      emitRuntimeProgress(event);
+    }
+
     const approvalFromResult = extractApprovalFromAgentRunResult(result);
     if (approvalFromResult) {
       queue.push(toApprovalRequiredEvent(approvalFromResult));
@@ -179,15 +206,50 @@ export class RuntimeTurnEngine {
       return;
     }
 
-    this.logger?.info('chat.turn.completed', 'core runtime turn completed', {
-      attributes: {
+    const eventTypeCounts = buildEventTypeCounts(result.events);
+    const failure = result.status === 'succeeded' ? undefined : buildRuntimeFailureSummary(result);
+
+    if (result.status === 'succeeded') {
+      this.logger?.info('chat.turn.completed', 'core runtime turn completed', {
+        attributes: {
+          sessionId: input.session.sessionId,
+          taskId: result.taskId,
+          coreSessionId: result.sessionId,
+          status: result.status,
+          eventCount: result.events.length,
+          eventTypeCounts,
+        },
+      });
+    } else {
+      this.logger?.error('chat.turn.failed', 'core runtime turn failed', {
+        attributes: {
+          sessionId: input.session.sessionId,
+          modelId: input.modelId,
+          model: input.model,
+          requestId: input.requestId,
+          taskId: result.taskId,
+          coreSessionId: result.sessionId,
+          status: result.status,
+          error: result.error ?? failure?.reason ?? 'unknown runtime failure',
+          eventCount: result.events.length,
+          eventTypeCounts,
+          failure,
+        },
+      });
+      console.log('[core-runtime] chat.turn.failed', {
+        requestId: input.requestId,
         sessionId: input.session.sessionId,
         taskId: result.taskId,
         coreSessionId: result.sessionId,
         status: result.status,
-        eventCount: result.events.length,
-      },
-    });
+        error: result.error,
+        failure,
+        lastEvents: result.events.slice(-8).map((event) => ({
+          type: event.type,
+          payload: sanitizeErrorValue(event.payload),
+        })),
+      });
+    }
 
     queue.push(
       toMessageEvent(
@@ -206,6 +268,8 @@ export class RuntimeTurnEngine {
               eventCount: result.events.length,
               runtimeMode,
               plannedSteps: extractRuntimeSteps(result),
+              plannedStepDetails: extractRuntimeStepTraces(result),
+              ...(failure ? { failure } : {}),
             },
           },
         }),
@@ -272,6 +336,7 @@ export class RuntimeTurnEngine {
         model: input.model,
         requestId: input.requestId,
         error: message,
+        errorDetails: serializeErrorForLog(error),
       },
     });
     await span?.fail(error);
@@ -312,4 +377,167 @@ function extractApprovalFromUnknown(
     return error.approval;
   }
   return extractApprovalRequiredFromError(error);
+}
+
+function serializeErrorForLog(error: unknown): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    message: error instanceof Error ? error.message : String(error),
+  };
+
+  if (error instanceof Error) {
+    base.name = error.name;
+    base.stack = error.stack;
+    const cause = (error as unknown as { cause?: unknown }).cause;
+    if (cause !== undefined) {
+      base.cause = serializeErrorForLog(cause);
+    }
+    const extra = extractExtraErrorProps(error);
+    if (extra) {
+      base.extra = extra;
+    }
+    return base;
+  }
+
+  const extra = extractExtraErrorProps(error);
+  if (extra) {
+    base.extra = extra;
+  }
+  return base;
+}
+
+function extractExtraErrorProps(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+
+  for (const key of Object.getOwnPropertyNames(obj)) {
+    if (key === 'name' || key === 'message' || key === 'stack' || key === 'cause') {
+      continue;
+    }
+
+    const lowered = key.toLowerCase();
+    if (
+      lowered.includes('key') ||
+      lowered.includes('token') ||
+      lowered.includes('secret') ||
+      lowered.includes('authorization')
+    ) {
+      continue;
+    }
+
+    result[key] = sanitizeErrorValue(obj[key]);
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function sanitizeErrorValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const max = 24_000;
+    return value.length > max ? `${value.slice(0, max)}... (truncated)` : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => sanitizeErrorValue(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    let count = 0;
+    for (const [k, v] of Object.entries(obj)) {
+      if (count >= 50) break;
+      const lowered = k.toLowerCase();
+      if (
+        lowered.includes('key') ||
+        lowered.includes('token') ||
+        lowered.includes('secret') ||
+        lowered.includes('authorization')
+      ) {
+        continue;
+      }
+      out[k] = sanitizeErrorValue(v);
+      count += 1;
+    }
+    return out;
+  }
+
+  return value;
+}
+
+function buildEventTypeCounts(events: AgentEvent[]): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    counts.set(event.type, (counts.get(event.type) ?? 0) + 1);
+  }
+  return Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function buildRuntimeFailureSummary(result: Awaited<ReturnType<AgentRuntime['run']>>): Record<string, unknown> {
+  const latestEvent = result.events.at(-1);
+  const sessionFailed = findLatestEvent(result.events, 'session.failed');
+  const stepFailed = findLatestEvent(result.events, 'step.failed');
+  const runnerErrorEvent = findLatestRunnerErrorEvent(result.events);
+  const latestOutput = extractLatestOutput(result.outputs);
+
+  const summary: Record<string, unknown> = {
+    reason: result.error ?? readErrorFromPayload(sessionFailed?.payload) ?? readErrorFromPayload(stepFailed?.payload),
+    latestEventType: latestEvent?.type,
+    latestEventPayload: latestEvent ? sanitizeErrorValue(latestEvent.payload) : undefined,
+    sessionFailed: sessionFailed ? sanitizeErrorValue(sessionFailed.payload) : undefined,
+    stepFailed: stepFailed ? sanitizeErrorValue(stepFailed.payload) : undefined,
+    runnerError: runnerErrorEvent ? sanitizeErrorValue(runnerErrorEvent.payload.runnerEvent) : undefined,
+    latestOutput: latestOutput === undefined ? undefined : sanitizeErrorValue(latestOutput),
+  };
+
+  for (const key of Object.keys(summary)) {
+    if (summary[key] === undefined) {
+      delete summary[key];
+    }
+  }
+
+  return summary;
+}
+
+function findLatestEvent(events: AgentEvent[], type: AgentEvent['type']): AgentEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const current = events[index];
+    if (current?.type === type) {
+      return current;
+    }
+  }
+  return undefined;
+}
+
+function findLatestRunnerErrorEvent(events: AgentEvent[]): AgentEvent | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const current = events[index];
+    if (!current || current.type !== 'runner.event') {
+      continue;
+    }
+    const runnerEvent = current.payload.runnerEvent;
+    if (!runnerEvent || typeof runnerEvent !== 'object') {
+      continue;
+    }
+    if ((runnerEvent as { type?: unknown }).type === 'error') {
+      return current;
+    }
+  }
+  return undefined;
+}
+
+function extractLatestOutput(outputs: Record<string, unknown>): unknown {
+  const entries = Object.entries(outputs);
+  if (entries.length === 0) {
+    return undefined;
+  }
+  return entries[entries.length - 1]?.[1];
+}
+
+function readErrorFromPayload(payload: Record<string, unknown> | undefined): string | undefined {
+  const raw = payload?.error;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined;
 }

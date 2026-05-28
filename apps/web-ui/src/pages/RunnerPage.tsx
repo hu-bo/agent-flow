@@ -3,6 +3,7 @@ import {
   deleteRunner,
   fetchRunnerDownloads,
   fetchRunners,
+  formatDeleteRunnerError,
   issueRunnerToken,
   rotateRunnerToken,
   streamRunners,
@@ -233,9 +234,10 @@ export function RunnerPage() {
       });
       await refreshRunners();
     } catch (error: unknown) {
+      const runnerDeleteMessage = formatDeleteRunnerError(error);
       setNotice({
         kind: 'error',
-        message: readErrorMessage(error, 'Failed to delete runner'),
+        message: runnerDeleteMessage ?? readErrorMessage(error, 'Failed to delete runner'),
       });
     } finally {
       setDeletingRunnerId(null);

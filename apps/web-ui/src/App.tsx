@@ -12,7 +12,11 @@ export function App() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const handleSelectSession = (sessionId: string | null, mode: 'vibe' | 'spec' = 'vibe') => {
+  const handleSelectSession = (
+    sessionId: string | null,
+    mode: 'vibe' | 'spec' = 'vibe',
+    options?: { openChatWhenEmpty?: boolean },
+  ) => {
     setActiveSession(sessionId);
 
     if (sessionId) {
@@ -20,6 +24,11 @@ export function App() {
       setPendingNewChatPlacement(null);
       const nextPath = mode === 'spec' ? `/spec/${sessionId}` : `/chat/${sessionId}`;
       navigate(nextPath, { replace: location.pathname === nextPath });
+      return;
+    }
+
+    if (options?.openChatWhenEmpty) {
+      navigate('/chat', { replace: location.pathname === '/chat' });
       return;
     }
 

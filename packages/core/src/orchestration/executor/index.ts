@@ -11,6 +11,7 @@ import type {
   ExecutePlanOptions,
   GraphBuilder,
   Guardrails,
+  LlmStepExecutorLike,
   PlanExecutor,
   Replanner,
   Runner,
@@ -18,7 +19,8 @@ import type {
   RunnerSelectionStrategy,
   RunnerTask,
   Scheduler,
-  ToolExecutorLike
+  ToolExecutorLike,
+  ToolResult
 } from '../../types/index.js';
 
 function readOutputByRef(outputs: Record<string, unknown>, ref: string): unknown {
@@ -70,6 +72,62 @@ function resolveStepInput(stepInput: Record<string, unknown> | undefined, consum
   }
 
   return base;
+}
+
+function normalizeOptionalMissingToolResult(
+  step: AgentStep,
+  input: Record<string, unknown>,
+  result: ToolResult
+): ToolResult {
+  if (result.ok || !isOptionalMissingFsRead(step, input, result.error)) {
+    return result;
+  }
+
+  const requestedPath = typeof input.path === 'string' ? input.path : '';
+  return {
+    name: result.name,
+    ok: true,
+    output: {
+      path: parseOpenErrorPath(result.error) ?? requestedPath,
+      size: 0,
+      content: '',
+      missing: true,
+      error: result.error,
+    },
+  };
+}
+
+function isOptionalMissingFsRead(
+  step: AgentStep,
+  input: Record<string, unknown>,
+  error: string | undefined
+): boolean {
+  if (step.toolName !== 'fs.read' || input.allowMissing !== true || !error) {
+    return false;
+  }
+
+  const normalized = error.toLowerCase();
+  return (
+    normalized.includes('no such file or directory') ||
+    normalized.includes('cannot find the file specified') ||
+    normalized.includes('cannot find the path specified') ||
+    normalized.includes('system cannot find the file specified') ||
+    normalized.includes('enoent')
+  );
+}
+
+function parseOpenErrorPath(error: string | undefined): string | undefined {
+  if (!error?.startsWith('open ')) {
+    return undefined;
+  }
+
+  const separator = ': ';
+  const end = error.lastIndexOf(separator);
+  if (end <= 'open '.length) {
+    return undefined;
+  }
+
+  return error.slice('open '.length, end);
 }
 
 let eventCounter = 0;
@@ -156,6 +214,95 @@ export class InlineRunner implements Runner {
   }
 }
 
+function serializeErrorForLog(error: unknown): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    message: error instanceof Error ? error.message : String(error),
+  };
+
+  if (error instanceof Error) {
+    base.name = error.name;
+    base.stack = error.stack;
+    const cause = (error as unknown as { cause?: unknown }).cause;
+    if (cause !== undefined) {
+      base.cause = serializeErrorForLog(cause);
+    }
+    const extra = extractExtraErrorProps(error);
+    if (extra) {
+      base.extra = extra;
+    }
+    return base;
+  }
+
+  const extra = extractExtraErrorProps(error);
+  if (extra) {
+    base.extra = extra;
+  }
+  return base;
+}
+
+function extractExtraErrorProps(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const obj = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+
+  for (const key of Object.getOwnPropertyNames(obj)) {
+    if (key === 'name' || key === 'message' || key === 'stack' || key === 'cause') {
+      continue;
+    }
+
+    const lowered = key.toLowerCase();
+    if (
+      lowered.includes('key') ||
+      lowered.includes('token') ||
+      lowered.includes('secret') ||
+      lowered.includes('authorization')
+    ) {
+      continue;
+    }
+
+    result[key] = sanitizeErrorValue(obj[key]);
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function sanitizeErrorValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const max = 24_000;
+    return value.length > max ? `${value.slice(0, max)}... (truncated)` : value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => sanitizeErrorValue(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    let count = 0;
+    for (const [k, v] of Object.entries(obj)) {
+      if (count >= 50) break;
+      const lowered = k.toLowerCase();
+      if (
+        lowered.includes('key') ||
+        lowered.includes('token') ||
+        lowered.includes('secret') ||
+        lowered.includes('authorization')
+      ) {
+        continue;
+      }
+      out[k] = sanitizeErrorValue(v);
+      count += 1;
+    }
+    return out;
+  }
+
+  return value;
+}
+
 export class RunnerRouter {
   private roundRobinCursor = 0;
   private readonly inFlight = new Map<string, number>();
@@ -233,6 +380,7 @@ export interface DefaultPlanExecutorOptions {
   scheduler: Scheduler;
   guardrails: Guardrails;
   toolExecutor: ToolExecutorLike;
+  llmExecutor?: LlmStepExecutorLike;
   checkpointStore: CheckpointStore;
   runnerRouter: RunnerRouter;
   replanner?: Replanner;
@@ -240,12 +388,16 @@ export interface DefaultPlanExecutorOptions {
 }
 
 class StepExecutionError extends Error {
+  readonly cause?: unknown;
+
   constructor(
     message: string,
-    public readonly step: AgentStep
+    public readonly step: AgentStep,
+    cause?: unknown
   ) {
     super(message);
     this.name = 'StepExecutionError';
+    this.cause = cause;
   }
 }
 
@@ -388,12 +540,24 @@ export class DefaultPlanExecutor implements PlanExecutor {
             let output: unknown;
 
             if (step.kind === 'llm') {
-              output = {
-                mode: 'placeholder',
-                goal: request.goal,
-                contextTokens: context.tokenUsed,
-                stepInput: resolvedInput
-              };
+              if (this.options.llmExecutor) {
+                output = await this.options.llmExecutor.execute({
+                  request,
+                  session,
+                  step,
+                  input: resolvedInput,
+                  context,
+                  outputs: { ...outputs },
+                  signal: executeOptions.signal
+                });
+              } else {
+                output = {
+                  mode: 'placeholder',
+                  goal: request.goal,
+                  contextTokens: context.tokenUsed,
+                  stepInput: resolvedInput
+                };
+              }
             } else if (step.kind === 'tool') {
               if (!step.toolName) {
                 throw new Error(`Step "${step.id}" is a tool step but has no toolName.`);
@@ -401,7 +565,10 @@ export class DefaultPlanExecutor implements PlanExecutor {
               await emit(
                 createEvent(session.taskId, session.id, 'tool.called', {
                   stepId: step.id,
-                  tool: step.toolName
+                  title: step.title,
+                  kind: step.kind,
+                  tool: step.toolName,
+                  input: resolvedInput
                 })
               );
               const toolResult = await this.options.toolExecutor.execute(
@@ -421,19 +588,24 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 }
               );
 
+              const normalizedToolResult = normalizeOptionalMissingToolResult(step, resolvedInput, toolResult);
+
               await emit(
                 createEvent(session.taskId, session.id, 'tool.result', {
                   stepId: step.id,
+                  title: step.title,
+                  kind: step.kind,
                   tool: step.toolName,
-                  ok: toolResult.ok,
-                  error: toolResult.error
+                  ok: normalizedToolResult.ok,
+                  error: normalizedToolResult.error,
+                  output: normalizedToolResult.output
                 })
               );
 
-              if (!toolResult.ok) {
-                throw new Error(toolResult.error ?? `Tool "${step.toolName}" failed.`);
+              if (!normalizedToolResult.ok) {
+                throw new Error(normalizedToolResult.error ?? `Tool "${step.toolName}" failed.`);
               }
-              output = toolResult.output;
+              output = normalizedToolResult.output;
             } else {
               if (!step.runner) {
                 throw new Error(`Step "${step.id}" is a runner step but has no runner config.`);
@@ -499,13 +671,18 @@ export class DefaultPlanExecutor implements PlanExecutor {
             await emit(
               createEvent(session.taskId, session.id, 'checkpoint.created', {
                 stepId: step.id,
-                checkpointId: checkpoint.id
+                title: step.title,
+                kind: step.kind,
+                checkpointId: checkpoint.id,
+                ...(step.kind === 'llm' ? { output } : {})
               })
             );
 
             await emit(
               createEvent(session.taskId, session.id, 'step.completed', {
-                stepId: step.id
+                stepId: step.id,
+                title: step.title,
+                kind: step.kind
               })
             );
           } catch (error) {
@@ -513,10 +690,13 @@ export class DefaultPlanExecutor implements PlanExecutor {
             await emit(
               createEvent(session.taskId, session.id, 'step.failed', {
                 stepId: step.id,
-                error: message
+                title: step.title,
+                kind: step.kind,
+                error: message,
+                errorDetails: serializeErrorForLog(error),
               })
             );
-            throw new StepExecutionError(message, step);
+            throw new StepExecutionError(message, step, error);
           }
         }
       }

@@ -197,6 +197,108 @@ describe('DefaultPlanExecutor', () => {
     });
   });
 
+  it('continues optional fs.read steps when the file is missing', async () => {
+    const missingPath = 'E:\\Project\\my-project\\agent-flow\\apps\\web-server\\pnpm-workspace.yaml';
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        if (call.name === 'fs.read') {
+          return {
+            name: call.name,
+            ok: false,
+            error: `open ${missingPath}: The system cannot find the file specified.`,
+          };
+        }
+        return {
+          name: call.name,
+          ok: false,
+          error: `unexpected tool: ${call.name}`,
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-optional-read',
+      strategy: 'plan',
+      steps: [
+        {
+          id: 'read_workspace',
+          title: 'repo.read_pnpm_workspace',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.read',
+          input: {
+            path: 'pnpm-workspace.yaml',
+            allowMissing: true,
+          },
+        },
+        {
+          id: 'reason',
+          title: 'repo.analysis',
+          kind: 'llm',
+          dependsOn: ['read_workspace'],
+          consumes: {
+            pnpmWorkspace: 'read_workspace',
+          },
+          input: {
+            mode: 'repo-analysis',
+          },
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor);
+
+    expect(result.status).toBe('succeeded');
+    expect(result.outputs.read_workspace).toEqual({
+      path: missingPath,
+      size: 0,
+      content: '',
+      missing: true,
+      error: `open ${missingPath}: The system cannot find the file specified.`,
+    });
+    expect(result.outputs.reason).toMatchObject({
+      stepInput: {
+        pnpmWorkspace: {
+          missing: true,
+        },
+      },
+    });
+  });
+
+  it('still fails fs.read missing files when allowMissing is not set', async () => {
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        return {
+          name: call.name,
+          ok: false,
+          error: 'open missing.txt: The system cannot find the file specified.',
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-required-read',
+      strategy: 'plan',
+      steps: [
+        {
+          id: 'read_required',
+          title: 'semantic-fs-read',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.read',
+          input: {
+            path: 'missing.txt',
+          },
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor);
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toBe('open missing.txt: The system cannot find the file specified.');
+  });
+
   it('replans after step failure and succeeds with recovery plan', async () => {
     const toolExecutor: ToolExecutorLike = {
       async execute(call): Promise<ToolResult> {

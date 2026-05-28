@@ -104,7 +104,7 @@ describe('CapabilityPlanner', () => {
     });
   });
 
-  it('uses single semantic tool step for inspection-only requests', async () => {
+  it('builds tool-first execution for inspection-only requests', async () => {
     const planner = new CapabilityPlanner();
     const plan = await planner.plan(
       {
@@ -114,12 +114,37 @@ describe('CapabilityPlanner', () => {
       defaultContext,
     );
 
-    expect(plan.steps).toHaveLength(1);
+    expect(plan.steps).toHaveLength(2);
     expect(plan.steps[0]).toMatchObject({
       title: 'semantic-fs-read',
       kind: 'tool',
       toolName: 'fs.read',
     });
+    expect(plan.steps[1]).toMatchObject({
+      title: 'task-execution',
+      kind: 'llm',
+      dependsOn: [plan.steps[0]?.id],
+      consumes: {
+        discovery: plan.steps[0]?.id,
+      },
+    });
+  });
+
+  it('builds repo-understanding workflow for project overview questions', async () => {
+    const planner = new CapabilityPlanner();
+    const plan = await planner.plan(
+      {
+        goal: '\u4f60\u7406\u89e3\u8fd9\u4e2a\u9879\u76ee\u662f\u505a\u4ec0\u4e48\u7684\u5417\uff1f',
+        strategy: 'plan',
+      },
+      defaultContext,
+    );
+
+    expect(plan.steps).toHaveLength(7);
+    expect(plan.steps[0]?.title).toBe('repo.scan');
+    expect(plan.steps[0]?.kind).toBe('tool');
+    expect(plan.steps.at(-1)?.title).toBe('repo.summary');
+    expect(plan.steps.at(-1)?.kind).toBe('llm');
   });
 
   it('builds coding workflow plan for modification requests with semantic hint', async () => {

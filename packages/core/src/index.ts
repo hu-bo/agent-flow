@@ -116,11 +116,25 @@ class DefaultAgentRuntime implements AgentRuntime {
       plan
     };
 
+    const events: AgentEvent[] = [];
+    const seenEventIds = new Set<string>();
+    const recordEvent = async (event: AgentEvent): Promise<void> => {
+      if (seenEventIds.has(event.id)) {
+        return;
+      }
+      seenEventIds.add(event.id);
+      events.push(event);
+      await this.replayStore.append(session.id, event);
+      if (options.onEvent) {
+        await options.onEvent(event);
+      }
+    };
+
     const stream = this.executor.execute(plan, requestWithPlan, session, context, {
-      signal: options.signal
+      signal: options.signal,
+      onEvent: recordEvent
     });
 
-    const events: AgentEvent[] = [];
     let result: AgentRunResult | undefined;
     while (true) {
       const next = await stream.next();
@@ -128,11 +142,7 @@ class DefaultAgentRuntime implements AgentRuntime {
         result = next.value;
         break;
       }
-      events.push(next.value);
-      await this.replayStore.append(session.id, next.value);
-      if (options.onEvent) {
-        await options.onEvent(next.value);
-      }
+      await recordEvent(next.value);
     }
 
     if (!result) {
@@ -140,9 +150,15 @@ class DefaultAgentRuntime implements AgentRuntime {
     }
 
     const checkpoints = await this.checkpointStore.list(session.id);
+
+    // The executor may record more granular events (step/tool/runner) than it yields.
+    // Prefer the executor's internal event list when available so callers can debug failures.
+    const finalEvents = Array.isArray(result.events) && result.events.length > events.length
+      ? result.events
+      : events;
     const finalResult: AgentRunResult = {
       ...result,
-      events,
+      events: finalEvents,
       checkpoints
     };
 
@@ -190,6 +206,7 @@ export function createAgent(options: CreateAgentOptions = {}): AgentRuntime {
       scheduler,
       guardrails,
       toolExecutor,
+      llmExecutor: options.llmExecutor,
       checkpointStore,
       runnerRouter,
       replanner,

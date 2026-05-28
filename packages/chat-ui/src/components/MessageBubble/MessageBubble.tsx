@@ -91,7 +91,7 @@ export function MessageBubble({
   const isUser = message.role === 'user';
   const isTool = message.role === 'tool';
   const roleClass = isUser ? 'is-user' : isTool ? 'is-tool' : 'is-assistant';
-  const showActions = !isUser && !isTool && Boolean(onRetry || onCopy);
+  const showActions = !isUser && !isTool && !message.metadata?.isMeta && Boolean(onRetry || onCopy);
 
   return (
     <div className={`chat-ui-message-row ${roleClass}`}>

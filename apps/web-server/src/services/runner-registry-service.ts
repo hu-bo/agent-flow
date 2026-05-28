@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Repository } from 'typeorm';
 import type { RunnerTask } from '@agent-flow/core';
 import type { AppDataSource } from '../db/data-source.js';
+import { ProjectEntity } from '../db/entities/project.entity.js';
 import { RunnerEntity } from '../db/entities/runner.entity.js';
 import type { RunnerTokenEntity } from '../db/entities/runner-token.entity.js';
 import { AppError, NotFoundError } from '../lib/errors.js';
@@ -29,6 +30,7 @@ export interface RunnerHeartbeatInput {
 
 export class RunnerRegistryService {
   private readonly runnerRepository: Repository<RunnerEntity>;
+  private readonly projectRepository: Repository<ProjectEntity>;
   private readonly offlineTimeoutMs: number;
 
   constructor(
@@ -37,6 +39,7 @@ export class RunnerRegistryService {
     options: RunnerRegistryServiceOptions = {},
   ) {
     this.runnerRepository = db.getRepository(RunnerEntity);
+    this.projectRepository = db.getRepository(ProjectEntity);
     this.offlineTimeoutMs = options.offlineTimeoutMs ?? 30_000;
   }
 
@@ -62,6 +65,24 @@ export class RunnerRegistryService {
   }
 
   async removeRunnerForUser(ownerUserId: string, runnerId: string): Promise<void> {
+    const runner = await this.runnerRepository.findOne({
+      where: {
+        ownerUserId,
+        runnerId,
+      },
+    });
+    if (!runner) {
+      throw new NotFoundError(`Runner not found: ${runnerId}`);
+    }
+
+    await this.projectRepository.update({
+      ownerUserId,
+      defaultRunnerId: runnerId,
+    }, {
+      defaultRunnerId: null,
+      updatedAt: new Date(),
+    });
+
     const result = await this.runnerRepository.delete({
       ownerUserId,
       runnerId,

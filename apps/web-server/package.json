@@ -30,6 +30,7 @@
     "@agent-flow/memory": "workspace:*",
     "@agent-flow/model-adapters": "workspace:*",
     "@agent-flow/tools-impl": "workspace:*",
+    "@agent-flow/logger-js": "workspace:*",
     "@grpc/grpc-js": "^1.14.1",
     "@grpc/proto-loader": "^0.8.0",
     "@fastify/cors": "^11.1.0",

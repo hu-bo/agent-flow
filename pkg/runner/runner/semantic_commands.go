@@ -28,9 +28,10 @@ type shellExecInput struct {
 }
 
 type fsReadInput struct {
-	Path     string `json:"path"`
-	Encoding string `json:"encoding"`
-	MaxBytes int64  `json:"maxBytes"`
+	Path         string `json:"path"`
+	Encoding     string `json:"encoding"`
+	MaxBytes     int64  `json:"maxBytes"`
+	AllowMissing bool   `json:"allowMissing"`
 }
 
 type fsWriteInput struct {
@@ -254,6 +255,14 @@ func fsRead(req types.TaskRequest) (map[string]any, error) {
 	}
 	raw, err := os.ReadFile(absPath)
 	if err != nil {
+		if input.AllowMissing && errors.Is(err, os.ErrNotExist) {
+			return map[string]any{
+				"path":    absPath,
+				"size":    0,
+				"content": "",
+				"missing": true,
+			}, nil
+		}
 		return nil, err
 	}
 	if input.MaxBytes > 0 && int64(len(raw)) > input.MaxBytes {

@@ -48,7 +48,11 @@ const RAIL_ITEMS = [
 
 interface SidebarProps {
   activeSessionId: string | null;
-  onSelectSession: (id: string | null, mode?: 'vibe' | 'spec') => void;
+  onSelectSession: (
+    id: string | null,
+    mode?: 'vibe' | 'spec',
+    options?: { openChatWhenEmpty?: boolean },
+  ) => void;
 }
 
 interface ProjectCreateDialogProps {
@@ -159,7 +163,7 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
   const handleNew = () => {
     setPendingNewChatProject(null);
     setPendingNewChatPlacement('normal');
-    onSelectSession(null);
+    onSelectSession(null, 'vibe', { openChatWhenEmpty: true });
   };
 
   const handleNewInProject = (projectId: string) => {
@@ -168,7 +172,7 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
     setPendingNewChatProject(projectId);
     setPendingNewChatPlacement('project');
     setExpandedProjectIds((current) => new Set(current).add(projectId));
-    onSelectSession(null);
+    onSelectSession(null, 'vibe', { openChatWhenEmpty: true });
   };
 
   const handleToggleProject = (projectId: string) => {

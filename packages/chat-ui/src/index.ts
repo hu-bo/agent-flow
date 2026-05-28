@@ -66,3 +66,7 @@ export type {
   MessageMetadata,
   TokenUsage,
 } from './types';
+
+// Trace helpers
+export { aggregateRuntimeTraceMessages } from './trace/runtime-trace';
+export type { AggregateRuntimeTraceOptions } from './trace/runtime-trace';

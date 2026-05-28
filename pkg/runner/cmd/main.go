@@ -128,10 +128,11 @@ func runStart(args []string) error {
 
 	rpcHost := fs.String("rpc_host", defaultHost, "web-server grpc host:port")
 	rpcToken := fs.String("rpc_token", defaultToken, "runner token issued by web-server")
-	runnerID := fs.String("runner_id", strings.TrimSpace(cfg.RunnerID), "runner id for reconnect")
 	kind := fs.String("kind", defaultRunnerKind, "runner kind: local|remote|sandbox")
 	defaultHostName := localHostname()
 	defaultHostIP := localHostIP()
+	defaultRunnerID := resolveRunnerID(strings.TrimSpace(cfg.RunnerID), defaultHostName)
+	runnerID := fs.String("runner_id", defaultRunnerID, "runner id for reconnect")
 	hostLabel := fs.String("host", defaultHostName, "runner host label")
 	hostName := fs.String("host_name", defaultHostName, "runner host name used for per-host identity")
 	hostIP := fs.String("host_ip", defaultHostIP, "runner host ip address")
@@ -157,6 +158,7 @@ func runStart(args []string) error {
 
 	runnerTokenValue := strings.TrimSpace(*rpcToken)
 	rpcHostValue := strings.TrimSpace(*rpcHost)
+	resolvedRunnerID := resolveRunnerID(strings.TrimSpace(*runnerID), strings.TrimSpace(*hostName))
 	var registeredRunnerID string
 	persistRegistration := func(result grpcclient.StartLoopResult) {
 		resultRunnerID := strings.TrimSpace(result.RunnerID)
@@ -177,7 +179,7 @@ func runStart(args []string) error {
 	}
 
 	connectOptions := grpcclient.StartLoopOptions{
-		RunnerID:     strings.TrimSpace(*runnerID),
+		RunnerID:     resolvedRunnerID,
 		RunnerToken:  runnerTokenValue,
 		ServerAddr:   rpcHostValue,
 		Kind:         strings.TrimSpace(*kind),
@@ -406,10 +408,11 @@ func parseStartOptions(args []string) (startOptions, error) {
 
 	rpcHost := fs.String("rpc_host", defaultHost, "web-server grpc host:port")
 	rpcToken := fs.String("rpc_token", defaultToken, "runner token issued by web-server")
-	runnerID := fs.String("runner_id", strings.TrimSpace(cfg.RunnerID), "runner id for reconnect")
 	kind := fs.String("kind", defaultRunnerKind, "runner kind: local|remote|sandbox")
 	defaultHostName := localHostname()
 	defaultHostIP := localHostIP()
+	defaultRunnerID := resolveRunnerID(strings.TrimSpace(cfg.RunnerID), defaultHostName)
+	runnerID := fs.String("runner_id", defaultRunnerID, "runner id for reconnect")
 	hostLabel := fs.String("host", defaultHostName, "runner host label")
 	hostName := fs.String("host_name", defaultHostName, "runner host name used for per-host identity")
 	hostIP := fs.String("host_ip", defaultHostIP, "runner host ip address")
@@ -421,10 +424,12 @@ func parseStartOptions(args []string) (startOptions, error) {
 		return startOptions{}, err
 	}
 
+	resolvedRunnerID := resolveRunnerID(strings.TrimSpace(*runnerID), strings.TrimSpace(*hostName))
+
 	return startOptions{
 		RPCHost:      strings.TrimSpace(*rpcHost),
 		RPCToken:     strings.TrimSpace(*rpcToken),
-		RunnerID:     strings.TrimSpace(*runnerID),
+		RunnerID:     resolvedRunnerID,
 		Kind:         strings.TrimSpace(*kind),
 		Host:         strings.TrimSpace(*hostLabel),
 		HostName:     strings.TrimSpace(*hostName),

@@ -9,6 +9,7 @@ import type {
   FileAttachment,
   ReasoningEffort,
 } from '@agent-flow/chat-ui';
+import { Activity } from 'lucide-react';
 import {
   confirmSpecPhase,
   createSession,
@@ -248,6 +249,8 @@ export function SpecPage() {
     tokenUsage,
     rendererContext,
     bindRunnerToSession,
+    runtimeTraceEnabled,
+    toggleRuntimeTraceEnabled,
   } = runtime;
   const [isConfirmingSpec, setIsConfirmingSpec] = useState(false);
   const [specState, setSpecState] = useState<SpecWorkflowState | null>(null);
@@ -349,7 +352,10 @@ export function SpecPage() {
   );
 
   const chatMessages = useMemo(() => {
-    const visibleMessages = messages.filter((message) => !message.metadata?.isMeta && !isSpecDocumentMessage(message));
+    const visibleMessages = messages.filter((message) => {
+      const isStandaloneRuntimeTrace = message.metadata?.extensions?.runtimeTrace === true;
+      return (!message.metadata?.isMeta || isStandaloneRuntimeTrace) && !isSpecDocumentMessage(message);
+    });
     return optimisticActionMessage ? [...visibleMessages, optimisticActionMessage] : visibleMessages;
   }, [messages, optimisticActionMessage]);
 
@@ -530,6 +536,16 @@ export function SpecPage() {
           <h1 className="workspace-title">SPEC_WORKBENCH</h1>
         </div>
         <div className="workspace-header-right">
+          <button
+            type="button"
+            className={`workspace-action-btn workspace-toggle-btn${runtimeTraceEnabled ? ' is-active' : ''}`}
+            onClick={toggleRuntimeTraceEnabled}
+            aria-pressed={runtimeTraceEnabled}
+            title="Trace / 执行轨迹"
+          >
+            <Activity size={14} />
+            <span>Trace</span>
+          </button>
           <select
             className="workspace-runner-select"
             value={selectedRunnerId}

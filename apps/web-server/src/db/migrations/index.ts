@@ -7,6 +7,7 @@ import { InitRunnerControlPlane20260429000300 } from './20260429000300-init-runn
 import { AddRunnerHostInfo20260501000300 } from './20260501000300-add-runner-host-info.js';
 import { RefactorProviderModelId20260502000100 } from './20260502000100-refactor-provider-model-id.js';
 import { InitProjectChatPersistence20260511000100 } from './20260511000100-init-project-chat-persistence.js';
+import { ProjectDefaultRunnerNullable20260525000100 } from './20260525000100-project-default-runner-nullable.js';
 
 export const migrations = [
   InitModelConfig20260426000100,
@@ -18,4 +19,5 @@ export const migrations = [
   AddRunnerHostInfo20260501000300,
   RefactorProviderModelId20260502000100,
   InitProjectChatPersistence20260511000100,
+  ProjectDefaultRunnerNullable20260525000100,
 ];

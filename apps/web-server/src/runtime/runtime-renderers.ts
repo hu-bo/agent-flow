@@ -54,6 +54,161 @@ export function extractRuntimeSteps(result: AgentRunResult): string[] {
   return steps;
 }
 
+export type RuntimeStepTraceStatus = 'pending' | 'running' | 'success' | 'error';
+
+export interface RuntimeStepTrace {
+  stepId: string;
+  title: string;
+  kind: string;
+  status: RuntimeStepTraceStatus;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  toolName?: string;
+  toolInputPreview?: Record<string, unknown>;
+  runner?: {
+    command?: string;
+    args?: string[];
+    exitCode?: number;
+    durationMs?: number;
+    error?: string;
+  };
+  error?: string;
+  errorDetails?: unknown;
+  checkpointId?: string;
+}
+
+export function extractRuntimeStepTraces(result: AgentRunResult): RuntimeStepTrace[] {
+  type Internal = RuntimeStepTrace & { firstIndex: number };
+  const steps = new Map<string, Internal>();
+  let counter = 0;
+
+  const getOrCreate = (stepId: string): Internal => {
+    const existing = steps.get(stepId);
+    if (existing) {
+      return existing;
+    }
+    const created: Internal = {
+      stepId,
+      title: stepId || 'step',
+      kind: 'unknown',
+      status: 'pending',
+      firstIndex: counter,
+      toolName: undefined,
+      runner: undefined,
+      toolInputPreview: undefined,
+      error: undefined,
+      errorDetails: undefined,
+      checkpointId: undefined,
+    };
+    counter += 1;
+    steps.set(stepId, created);
+    return created;
+  };
+
+  for (const event of result.events) {
+    const payload = event.payload ?? {};
+    const stepIdRaw = payload.stepId;
+    const stepId = typeof stepIdRaw === 'string' && stepIdRaw.trim().length > 0 ? stepIdRaw : undefined;
+    if (!stepId) {
+      continue;
+    }
+
+    const step = getOrCreate(stepId);
+
+    if (event.type === 'step.started') {
+      step.title = readNonEmptyString(payload.title) ?? step.title;
+      step.kind = readNonEmptyString(payload.kind) ?? step.kind;
+      step.status = 'running';
+      step.startedAt = event.timestamp;
+      continue;
+    }
+
+    if (event.type === 'step.completed') {
+      step.title = readNonEmptyString(payload.title) ?? step.title;
+      step.kind = readNonEmptyString(payload.kind) ?? step.kind;
+      step.status = 'success';
+      step.endedAt = event.timestamp;
+      continue;
+    }
+
+    if (event.type === 'step.failed') {
+      step.title = readNonEmptyString(payload.title) ?? step.title;
+      step.kind = readNonEmptyString(payload.kind) ?? step.kind;
+      step.status = 'error';
+      step.endedAt = event.timestamp;
+      const error = readNonEmptyString(payload.error);
+      if (error) {
+        step.error = redactLikelySecret(error);
+      }
+      step.errorDetails = payload.errorDetails ?? step.errorDetails;
+      continue;
+    }
+
+    if (event.type === 'tool.called') {
+      const tool = readNonEmptyString(payload.tool);
+      if (tool) {
+        step.toolName = tool;
+        step.toolInputPreview = buildToolInputPreview(tool, payload.input);
+      }
+      continue;
+    }
+
+    if (event.type === 'runner.event') {
+      const runnerEvent = asRecord(payload.runnerEvent);
+      const runnerType = readNonEmptyString(runnerEvent?.type);
+      if (!runnerType) {
+        continue;
+      }
+      if (!step.runner) {
+        step.runner = {};
+      }
+
+      if (runnerType === 'started') {
+        const task = asRecord(runnerEvent?.task);
+        const command = readNonEmptyString(task?.command);
+        const args = Array.isArray(task?.args)
+          ? task.args.map((value) => redactLikelySecret(String(value)))
+          : undefined;
+        if (command) step.runner.command = command;
+        if (args && args.length > 0) step.runner.args = args;
+      } else if (runnerType === 'completed') {
+        const exitCode = typeof runnerEvent?.exitCode === 'number' ? runnerEvent.exitCode : undefined;
+        const durationMs = typeof runnerEvent?.durationMs === 'number' ? runnerEvent.durationMs : undefined;
+        if (typeof exitCode === 'number') step.runner.exitCode = exitCode;
+        if (typeof durationMs === 'number') step.runner.durationMs = durationMs;
+      } else if (runnerType === 'error') {
+        const error = readNonEmptyString(runnerEvent?.error);
+        if (error) step.runner.error = redactLikelySecret(error);
+      }
+      continue;
+    }
+
+    if (event.type === 'checkpoint.created') {
+      const checkpointId = readNonEmptyString(payload.checkpointId);
+      if (checkpointId) {
+        step.checkpointId = checkpointId;
+      }
+    }
+  }
+
+  const out = [...steps.values()]
+    .map((step) => {
+      if (step.startedAt && step.endedAt) {
+        const start = Date.parse(step.startedAt);
+        const end = Date.parse(step.endedAt);
+        if (Number.isFinite(start) && Number.isFinite(end)) {
+          step.durationMs = Math.max(0, end - start);
+        }
+      }
+      return step;
+    })
+    .sort((left, right) => left.firstIndex - right.firstIndex)
+    .map(({ firstIndex: _ignored, ...rest }) => rest);
+
+  return out;
+}
+
 export function renderRuntimeSummary(context: RuntimeModelContext): string {
   const { result, eventCountByType, runnerDirective } = context;
   const steps = extractRuntimeSteps(result);
@@ -147,6 +302,75 @@ export function buildSystemPrompt(
   return lines.join('\n\n');
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function buildToolInputPreview(toolName: string, input: unknown): Record<string, unknown> | undefined {
+  const rec = asRecord(input);
+  if (!rec) {
+    return undefined;
+  }
+
+  const pick = (keys: string[]): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    for (const key of keys) {
+      const value = rec[key];
+      if (value === undefined) continue;
+      if (typeof value === 'string') {
+        const masked = redactLikelySecret(value);
+        out[key] = masked.length > 400 ? `${masked.slice(0, 400)}... (truncated)` : masked;
+      } else if (Array.isArray(value)) {
+        out[key] = value
+          .slice(0, 20)
+          .map((item) => redactLikelySecret(typeof item === 'string' ? item : String(item)));
+      } else {
+        out[key] = value;
+      }
+    }
+    return out;
+  };
+
+  if (toolName === 'fs.read') {
+    return pick(['path']);
+  }
+  if (toolName === 'fs.list') {
+    return pick(['path']);
+  }
+  if (toolName === 'fs.search') {
+    return pick(['path', 'pattern']);
+  }
+  if (toolName === 'shell.exec') {
+    return pick(['command', 'args']);
+  }
+  if (toolName === 'git.exec') {
+    return pick(['args']);
+  }
+
+  return undefined;
+}
+
+function redactLikelySecret(value: string): string {
+  const mask = (token: string): string => {
+    const normalized = token.trim();
+    if (normalized.length <= 12) return '[REDACTED]';
+    return `${normalized.slice(0, 6)}…${normalized.slice(-4)}`;
+  };
+
+  return value
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]{16,}/gi, (_full, prefix: string) => `${prefix}[REDACTED]`)
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, '[REDACTED_JWT]')
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}\b/g, (match) => mask(match))
+    .replace(/\bsk_(?:live|test)_[A-Za-z0-9]{16,}\b/gi, (match) => mask(match))
+    .replace(/\bgh[pous]_[A-Za-z0-9]{20,}\b/gi, (match) => mask(match))
+    .replace(/\bgithub_pat_[A-Za-z0-9]{20,}\b/gi, (match) => mask(match))
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, (match) => mask(match));
+}
+
 export function renderEnvironmentContext(input: RuntimeChatInput, runtimeMode: RuntimeMode): string {
   return [
     `sessionId=${input.session.sessionId}`,
@@ -172,15 +396,18 @@ export function renderLlmStepPrompt(stepRequest: LlmStepRequest): string {
       return `[${fragment.source}]\n${content}`;
     })
     .join('\n\n');
-  const priorOutputs = Object.entries(stepRequest.outputs)
-    .map(([stepId, output]) => `${stepId}:\n${truncateText(formatUnknown(output), 4000)}`)
-    .join('\n\n');
+  const consumesPreview =
+    stepRequest.step.consumes && Object.keys(stepRequest.step.consumes).length > 0
+      ? Object.entries(stepRequest.step.consumes)
+          .map(([key, ref]) => `- ${key}: ${ref}`)
+          .join('\n')
+      : '(none)';
 
   return [
     `Overall goal:\n${stepRequest.request.goal}`,
     `Current step:\n${stepRequest.step.title} (${stepRequest.step.kind})`,
+    `Consumes:\n${consumesPreview}`,
     `Step input:\n${formatUnknown(stepRequest.input)}`,
-    priorOutputs ? `Prior step outputs:\n${priorOutputs}` : 'Prior step outputs: none',
     contextPreview ? `Context:\n${contextPreview}` : 'Context: none',
     'Produce the output for this step now.',
   ].join('\n\n');

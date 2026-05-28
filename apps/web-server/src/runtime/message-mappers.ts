@@ -12,7 +12,7 @@ import type {
   RuntimeChatInput,
 } from '../contracts/api.js';
 import type { parseApprovalRequiredErrorMessage } from '../lib/approval.js';
-import { createTextMessage, createUnifiedMessage } from '../lib/messages.js';
+import { createUnifiedMessage } from '../lib/messages.js';
 import { isRuntimeDiagnosticMessage } from './runtime-diagnostics.js';
 
 export const MODEL_TOOL_NAME_BY_INTERNAL = new Map<string, string>([
@@ -199,27 +199,158 @@ export function toProgressMessage(
   parentUuid: string | null,
   event: AgentEvent,
 ): UnifiedMessage | undefined {
-  if (event.type === 'step.started' || event.type === 'step.completed') {
-    return undefined;
+  const payload = asRecord(event.payload) ?? {};
+  const stepId = readString(payload.stepId);
+
+  if (event.type === 'session.started') {
+    return createProgressToolCallMessage(input, parentUuid, event.id, 'agent.session', {
+      status: 'started',
+      planId: readString(payload.planId) ?? 'unknown',
+      strategy: readString(payload.strategy) ?? 'unknown',
+    }, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
+  }
+
+  if (event.type === 'session.replanned') {
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      event.id,
+      'agent.replan',
+      {
+        status: 'replanned',
+        attempt: payload.attempt,
+        fromPlanId: readString(payload.fromPlanId),
+        toPlanId: readString(payload.toPlanId),
+        failedStepId: readString(payload.failedStepId),
+        error: readString(payload.error),
+      },
+      false,
+      {
+        streamEvent: event.type,
+        payload: event.payload,
+      },
+    );
+  }
+
+  if (event.type === 'session.completed') {
+    return createProgressToolResultMessage(input, parentUuid, event.id, 'agent.session', {
+      status: 'completed',
+      checkpoints: payload.checkpoints,
+      replanCount: payload.replanCount,
+    }, false, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
+  }
+
+  if (event.type === 'session.failed') {
+    return createProgressToolResultMessage(input, parentUuid, event.id, 'agent.session', {
+      status: 'failed',
+      error: readString(payload.error) ?? 'unknown error',
+      replanCount: payload.replanCount,
+      details: payload,
+    }, true, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
+  }
+
+  if (event.type === 'checkpoint.created') {
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      stepId ?? event.id,
+      'agent.checkpoint',
+      {
+        status: 'created',
+        stepId,
+        title: readString(payload.title),
+        kind: readString(payload.kind),
+        checkpointId: readString(payload.checkpointId),
+        ...(payload.output !== undefined ? { output: payload.output } : {}),
+      },
+      false,
+      {
+        streamEvent: event.type,
+        payload: event.payload,
+      },
+    );
+  }
+
+  if (event.type === 'step.started') {
+    return createProgressToolCallMessage(input, parentUuid, stepId ?? event.id, 'agent.step', {
+      status: 'started',
+      stepId: stepId ?? 'unknown',
+      title: readString(payload.title) ?? 'step',
+      kind: readString(payload.kind) ?? 'unknown',
+    }, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
+  }
+
+  if (event.type === 'step.completed') {
+    return createProgressToolResultMessage(input, parentUuid, stepId ?? event.id, 'agent.step', {
+      status: 'completed',
+      stepId: stepId ?? 'unknown',
+      title: readString(payload.title) ?? 'step',
+      kind: readString(payload.kind) ?? 'unknown',
+    }, false, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
   }
 
   if (event.type === 'step.failed') {
-    return createTextMessage(
-      'assistant',
-      `Step failed: ${String(event.payload.stepId ?? 'unknown')} - ${String(event.payload.error ?? 'unknown error')}`,
+    return createProgressToolResultMessage(input, parentUuid, stepId ?? event.id, 'agent.step', {
+      status: 'failed',
+      stepId: stepId ?? 'unknown',
+      title: readString(payload.title) ?? 'step',
+      kind: readString(payload.kind) ?? 'unknown',
+      error: readString(payload.error) ?? 'unknown error',
+      errorDetails: payload.errorDetails ?? undefined,
+    }, true, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
+  }
+
+  if (event.type === 'tool.called') {
+    const toolCallId = stepId ?? event.id;
+    const toolName = readString(payload.tool) ?? 'unknown.tool';
+    return createProgressToolCallMessage(
+      input,
+      parentUuid,
+      toolCallId,
+      toolName,
+      payload.input ?? {},
       {
-        parentUuid,
-        metadata: {
-          modelId: String(input.modelId),
-          provider: 'core-runtime',
-          isMeta: true,
-          extensions: {
-            modelId: input.modelId,
-            model: input.model,
-            streamEvent: 'step.failed',
-            payload: event.payload,
-          },
-        },
+        streamEvent: event.type,
+        payload: event.payload,
+      },
+    );
+  }
+
+  if (event.type === 'tool.result') {
+    const toolCallId = stepId ?? event.id;
+    const toolName = readString(payload.tool) ?? 'unknown.tool';
+    const isError = payload.ok !== true;
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      toolCallId,
+      toolName,
+      payload.output ?? {
+        ok: payload.ok === true,
+        error: readString(payload.error),
+      },
+      isError,
+      {
+        streamEvent: event.type,
+        payload: event.payload,
       },
     );
   }
@@ -228,26 +359,81 @@ export function toProgressMessage(
     return undefined;
   }
 
-  const runnerEvent = (event.payload as { runnerEvent?: unknown }).runnerEvent;
-  if (!runnerEvent || typeof runnerEvent !== 'object') {
+  const runnerEvent = asRecord(payload.runnerEvent);
+  if (!runnerEvent) {
     return undefined;
   }
 
-  const eventType =
-    typeof (runnerEvent as { type?: unknown }).type === 'string'
-      ? (runnerEvent as { type: string }).type
-      : 'unknown';
+  const eventType = readString(runnerEvent.type) ?? 'unknown';
+  const runnerToolCallId = stepId ?? event.id;
+  if (eventType === 'started') {
+    const task = asRecord(runnerEvent.task);
+    const command = readString(task?.command);
+    const args = Array.isArray(task?.args) ? task.args.map((value) => String(value)) : [];
+    return createProgressToolCallMessage(
+      input,
+      parentUuid,
+      runnerToolCallId,
+      'runner.exec',
+      {
+        command,
+        args,
+        task: runnerEvent.task ?? null,
+      },
+      {
+        streamEvent: `runner.event.${eventType}`,
+        payload: event.payload,
+      },
+    );
+  }
 
+  // Keep runner sub-events visible for detailed trace UI; the client should aggregate them.
+  if (eventType === 'stdout' || eventType === 'stderr' || eventType === 'progress') {
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      runnerToolCallId,
+      'runner.exec',
+      runnerEvent,
+      false,
+      {
+        streamEvent: `runner.event.${eventType}`,
+        payload: event.payload,
+      },
+    );
+  }
+
+  return createProgressToolResultMessage(
+    input,
+    parentUuid,
+    runnerToolCallId,
+    'runner.exec',
+    runnerEvent,
+    eventType === 'error',
+    {
+      streamEvent: `runner.event.${eventType}`,
+      payload: event.payload,
+    },
+  );
+}
+
+function createProgressToolCallMessage(
+  input: RuntimeChatInput,
+  parentUuid: string | null,
+  toolCallId: string,
+  toolName: string,
+  toolInput: unknown,
+  extensions: Record<string, unknown>,
+): UnifiedMessage {
   return createUnifiedMessage({
     role: 'tool',
     parentUuid,
     content: [
       {
-        type: 'tool-result',
-        toolCallId: event.id,
-        toolName: `runner.${eventType}`,
-        output: runnerEvent,
-        isError: eventType === 'error',
+        type: 'tool-call',
+        toolCallId,
+        toolName,
+        input: toolInput,
       },
     ],
     metadata: {
@@ -257,9 +443,50 @@ export function toProgressMessage(
       extensions: {
         modelId: input.modelId,
         model: input.model,
-        streamEvent: `runner.event.${eventType}`,
-        payload: event.payload,
+        ...extensions,
       },
     },
   });
+}
+
+function createProgressToolResultMessage(
+  input: RuntimeChatInput,
+  parentUuid: string | null,
+  toolCallId: string,
+  toolName: string,
+  output: unknown,
+  isError: boolean,
+  extensions: Record<string, unknown>,
+): UnifiedMessage {
+  return createUnifiedMessage({
+    role: 'tool',
+    parentUuid,
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        output,
+        isError,
+      },
+    ],
+    metadata: {
+      modelId: String(input.modelId),
+      provider: 'core-runtime',
+      isMeta: true,
+      extensions: {
+        modelId: input.modelId,
+        model: input.model,
+        ...extensions,
+      },
+    },
+  });
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }

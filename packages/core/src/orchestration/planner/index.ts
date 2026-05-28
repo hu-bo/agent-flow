@@ -28,12 +28,12 @@ export class CapabilityPlanner implements Planner {
     const semanticStep = detectSemanticToolStep(extractRequestMessage(request));
     const intent = intentResolver.resolve(request, context, semanticStep);
 
-    if (semanticStep && intent.inspectionOnly) {
-      return planFactory.semanticInspection(request, semanticStep);
-    }
-
     if (intent.isCodingTask) {
       return planFactory.codingExecution(request, intent, semanticStep);
+    }
+
+    if (intent.workflow === 'repo-understanding') {
+      return planFactory.repoUnderstandingExecution(request, intent);
     }
 
     if (semanticStep) {

@@ -57,6 +57,11 @@ export interface ThinkingPart {
   status?: ThoughtChainItemStatus;
   durationMs?: number;
   defaultOpen?: boolean;
+  /**
+   * Optional fine-grained control over which thought-chain items should be expanded by default.
+   * When provided, it takes precedence over `defaultOpen`.
+   */
+  defaultExpandedKeys?: string[];
   items?: ThoughtChainItem[];
 }
 

@@ -27,7 +27,7 @@ function asRunnerFilesChangedPayload(value: unknown): RunnerFilesChangedPayload 
 }
 
 export function ToolResultRenderer({ part }: ContentRendererProps) {
-  const { output, isError } = part as ToolResultPart;
+  const { toolName, output, isError } = part as ToolResultPart;
   const [open, setOpen] = useState(false);
   const [openFiles, setOpenFiles] = useState<Record<string, boolean>>({});
   const filesChangedPayload = !isError ? asRunnerFilesChangedPayload(output) : null;
@@ -129,7 +129,7 @@ export function ToolResultRenderer({ part }: ContentRendererProps) {
         type="button"
       >
         <span className="chat-ui-tool-arrow">{open ? 'v' : '>'}</span>
-        <span>Result{isError ? ' (error)' : ''}</span>
+        <span>Result: {toolName}{isError ? ' (error)' : ''}</span>
       </button>
 
       {(open || !isLong) && <pre className={`chat-ui-tool-payload ${isError ? 'is-error' : ''}`}>{text}</pre>}

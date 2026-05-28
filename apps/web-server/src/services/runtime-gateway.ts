@@ -5,7 +5,6 @@ import type {
 } from '@agent-flow/core';
 import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import type { MemoryService } from '@agent-flow/memory';
-import type { ChatStreamEvent, RuntimeChatInput, RuntimeGateway } from '../contracts/api.js';
 import {
   createCoreAgentRuntime,
   createCoreAgentRuntimeBundle,
@@ -26,7 +25,7 @@ export {
   type CreateCoreAgentRuntimeOptions,
 };
 
-export interface CoreRuntimeGatewayOptions {
+export interface CoreRuntimeTurnEngineOptions {
   runtime: AgentRuntime;
   memoryService: MemoryService;
   modelAdapterService?: ModelAdapterService;
@@ -36,32 +35,18 @@ export interface CoreRuntimeGatewayOptions {
   tracer?: Tracer;
 }
 
-export class CoreRuntimeGateway implements RuntimeGateway {
-  private readonly runtime: AgentRuntime;
-  private readonly turnEngine: RuntimeTurnEngine;
-
-  constructor(options: CoreRuntimeGatewayOptions) {
-    this.runtime = options.runtime;
-    const modelToolRunner = new ModelToolRunner(options.toolRegistry, options.toolExecutor);
-    const modelChatDriver = new ModelChatDriver(
-      options.modelAdapterService,
-      modelToolRunner,
-      options.logger,
-    );
-    this.turnEngine = new RuntimeTurnEngine({
-      runtime: options.runtime,
-      memoryService: options.memoryService,
-      modelChatDriver,
-      logger: options.logger,
-      tracer: options.tracer,
-    });
-  }
-
-  getRuntime(): AgentRuntime {
-    return this.runtime;
-  }
-
-  async *streamChat(input: RuntimeChatInput): AsyncGenerator<ChatStreamEvent> {
-    yield* this.turnEngine.streamChat(input);
-  }
+export function createCoreRuntimeTurnEngine(options: CoreRuntimeTurnEngineOptions): RuntimeTurnEngine {
+  const modelToolRunner = new ModelToolRunner(options.toolRegistry, options.toolExecutor);
+  const modelChatDriver = new ModelChatDriver(
+    options.modelAdapterService,
+    modelToolRunner,
+    options.logger,
+  );
+  return new RuntimeTurnEngine({
+    runtime: options.runtime,
+    memoryService: options.memoryService,
+    modelChatDriver,
+    logger: options.logger,
+    tracer: options.tracer,
+  });
 }

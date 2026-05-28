@@ -127,6 +127,9 @@ export class PlanFactory {
         title: STEP_TITLES.taskExecution,
         kind: 'llm',
         dependsOn: [discoverId],
+        consumes: {
+          discovery: discoverId,
+        },
         input: {
           goal: request.goal,
           mode: 'tool-first',
@@ -147,6 +150,114 @@ export class PlanFactory {
         },
       });
     }
+
+    return this.build(request.strategy, steps);
+  }
+
+  repoUnderstandingExecution(request: AgentRunRequest, intent: PlanningIntent): AgentPlan {
+    const listRootId = nextStepId();
+    const readmeId = nextStepId();
+    const pkgId = nextStepId();
+    const workspaceId = nextStepId();
+    const turboId = nextStepId();
+
+    const analysisId = nextStepId();
+    const summaryId = nextStepId();
+
+    const steps: AgentStep[] = [
+      {
+        id: listRootId,
+        title: 'repo.scan',
+        kind: 'tool',
+        dependsOn: [],
+        toolName: 'fs.list',
+        input: {
+          path: '.',
+          recursive: false,
+          maxEntries: 200,
+          includeHidden: false,
+        },
+      },
+      {
+        id: readmeId,
+        title: 'repo.read_readme',
+        kind: 'tool',
+        dependsOn: [],
+        toolName: 'fs.read',
+        input: {
+          path: 'README.md',
+          maxBytes: 200_000,
+          allowMissing: true,
+        },
+      },
+      {
+        id: pkgId,
+        title: 'repo.read_package_json',
+        kind: 'tool',
+        dependsOn: [],
+        toolName: 'fs.read',
+        input: {
+          path: 'package.json',
+          maxBytes: 200_000,
+          allowMissing: true,
+        },
+      },
+      {
+        id: workspaceId,
+        title: 'repo.read_pnpm_workspace',
+        kind: 'tool',
+        dependsOn: [],
+        toolName: 'fs.read',
+        input: {
+          path: 'pnpm-workspace.yaml',
+          maxBytes: 200_000,
+          allowMissing: true,
+        },
+      },
+      {
+        id: turboId,
+        title: 'repo.read_turbo',
+        kind: 'tool',
+        dependsOn: [],
+        toolName: 'fs.read',
+        input: {
+          path: 'turbo.json',
+          maxBytes: 200_000,
+          allowMissing: true,
+        },
+      },
+      {
+        id: analysisId,
+        title: 'repo.analysis',
+        kind: 'llm',
+        dependsOn: [listRootId, readmeId, pkgId, workspaceId, turboId],
+        consumes: {
+          repoTree: listRootId,
+          readme: readmeId,
+          packageJson: pkgId,
+          pnpmWorkspace: workspaceId,
+          turbo: turboId,
+        },
+        input: {
+          goal: request.goal,
+          mode: 'repo-analysis',
+          complexity: intent.complexityScore,
+        },
+      },
+      {
+        id: summaryId,
+        title: 'repo.summary',
+        kind: 'llm',
+        dependsOn: [analysisId],
+        consumes: {
+          analysis: analysisId,
+        },
+        input: {
+          goal: request.goal,
+          mode: 'repo-summary',
+        },
+      },
+    ];
 
     return this.build(request.strategy, steps);
   }
@@ -284,6 +395,9 @@ export class PlanFactory {
         title: STEP_TITLES.solutionExecution,
         kind: 'llm',
         dependsOn: [analysisId],
+        consumes: {
+          analysis: analysisId,
+        },
         input: {
           goal: request.goal,
           mode: 'execution',
@@ -292,11 +406,16 @@ export class PlanFactory {
     ];
 
     if (intent.wantsVerification) {
+      const verificationId = nextStepId();
       steps.push({
-        id: nextStepId(),
+        id: verificationId,
         title: STEP_TITLES.solutionVerification,
         kind: 'llm',
         dependsOn: [executionId],
+        consumes: {
+          execution: executionId,
+          analysis: analysisId,
+        },
         input: {
           goal: request.goal,
           mode: 'verification',

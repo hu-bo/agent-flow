@@ -16,8 +16,8 @@ export class ProjectEntity {
   @Column({ name: 'root_path', type: 'varchar', length: 2048 })
   rootPath!: string;
 
-  @Column({ name: 'default_runner_id', type: 'varchar', length: 128 })
-  defaultRunnerId!: string;
+  @Column({ name: 'default_runner_id', type: 'varchar', length: 128, nullable: true })
+  defaultRunnerId!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

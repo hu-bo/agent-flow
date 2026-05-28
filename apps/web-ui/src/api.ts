@@ -13,6 +13,26 @@ interface ApiSuccessEnvelope<T> {
   data: T;
   message: string;
   requestId: string;
+  details?: unknown;
+}
+
+export interface ApiBusinessErrorDetails {
+  projectId?: string;
+  projectName?: string;
+  rootPath?: string;
+  action?: string;
+}
+
+export class ApiBusinessError extends Error {
+  readonly code: string | number;
+  readonly details?: unknown;
+
+  constructor(message: string, code: string | number, details?: unknown) {
+    super(message);
+    this.name = 'ApiBusinessError';
+    this.code = code;
+    this.details = details;
+  }
 }
 
 export interface SessionRecord {
@@ -34,7 +54,7 @@ export interface ProjectRecord {
   projectId: string;
   name: string;
   rootPath: string;
-  defaultRunnerId: string;
+  defaultRunnerId: string | null;
   createdAt: string;
   updatedAt: string;
   chatCount: number;
@@ -150,6 +170,32 @@ function extractAxiosErrorMessage(error: unknown): string {
   return 'Request failed';
 }
 
+function extractAxiosError(error: unknown): Error {
+  if (axios.isAxiosError<ApiErrorPayload>(error)) {
+    const payload = error.response?.data;
+    if (payload?.message) {
+      return new ApiBusinessError(payload.message, payload.code ?? error.code ?? 'REQUEST_FAILED', payload.details);
+    }
+    if (payload?.error) {
+      return new ApiBusinessError(payload.error, payload.code ?? error.code ?? 'REQUEST_FAILED', payload.details);
+    }
+    return new Error(extractAxiosErrorMessage(error));
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error('Request failed');
+}
+
+function asBusinessErrorDetails(value: unknown): ApiBusinessErrorDetails | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  return value as ApiBusinessErrorDetails;
+}
+
 async function readFetchErrorMessage(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as ApiErrorPayload;
@@ -166,17 +212,33 @@ async function readFetchErrorMessage(response: Response): Promise<string> {
 async function requestJson<T>(config: AxiosRequestConfig): Promise<T> {
   try {
     const response = await apiClient.request<ApiSuccessEnvelope<T>>(config);
-    return response.data.data;
+    const envelope = response.data;
+    if (typeof envelope?.code === 'number' && envelope.code !== 0) {
+      throw new ApiBusinessError(
+        envelope.message || 'Request failed',
+        envelope.code,
+        envelope.details,
+      );
+    }
+    return envelope.data;
   } catch (error) {
-    throw new Error(extractAxiosErrorMessage(error));
+    throw extractAxiosError(error);
   }
 }
 
 async function requestNoContent(config: AxiosRequestConfig): Promise<void> {
   try {
-    await apiClient.request(config);
+    const response = await apiClient.request<ApiSuccessEnvelope<unknown>>(config);
+    const payload = response.data;
+    if (payload && typeof payload === 'object' && typeof payload.code === 'number' && payload.code !== 0) {
+      throw new ApiBusinessError(
+        payload.message || 'Request failed',
+        payload.code,
+        payload.details,
+      );
+    }
   } catch (error) {
-    throw new Error(extractAxiosErrorMessage(error));
+    throw extractAxiosError(error);
   }
 }
 
@@ -270,6 +332,24 @@ export async function fetchRunners(): Promise<{ runners: RunnerRecord[] }> {
 
 export async function deleteRunner(runnerId: string): Promise<void> {
   await requestNoContent({ url: `/api/runners/${runnerId}`, method: 'DELETE' });
+}
+
+export function formatDeleteRunnerError(error: unknown): string | null {
+  if (!(error instanceof ApiBusinessError)) {
+    return null;
+  }
+  if (!(error.code === 409 || error.code === '409')) {
+    return null;
+  }
+  const details = asBusinessErrorDetails(error.details);
+  if (!details?.projectName && !details?.projectId) {
+    return null;
+  }
+  const projectLabel = details.projectName ? `"${details.projectName}"` : details.projectId;
+  const action = details.action?.trim();
+  return action
+    ? `Runner is used by project ${projectLabel}. ${action}`
+    : `Runner is used by project ${projectLabel}.`;
 }
 
 interface StreamRunnersOptions {
