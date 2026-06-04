@@ -15,7 +15,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCasdoor } from '@hquant/casdoor/client/react';
 
@@ -68,6 +68,17 @@ const SURFACE_LINKS = [
     description: 'Keep room for DAG and agent-team orchestration as the flow workspace grows.',
     route: '/flow',
     icon: Bot,
+  },
+] as const;
+
+const DESKTOP_PREVIEW_IMAGES = [
+  {
+    src: '//minio.8and1.cn/static/aflow/show-a.jpg',
+    alt: 'AFlow desktop workspace preview A',
+  },
+  {
+    src: '//minio.8and1.cn/static/aflow/show-b.jpg',
+    alt: 'AFlow desktop workspace preview B',
   },
 ] as const;
 
@@ -132,6 +143,7 @@ function FeatureCard({ icon: Icon, title, description, colSpan = 1 }: FeatureCar
 export function DesktopPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user, login, logout } = useCasdoor();
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
 
   const authLabel = useMemo(() => {
     if (isLoading) return 'Checking workspace session';
@@ -140,6 +152,18 @@ export function DesktopPage() {
     }
     return 'Public landing page for the current workspace';
   }, [isAuthenticated, isLoading, user?.displayName, user?.name]);
+
+  useEffect(() => {
+    if (DESKTOP_PREVIEW_IMAGES.length < 2) return undefined;
+
+    const intervalId = window.setInterval(() => {
+      setActivePreviewIndex((current) => (current + 1) % DESKTOP_PREVIEW_IMAGES.length);
+    }, 3800);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const handleOpenWorkspace = () => {
     navigate('/chat');
@@ -259,7 +283,7 @@ export function DesktopPage() {
               <div className="flex flex-1 justify-center">
                 <div className="flex items-center gap-2 rounded-md border border-slate-100 bg-white px-3 py-1 text-xs text-slate-400 shadow-sm">
                   <Activity className="h-3 w-3" />
-                  <span className="font-mono">workspace.desktop.log</span>
+                  <span className="font-mono">aflow.8and1.cn</span>
                 </div>
               </div>
               <div className="w-12 text-right">
@@ -269,83 +293,40 @@ export function DesktopPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3">
-              <div className="hidden space-y-6 border-r border-slate-100 bg-slate-50/30 p-6 md:block">
-                <div>
-                  <h4 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Workspace Surfaces</h4>
-                  <div className="space-y-3">
-                    {SURFACE_LINKS.map((item, index) => {
-                      const active = index === 0;
-                      return (
-                        <button
-                          key={item.route}
-                          type="button"
-                          onClick={() => navigate(item.route)}
-                          className={`flex w-full items-center gap-3 rounded-lg text-left text-sm font-medium ${
-                            active
-                              ? 'border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm'
-                              : 'text-slate-500'
+            <div className="desktop-preview-stage">
+                  {DESKTOP_PREVIEW_IMAGES.map((image, index) => (
+                    <img
+                      key={image.src}
+                      src={image.src}
+                      alt={image.alt}
+                      loading={index === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      className={`desktop-preview-image ${
+                        index === activePreviewIndex
+                          ? 'desktop-preview-image-active'
+                          : 'desktop-preview-image-inactive'
+                      }`}
+                    />
+                  ))}
+
+                  <div className="desktop-preview-overlay" />
+
+                  <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-4 p-5 md:p-6">
+                    <div className="rounded-full bg-white/82 px-4 py-2 text-xs font-medium text-slate-700 shadow-sm backdrop-blur-md">
+                      Workspace walkthrough preview
+                    </div>
+                    <div className="flex items-center gap-2 rounded-full bg-slate-900/55 px-3 py-2 backdrop-blur-md">
+                      {DESKTOP_PREVIEW_IMAGES.map((image, index) => (
+                        <span
+                          key={image.src}
+                          className={`h-2 rounded-full transition-all duration-500 ${
+                            index === activePreviewIndex ? 'w-6 bg-white' : 'w-2 bg-white/45'
                           }`}
-                        >
-                          <item.icon className={`h-4 w-4 ${active ? 'text-blue-500' : 'text-slate-400'}`} />
-                          <span>{item.title}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <div className="col-span-2 overflow-x-auto bg-[#FAFAFA] p-6 font-mono text-sm leading-relaxed text-slate-600 md:p-8">
-                <div className="mb-4 flex items-center gap-2 text-slate-400">
-                  <Terminal className="h-4 w-4" />
-                  AFlow Runtime Stream — Session: public desktop handoff
-                </div>
-
-                <div className="mb-2 flex">
-                  <span className="mr-4 text-slate-400">01</span>
-                  <span>
-                    <span className="text-blue-500">info</span> [Planner] Mode routed to{' '}
-                    <span className="text-emerald-500">tool-first</span> execution.
-                  </span>
-                </div>
-                <div className="mb-2 flex">
-                  <span className="mr-4 text-slate-400">02</span>
-                  <span>
-                    <span className="text-blue-500">info</span> [Workspace] Loading chat, spec, runner, and flow surfaces.
-                  </span>
-                </div>
-                <div className="mb-2 flex">
-                  <span className="mr-4 text-slate-400">03</span>
-                  <span className="text-slate-400">      ├─ context compaction available for long-running sessions</span>
-                </div>
-                <div className="mb-6 flex">
-                  <span className="mr-4 text-slate-400">04</span>
-                  <span className="text-slate-400">      └─ risky runner operations require explicit approval tickets</span>
-                </div>
-
-                <div className="mb-2 flex items-start">
-                  <span className="mr-4 mt-0.5 text-slate-400">05</span>
-                  <div className="flex-1 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="mb-2 flex items-center gap-2 font-sans font-medium text-slate-800">
-                      <GitMerge className="h-4 w-4 text-slate-500" />
-                      Execute Tool: runner.exec
-                    </div>
-                    <div className="text-xs text-slate-500">$ workspace.open --surface chat --mode vibe</div>
-                    <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full w-2/3 bg-slate-900" />
+                        />
+                      ))}
                     </div>
                   </div>
                 </div>
-
-                <div className="mt-6 flex animate-pulse">
-                  <span className="mr-4 text-slate-400">06</span>
-                  <span>
-                    <span className="text-amber-500">wait</span> Awaiting user navigation into the authenticated workspace...
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 
