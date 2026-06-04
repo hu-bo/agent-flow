@@ -10,6 +10,7 @@ import type {
   ReasoningEffort,
 } from '@agent-flow/chat-ui';
 import { Activity } from 'lucide-react';
+import { PendingApprovalPrompt } from '../components/PendingApprovalPrompt';
 import {
   confirmSpecPhase,
   createSession,
@@ -59,10 +60,6 @@ function getMessageText(message: { content: Array<{ type: string; text?: string 
 }
 
 function isSpecDocumentMessage(message: ChatMessage): boolean {
-  const extensionType = message.metadata?.extensions?.specDocType;
-  if (message.metadata?.extensions?.specDocSummary || typeof extensionType === 'string') {
-    return false;
-  }
   if (message.role !== 'assistant') {
     return false;
   }
@@ -171,19 +168,14 @@ function createLocalMessageId(): string {
   return `local_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`;
 }
 
-function createOptimisticActionMessage(text: string, phase: SpecWorkflowState['phase']): ChatMessage {
+function createOptimisticActionMessage(text: string): ChatMessage {
   return {
     uuid: createLocalMessageId(),
     parentUuid: null,
     role: 'user',
     content: [{ type: 'text', text }],
     timestamp: new Date().toISOString(),
-    metadata: {
-      extensions: {
-        optimisticSpecActionAnswer: true,
-        specPhase: phase,
-      },
-    },
+    metadata: {},
   };
 }
 
@@ -227,6 +219,10 @@ export function SpecPage() {
   const runtime = useWorkspaceChatRuntime({ routeSessionId });
   const {
     messages,
+    pendingApproval,
+    approvePendingApproval,
+    cancelPendingApproval,
+    isApprovingPendingApproval,
     activeSession,
     setActiveSession,
     sendMessage,
@@ -352,10 +348,7 @@ export function SpecPage() {
   );
 
   const chatMessages = useMemo(() => {
-    const visibleMessages = messages.filter((message) => {
-      const isStandaloneRuntimeTrace = message.metadata?.extensions?.runtimeTrace === true;
-      return (!message.metadata?.isMeta || isStandaloneRuntimeTrace) && !isSpecDocumentMessage(message);
-    });
+    const visibleMessages = messages.filter((message) => !isSpecDocumentMessage(message));
     return optimisticActionMessage ? [...visibleMessages, optimisticActionMessage] : visibleMessages;
   }, [messages, optimisticActionMessage]);
 
@@ -482,7 +475,7 @@ export function SpecPage() {
           await handleSend(payload.customInput.trim());
           return;
         }
-        setOptimisticActionMessage(createOptimisticActionMessage(answerText, specState.phase));
+        setOptimisticActionMessage(createOptimisticActionMessage(answerText));
         setNotice({
           kind: 'success',
           message: `Review the ${specState ? phaseLabel(specState.phase).toLowerCase() : 'spec'} document before continuing.`,
@@ -490,7 +483,7 @@ export function SpecPage() {
         return;
       }
       const selectedArtifacts = getSelectedToggleLabels(option, payload.selectedToggleIds);
-      setOptimisticActionMessage(createOptimisticActionMessage(answerText, specState.phase));
+      setOptimisticActionMessage(createOptimisticActionMessage(answerText));
       await handleConfirm(selectedArtifacts, answerText);
     },
     [activeActionKey, handleConfirm, handleSend, setNotice, specState],
@@ -527,6 +520,30 @@ export function SpecPage() {
     specState,
     submittedActionKey,
   ]);
+
+  const approvalPrompt = useMemo(() => {
+    if (!pendingApproval) {
+      return null;
+    }
+
+    return (
+      <PendingApprovalPrompt
+        pendingApproval={pendingApproval}
+        disabled={isApprovingPendingApproval || isStreaming || isConnecting}
+        onApprove={approvePendingApproval}
+        onCancel={cancelPendingApproval}
+      />
+    );
+  }, [
+    approvePendingApproval,
+    cancelPendingApproval,
+    isApprovingPendingApproval,
+    isConnecting,
+    isStreaming,
+    pendingApproval,
+  ]);
+
+  const actionPrompt = approvalPrompt ?? specActionPrompt;
 
   return (
     <>
@@ -634,7 +651,7 @@ export function SpecPage() {
               isStreaming={isStreaming}
               isConnecting={isConnecting}
               onFileSelect={handleFileSelect}
-              actionPrompt={specActionPrompt}
+              actionPrompt={actionPrompt}
             />
           </section>
         </div>

@@ -17,6 +17,9 @@ export function renderAssistantText(args: {
 
   if (result.status !== 'succeeded') {
     const detail = result.error || (latestOutput !== undefined ? formatUnknown(latestOutput) : 'unknown error');
+    if (result.status === 'blocked') {
+      return `I couldn't complete the local task yet.\n\n${detail}`;
+    }
     return `I couldn't complete the local task.\n\n${detail}`;
   }
 
@@ -228,6 +231,16 @@ export function renderRuntimeSummary(context: RuntimeModelContext): string {
     `status=${result.status}`,
     `taskId=${result.taskId}`,
     `coreSessionId=${result.sessionId}`,
+    result.rounds !== undefined ? `rounds=${result.rounds}` : undefined,
+    result.verification
+      ? `verification=${formatUnknown({
+          status: result.verification.status,
+          verifierName: result.verification.verifierName,
+          reason: result.verification.reason,
+          missingEvidence: result.verification.missingEvidence,
+          nextAction: result.verification.nextAction,
+        })}`
+      : undefined,
     runnerDirective ? `runnerDirective=${runnerDirective.command} ${runnerDirective.args.join(' ')}`.trim() : undefined,
     steps.length > 0 ? `plannedSteps:\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}` : 'plannedSteps=(none)',
     eventSummary ? `eventCounts:\n${eventSummary}` : undefined,
@@ -358,7 +371,7 @@ function redactLikelySecret(value: string): string {
   const mask = (token: string): string => {
     const normalized = token.trim();
     if (normalized.length <= 12) return '[REDACTED]';
-    return `${normalized.slice(0, 6)}…${normalized.slice(-4)}`;
+    return `${normalized.slice(0, 6)}...${normalized.slice(-4)}`;
   };
 
   return value
@@ -406,10 +419,19 @@ export function renderLlmStepPrompt(stepRequest: LlmStepRequest): string {
   return [
     `Overall goal:\n${stepRequest.request.goal}`,
     `Current step:\n${stepRequest.step.title} (${stepRequest.step.kind})`,
+    stepRequest.request.plan?.completionContract
+      ? `Completion contract:\n${formatUnknown(stepRequest.request.plan.completionContract)}`
+      : 'Completion contract: none',
     `Consumes:\n${consumesPreview}`,
     `Step input:\n${formatUnknown(stepRequest.input)}`,
     contextPreview ? `Context:\n${contextPreview}` : 'Context: none',
-    'Produce the output for this step now.',
+    [
+      'Produce the output for this step now.',
+      'Use concise summaries only; do not include hidden chain-of-thought.',
+      'When useful, return JSON like {"analysis":"...","implementation":"...","verification":"...","completionSignal":"COMPLETE","nextAction":"...","incompleteReason":"...","evidence":["..."]}.',
+      'Only emit completionSignal=COMPLETE if the current objective has actually met the completion contract.',
+      'If the objective is not done, do not claim completion. Instead provide incompleteReason, nextAction, and concrete evidence gaps.',
+    ].join('\n'),
   ].join('\n\n');
 }
 
@@ -464,12 +486,30 @@ function renderLlmStepOutput(output: Record<string, unknown>): string | undefine
   if (output.mode !== 'llm-step') {
     return undefined;
   }
+  const sections = asRecord(output.sections);
+  if (sections) {
+    const sectionText = ['analysis', 'implementation', 'verification']
+      .map((key) => {
+        const value = getObjectString(sections, key);
+        return value ? `## ${titleCase(key)}\n${value}` : undefined;
+      })
+      .filter((value): value is string => Boolean(value))
+      .join('\n\n');
+    if (sectionText.trim().length > 0) {
+      return sectionText;
+    }
+  }
+
   const text = getObjectString(output, 'text');
   if (typeof text !== 'string') {
     return undefined;
   }
   const trimmed = text.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function titleCase(value: string): string {
+  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
 }
 
 function renderFsReadOutput(output: Record<string, unknown>): string {

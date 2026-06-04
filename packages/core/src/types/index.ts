@@ -2,7 +2,7 @@ export type PlanStrategy = 'plan' | 'react' | 'tree';
 export type AgentStepKind = 'llm' | 'tool' | 'runner';
 export type RunnerKind = 'local' | 'remote' | 'sandbox';
 export type RunnerSelectionStrategy = 'round-robin' | 'least-loaded';
-export type AgentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'paused';
+export type AgentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'cancelled' | 'paused';
 
 export interface ContextFragmentInput {
   source: string;
@@ -61,15 +61,58 @@ export interface AgentStep {
   runner?: RunnerTaskSpec;
 }
 
+export interface CompletionAcceptance {
+  verifierName: string;
+  requireCompletionSignal?: boolean;
+}
+
+export interface CompletionContract {
+  objective: string;
+  completionSignal?: string;
+  maxRounds: number;
+  acceptance: CompletionAcceptance;
+}
+
 export interface AgentPlan {
   id: string;
   strategy: PlanStrategy;
   steps: AgentStep[];
   metadata?: Record<string, unknown>;
+  completionContract?: CompletionContract;
 }
 
 export interface Planner {
   plan(request: AgentRunRequest, context: ContextEnvelope): Promise<AgentPlan>;
+}
+
+export interface WorkflowTriageSignals {
+  wantsVerification: boolean;
+  complexityScore: number;
+  shouldDecompose: boolean;
+  isCodingTask: boolean;
+  codingTaskType: 'bugfix' | 'feature' | 'refactor' | 'generic';
+}
+
+export interface WorkflowTriageInput {
+  request: AgentRunRequest;
+  context: ContextEnvelope;
+  userMessage: string;
+  semanticToolCandidate?: {
+    title: string;
+    toolName: string;
+    input: Record<string, unknown>;
+  };
+  signals: WorkflowTriageSignals;
+}
+
+export interface WorkflowTriageDecision {
+  workflow: 'repo-understanding' | 'coding' | 'generic';
+  reason?: string;
+}
+
+export interface WorkflowTriageAgent {
+  readonly name?: string;
+  triage(input: WorkflowTriageInput): Promise<WorkflowTriageDecision | undefined>;
 }
 
 export interface TaskGraphNode {
@@ -113,6 +156,29 @@ export interface LlmStepRequest {
   context: ContextEnvelope;
   outputs: Record<string, unknown>;
   signal?: AbortSignal;
+}
+
+export type LlmStepOutputPhase = 'analysis' | 'implementation' | 'verification';
+
+export interface LlmStepStructuredSections {
+  analysis?: string;
+  implementation?: string;
+  verification?: string;
+}
+
+export interface StructuredLlmStepOutput {
+  mode: 'llm-step';
+  stepId: string;
+  title: string;
+  phase: LlmStepOutputPhase;
+  text: string;
+  sections: LlmStepStructuredSections;
+  completionSignal?: string;
+  nextAction?: string;
+  incompleteReason?: string;
+  evidence?: string[];
+  finishReason?: string;
+  usage?: unknown;
 }
 
 export interface LlmStepExecutorLike {
@@ -350,14 +416,45 @@ export interface Replanner {
   replan(ctx: ReplanContext): Promise<AgentPlan | undefined>;
 }
 
+export type ObjectiveVerificationStatus = 'passed' | 'failed' | 'blocked';
+
+export interface ObjectiveVerificationResult {
+  status: ObjectiveVerificationStatus;
+  verifierName: string;
+  reason?: string;
+  missingEvidence?: string[];
+  evidence?: string[];
+  nextAction?: string;
+  completionSignalObserved?: boolean;
+}
+
+export interface ObjectiveVerificationContext {
+  plan: AgentPlan;
+  request: AgentRunRequest;
+  session: AgentSession;
+  context: ContextEnvelope;
+  outputs: Record<string, unknown>;
+  checkpoints: CheckpointRecord[];
+  events: AgentEvent[];
+  round: number;
+  completionContract: CompletionContract;
+}
+
+export interface ObjectiveVerifier {
+  readonly name: string;
+  verify(context: ObjectiveVerificationContext): Promise<ObjectiveVerificationResult>;
+}
+
 export interface AgentEvent {
   id: string;
   taskId: string;
   sessionId: string;
   type:
     | 'session.started'
+    | 'session.verification'
     | 'session.completed'
     | 'session.replanned'
+    | 'session.blocked'
     | 'session.failed'
     | 'step.started'
     | 'step.completed'
@@ -377,6 +474,8 @@ export interface AgentRunResult {
   outputs: Record<string, unknown>;
   checkpoints: CheckpointRecord[];
   events: AgentEvent[];
+  rounds?: number;
+  verification?: ObjectiveVerificationResult;
   error?: string;
 }
 
@@ -411,6 +510,7 @@ export interface AgentRuntime {
 
 export interface CreateAgentOptions {
   planner?: Planner;
+  workflowTriageAgent?: WorkflowTriageAgent;
   graphBuilder?: GraphBuilder;
   scheduler?: Scheduler;
   executor?: PlanExecutor;
@@ -429,4 +529,5 @@ export interface CreateAgentOptions {
   maxContextTokens?: number;
   replanner?: Replanner;
   maxReplans?: number;
+  objectiveVerifiers?: ObjectiveVerifier[];
 }

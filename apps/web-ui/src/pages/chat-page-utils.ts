@@ -1,4 +1,5 @@
 import type { ChatMessage, FileAttachment, TokenUsageSummary } from '@agent-flow/chat-ui';
+import type { TokenUsage } from '@agent-flow/core/messages';
 import type { RunnerRecord } from '../api';
 
 export type NoticeState = { kind: 'success' | 'error'; message: string } | null;
@@ -27,10 +28,12 @@ export function fileToDataUrl(file: File): Promise<string> {
 
 export function buildTokenUsage(
   messages: ChatMessage[],
+  usageByMessageId: Record<string, TokenUsage>,
   tokenBudget: number | null,
 ): TokenUsageSummary {
   const usedTokens = messages.reduce((sum, message) => {
-    return sum + (message.metadata?.tokenUsage?.totalTokens ?? 0);
+    const usage = usageByMessageId[message.uuid];
+    return sum + (usage?.totalTokens ?? 0);
   }, 0);
   const remainingTokens = tokenBudget === null ? null : Math.max(0, tokenBudget - usedTokens);
   return { usedTokens, remainingTokens, tokenBudget };
@@ -47,7 +50,7 @@ export function buildRunnerLabel(runner: RunnerRecord): string {
 export function extractAssistantMarkdown(messages: ChatMessage[]): string {
   const target = [...messages]
     .reverse()
-    .find((message) => message.role === 'assistant' && !message.metadata?.isMeta);
+    .find((message) => message.role === 'assistant');
   if (!target) {
     return '';
   }

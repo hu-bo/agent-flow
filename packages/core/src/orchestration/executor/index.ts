@@ -12,6 +12,7 @@ import type {
   GraphBuilder,
   Guardrails,
   LlmStepExecutorLike,
+  ObjectiveVerificationResult,
   PlanExecutor,
   Replanner,
   Runner,
@@ -22,6 +23,7 @@ import type {
   ToolExecutorLike,
   ToolResult
 } from '../../types/index.js';
+import { ObjectiveVerifierRegistry } from './objective-verifiers.js';
 
 function readOutputByRef(outputs: Record<string, unknown>, ref: string): unknown {
   const normalized = ref.trim();
@@ -385,6 +387,7 @@ export interface DefaultPlanExecutorOptions {
   runnerRouter: RunnerRouter;
   replanner?: Replanner;
   maxReplans?: number;
+  objectiveVerifierRegistry?: ObjectiveVerifierRegistry;
 }
 
 class StepExecutionError extends Error {
@@ -422,37 +425,185 @@ export class DefaultPlanExecutor implements PlanExecutor {
       }
       return event;
     };
+    const maxReplans = Math.max(0, this.options.maxReplans ?? 1);
+    let activePlan = plan;
+    let replanAttempt = 0;
+    const maxRounds = Math.max(1, activePlan.completionContract?.maxRounds ?? 1);
 
     yield await emit(
       createEvent(session.taskId, session.id, 'session.started', {
         planId: plan.id,
-        strategy: plan.strategy
+        strategy: plan.strategy,
+        round: 1,
+        maxRounds,
+        steps: plan.steps.map((step) => ({
+          id: step.id,
+          title: step.title,
+          kind: step.kind,
+          dependsOn: step.dependsOn,
+          toolName: step.toolName,
+          runner: step.runner
+            ? {
+                command: step.runner.command,
+                args: step.runner.args ?? [],
+                preferredRunnerId: step.runner.preferredRunnerId,
+                preferredRunnerKind: step.runner.preferredRunnerKind,
+              }
+            : undefined,
+          input: step.input,
+          consumes: step.consumes,
+        })),
+        metadata: plan.metadata ?? {},
+        completionContract: plan.completionContract,
       })
     );
-
-    const maxReplans = Math.max(0, this.options.maxReplans ?? 1);
-    let activePlan = plan;
-    let replanAttempt = 0;
+    let round = 1;
+    let latestVerification: ObjectiveVerificationResult | undefined;
 
     while (true) {
       try {
-        await this.executePlanSteps(activePlan, request, session, context, executeOptions, outputs, checkpoints, emit);
-
-        yield await emit(
-          createEvent(session.taskId, session.id, 'session.completed', {
-            checkpoints: checkpoints.length,
-            replanCount: replanAttempt
-          })
-        );
-
-        return {
-          taskId: session.taskId,
-          sessionId: session.id,
-          status: 'succeeded',
+        const roundStartCheckpointCount = checkpoints.length;
+        await this.executePlanSteps(
+          activePlan,
+          request,
+          session,
+          context,
+          executeOptions,
           outputs,
           checkpoints,
-          events
-        };
+          emit,
+          round,
+          latestVerification,
+        );
+
+        latestVerification = await this.verifyCompletion(
+          activePlan,
+          request,
+          session,
+          context,
+          outputs,
+          checkpoints,
+          events,
+          round,
+          emit,
+        );
+
+        if (!latestVerification || latestVerification.status === 'passed') {
+          yield await emit(
+            createEvent(session.taskId, session.id, 'session.completed', {
+              checkpoints: checkpoints.length,
+              replanCount: replanAttempt,
+              rounds: round,
+              verification: latestVerification,
+            })
+          );
+
+          return {
+            taskId: session.taskId,
+            sessionId: session.id,
+            status: 'succeeded',
+            outputs,
+            checkpoints,
+            events,
+            rounds: round,
+            verification: latestVerification,
+          };
+        }
+
+        if (latestVerification.status === 'blocked') {
+          yield await emit(
+            createEvent(session.taskId, session.id, 'session.blocked', {
+              reason: latestVerification.reason ?? 'verification blocked',
+              rounds: round,
+              verifierName: latestVerification.verifierName,
+              missingEvidence: latestVerification.missingEvidence ?? [],
+              nextAction: latestVerification.nextAction,
+              verification: latestVerification,
+            })
+          );
+
+          return {
+            taskId: session.taskId,
+            sessionId: session.id,
+            status: 'blocked',
+            outputs,
+            checkpoints,
+            events,
+            rounds: round,
+            verification: latestVerification,
+            error: latestVerification.reason ?? 'Objective verification blocked completion.',
+          };
+        }
+
+        if (round >= maxRounds) {
+          const blockedVerification: ObjectiveVerificationResult = {
+            ...latestVerification,
+            status: 'blocked',
+            reason:
+              latestVerification.reason ??
+              `Objective did not pass verification within ${maxRounds} rounds.`,
+            nextAction:
+              latestVerification.nextAction ??
+              'Needs user input or a stronger verification strategy before continuing.',
+          };
+          latestVerification = blockedVerification;
+
+          yield await emit(
+            createEvent(session.taskId, session.id, 'session.blocked', {
+              reason: blockedVerification.reason,
+              rounds: round,
+              verifierName: blockedVerification.verifierName,
+              missingEvidence: blockedVerification.missingEvidence ?? [],
+              nextAction: blockedVerification.nextAction,
+              verification: blockedVerification,
+            })
+          );
+
+          return {
+            taskId: session.taskId,
+            sessionId: session.id,
+            status: 'blocked',
+            outputs,
+            checkpoints,
+            events,
+            rounds: round,
+            verification: blockedVerification,
+            error: blockedVerification.reason,
+          };
+        }
+
+        await this.recordRoundCheckpoint(
+          session,
+          checkpoints,
+          round,
+          latestVerification,
+          emit,
+        );
+        round += 1;
+        if (checkpoints.length === roundStartCheckpointCount) {
+          yield await emit(
+            createEvent(session.taskId, session.id, 'session.blocked', {
+              reason: 'Verification failed without producing new evidence.',
+              rounds: round - 1,
+              verifierName: latestVerification.verifierName,
+              missingEvidence: latestVerification.missingEvidence ?? [],
+              nextAction: latestVerification.nextAction,
+              verification: latestVerification,
+            })
+          );
+
+          return {
+            taskId: session.taskId,
+            sessionId: session.id,
+            status: 'blocked',
+            outputs,
+            checkpoints,
+            events,
+            rounds: round - 1,
+            verification: latestVerification,
+            error: 'Verification failed without producing new evidence.',
+          };
+        }
       } catch (error) {
         const stepError = error instanceof StepExecutionError ? error : undefined;
         const message = error instanceof Error ? error.message : String(error);
@@ -489,7 +640,9 @@ export class DefaultPlanExecutor implements PlanExecutor {
         yield await emit(
           createEvent(session.taskId, session.id, 'session.failed', {
             error: message,
-            replanCount: replanAttempt
+            replanCount: replanAttempt,
+            rounds: round,
+            verification: latestVerification,
           })
         );
 
@@ -500,6 +653,8 @@ export class DefaultPlanExecutor implements PlanExecutor {
           outputs,
           checkpoints,
           events,
+          rounds: round,
+          verification: latestVerification,
           error: message
         };
       }
@@ -514,19 +669,43 @@ export class DefaultPlanExecutor implements PlanExecutor {
     executeOptions: ExecutePlanOptions,
     outputs: Record<string, unknown>,
     checkpoints: CheckpointRecord[],
-    emit: (event: AgentEvent) => Promise<AgentEvent>
+    emit: (event: AgentEvent) => Promise<AgentEvent>,
+    round: number,
+    previousVerification?: ObjectiveVerificationResult,
   ): Promise<void> {
       const graph = this.options.graphBuilder.build(plan);
       const batches = this.options.scheduler.schedule(graph);
 
       for (const batch of batches) {
         for (const step of batch) {
-          const resolvedInput = resolveStepInput(step.input, step.consumes, outputs);
+          const baseResolvedInput = resolveStepInput(step.input, step.consumes, outputs);
+          const resolvedInput =
+            step.kind === 'llm'
+              ? {
+                  ...baseResolvedInput,
+                  ralphLoop: {
+                    round,
+                    maxRounds: Math.max(1, plan.completionContract?.maxRounds ?? 1),
+                    verifierName: plan.completionContract?.acceptance.verifierName,
+                    previousVerification: previousVerification
+                      ? {
+                          status: previousVerification.status,
+                          reason: previousVerification.reason,
+                          missingEvidence: previousVerification.missingEvidence ?? [],
+                          evidence: previousVerification.evidence ?? [],
+                          nextAction: previousVerification.nextAction,
+                          completionSignalObserved: previousVerification.completionSignalObserved ?? false,
+                        }
+                      : undefined,
+                  },
+                }
+              : baseResolvedInput;
           await emit(
             createEvent(session.taskId, session.id, 'step.started', {
               stepId: step.id,
               title: step.title,
-              kind: step.kind
+              kind: step.kind,
+              round,
             })
           );
 
@@ -564,12 +743,13 @@ export class DefaultPlanExecutor implements PlanExecutor {
               }
               await emit(
                 createEvent(session.taskId, session.id, 'tool.called', {
-                  stepId: step.id,
-                  title: step.title,
-                  kind: step.kind,
-                  tool: step.toolName,
-                  input: resolvedInput
-                })
+                stepId: step.id,
+                title: step.title,
+                kind: step.kind,
+                tool: step.toolName,
+                input: resolvedInput,
+                round,
+              })
               );
               const toolResult = await this.options.toolExecutor.execute(
                 {
@@ -598,7 +778,8 @@ export class DefaultPlanExecutor implements PlanExecutor {
                   tool: step.toolName,
                   ok: normalizedToolResult.ok,
                   error: normalizedToolResult.error,
-                  output: normalizedToolResult.output
+                  output: normalizedToolResult.output,
+                  round,
                 })
               );
 
@@ -639,7 +820,8 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 await emit(
                   createEvent(session.taskId, session.id, 'runner.event', {
                     stepId: step.id,
-                    runnerEvent
+                    runnerEvent,
+                    round,
                   })
                 );
                 if (runnerEvent.type === 'result') {
@@ -663,7 +845,10 @@ export class DefaultPlanExecutor implements PlanExecutor {
               output,
               metadata: {
                 taskId: session.taskId,
-                stepTitle: step.title
+                stepTitle: step.title,
+                ralphLoop: {
+                  round,
+                },
               }
             });
             checkpoints.push(checkpoint);
@@ -674,6 +859,7 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 title: step.title,
                 kind: step.kind,
                 checkpointId: checkpoint.id,
+                round,
                 ...(step.kind === 'llm' ? { output } : {})
               })
             );
@@ -682,7 +868,8 @@ export class DefaultPlanExecutor implements PlanExecutor {
               createEvent(session.taskId, session.id, 'step.completed', {
                 stepId: step.id,
                 title: step.title,
-                kind: step.kind
+                kind: step.kind,
+                round,
               })
             );
           } catch (error) {
@@ -694,11 +881,108 @@ export class DefaultPlanExecutor implements PlanExecutor {
                 kind: step.kind,
                 error: message,
                 errorDetails: serializeErrorForLog(error),
+                round,
               })
             );
             throw new StepExecutionError(message, step, error);
           }
         }
       }
+  }
+
+  private async verifyCompletion(
+    plan: AgentPlan,
+    request: AgentRunRequest,
+    session: AgentSession,
+    context: ContextEnvelope,
+    outputs: Record<string, unknown>,
+    checkpoints: CheckpointRecord[],
+    events: AgentEvent[],
+    round: number,
+    emit: (event: AgentEvent) => Promise<AgentEvent>,
+  ): Promise<ObjectiveVerificationResult | undefined> {
+    const registry =
+      this.options.objectiveVerifierRegistry ?? new ObjectiveVerifierRegistry();
+    const verification = await registry.verify({
+      plan,
+      request,
+      session,
+      context,
+      outputs,
+      checkpoints,
+      events,
+      round,
+    });
+
+    if (!verification) {
+      return undefined;
+    }
+
+    await emit(
+      createEvent(session.taskId, session.id, 'session.verification', {
+        round,
+        status: verification.status,
+        verifierName: verification.verifierName,
+        reason: verification.reason,
+        missingEvidence: verification.missingEvidence ?? [],
+        evidence: verification.evidence ?? [],
+        nextAction: verification.nextAction,
+        completionSignalObserved: verification.completionSignalObserved ?? false,
+      }),
+    );
+
+    return verification;
+  }
+
+  private async recordRoundCheckpoint(
+    session: AgentSession,
+    checkpoints: CheckpointRecord[],
+    round: number,
+    verification: ObjectiveVerificationResult,
+    emit: (event: AgentEvent) => Promise<AgentEvent>,
+  ): Promise<void> {
+    const checkpoint = await this.options.checkpointStore.save({
+      sessionId: session.id,
+      stepId: `ralph-round-${round}`,
+      output: {
+        round,
+        verification,
+      },
+      metadata: {
+        taskId: session.taskId,
+        stepTitle: `ralph-round-${round}`,
+        ralphLoop: {
+          round,
+          acceptanceStatus: verification.status,
+          verifierName: verification.verifierName,
+          missingEvidence: verification.missingEvidence ?? [],
+          nextAction: verification.nextAction,
+        },
+      },
+    });
+    checkpoints.push(checkpoint);
+
+    await emit(
+      createEvent(session.taskId, session.id, 'checkpoint.created', {
+        stepId: `ralph-round-${round}`,
+        title: `ralph-round-${round}`,
+        kind: 'llm',
+        checkpointId: checkpoint.id,
+        round,
+        output: {
+          mode: 'llm-step',
+          stepId: `ralph-round-${round}`,
+          title: `ralph-round-${round}`,
+          phase: 'verification',
+          text: verification.reason ?? `Verification ${verification.status}.`,
+          sections: {
+            verification: verification.reason ?? `Verification ${verification.status}.`,
+          },
+          nextAction: verification.nextAction,
+          incompleteReason: verification.reason,
+          evidence: verification.evidence ?? [],
+        },
+      }),
+    );
   }
 }

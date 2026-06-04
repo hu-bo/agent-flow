@@ -3,10 +3,10 @@ import type { AgentRunRequest, ContextEnvelope } from '../../types/index.js';
 
 export interface PlanningIntent {
   inspectionOnly: boolean;
+  wantsModification: boolean;
   wantsVerification: boolean;
   complexityScore: number;
   shouldDecompose: boolean;
-  workflow: 'repo-understanding' | 'generic';
   isCodingTask: boolean;
   codingTaskType: 'bugfix' | 'feature' | 'refactor' | 'generic';
 }
@@ -42,8 +42,6 @@ const EN_CODING_HINTS = [
   'typescript',
   'javascript',
   'test',
-  'repo',
-  'project',
   'compile',
   'build',
   'lint',
@@ -51,37 +49,9 @@ const EN_CODING_HINTS = [
 const ZH_BUGFIX_HINTS = ['bug', '\u62a5\u9519', '\u9519\u8bef', '\u4fee\u590d', '\u5931\u8d25', '\u5f02\u5e38'];
 const ZH_FEATURE_HINTS = ['\u529f\u80fd', '\u5b9e\u73b0', '\u65b0\u589e', '\u6dfb\u52a0', '\u652f\u6301'];
 const ZH_REFACTOR_HINTS = ['\u91cd\u6784', '\u4f18\u5316', '\u91cd\u5199', '\u6574\u7406'];
-const ZH_CODING_HINTS = ['\u4ee3\u7801', '\u6587\u4ef6', '\u51fd\u6570', '\u7c7b', '\u6d4b\u8bd5', '\u5de5\u7a0b', '\u9879\u76ee'];
+const ZH_CODING_HINTS = ['\u4ee3\u7801', '\u6587\u4ef6', '\u51fd\u6570', '\u7c7b', '\u6d4b\u8bd5'];
 const EN_INSPECTION_VERBS = /(list|ls|dir|tree|read|open|cat|show|search|find|grep)/i;
 const COMPLEXITY_HINTS = ['\n', ' and ', '\u4e14', '\u7136\u540e', ' then ', 'workflow', 'end-to-end', '\u591a\u4e2a'];
-
-const EN_REPO_UNDERSTAND_HINTS = [
-  'what is this project',
-  'what does this project do',
-  'what is this repo',
-  'what does this repo do',
-  'understand this repo',
-  'understand this repository',
-  'explain this repo',
-  'explain this repository',
-  'codebase overview',
-  'repository overview',
-  'architecture overview',
-];
-
-const ZH_REPO_UNDERSTAND_HINTS = [
-  '\u8fd9\u4e2a\u9879\u76ee\u662f\u505a\u4ec0\u4e48',
-  '\u9879\u76ee\u662f\u505a\u4ec0\u4e48',
-  '\u8fd9\u4e2a\u4ed3\u5e93\u662f\u505a\u4ec0\u4e48',
-  '\u4ed3\u5e93\u662f\u505a\u4ec0\u4e48',
-  '\u7406\u89e3\u8fd9\u4e2a\u9879\u76ee',
-  '\u7406\u89e3\u8fd9\u4e2a\u4ed3\u5e93',
-  '\u7406\u89e3\u8fd9\u4e2a\u4ee3\u7801\u5e93',
-  '\u5de5\u7a0b\u6982\u89c8',
-  '\u9879\u76ee\u6982\u89c8',
-  '\u4ed3\u5e93\u6982\u89c8',
-  '\u6574\u4f53\u67b6\u6784',
-];
 
 function includesAny(haystack: string, needles: readonly string[]): boolean {
   return needles.some((needle) => haystack.includes(needle));
@@ -108,13 +78,11 @@ export class PlanningIntentResolver {
     const codingTaskType = this.detectCodingTaskType(raw, lowered);
     const hasInspectionVerb = EN_INSPECTION_VERBS.test(raw) || includesAny(raw, ZH_INSPECTION_HINTS);
     const complexityScore = this.calculateComplexityScore(raw, context);
-    const workflow = this.detectWorkflow(raw, lowered);
     const isCodingTask = this.detectCodingTask(
       raw,
       lowered,
       request,
       semanticStep,
-      workflow,
       codingTaskType,
       wantsModification,
       wantsVerification,
@@ -122,6 +90,7 @@ export class PlanningIntentResolver {
 
     return {
       inspectionOnly: Boolean(semanticStep) && hasInspectionVerb && !wantsModification,
+      wantsModification,
       wantsVerification,
       complexityScore,
       shouldDecompose:
@@ -129,37 +98,9 @@ export class PlanningIntentResolver {
         request.strategy === 'react' ||
         complexityScore >= 2 ||
         (wantsModification && wantsVerification),
-      workflow,
       isCodingTask,
       codingTaskType,
     };
-  }
-
-  private detectWorkflow(raw: string, lowered: string): PlanningIntent['workflow'] {
-    if (EN_REPO_UNDERSTAND_HINTS.some((hint) => lowered.includes(hint)) || includesAny(raw, ZH_REPO_UNDERSTAND_HINTS)) {
-      return 'repo-understanding';
-    }
-
-    // Generic heuristic: questions that explicitly ask for "what this project/repo does" or "architecture" often
-    // mean repository understanding, even if they don't include the exact phrases above.
-    const likelyRepoNouns =
-      lowered.includes('repo') ||
-      lowered.includes('repository') ||
-      lowered.includes('codebase') ||
-      lowered.includes('project') ||
-      includesAny(raw, ['\u9879\u76ee', '\u4ed3\u5e93', '\u4ee3\u7801\u5e93']);
-    const likelyUnderstandVerbs =
-      lowered.includes('understand') ||
-      lowered.includes('explain') ||
-      lowered.includes('overview') ||
-      lowered.includes('architecture') ||
-      includesAny(raw, ['\u7406\u89e3', '\u4ecb\u7ecd', '\u6982\u89c8', '\u67b6\u6784', '\u662f\u505a\u4ec0\u4e48', '\u7528\u9014']);
-
-    if (likelyRepoNouns && likelyUnderstandVerbs) {
-      return 'repo-understanding';
-    }
-
-    return 'generic';
   }
 
   private detectCodingTask(
@@ -167,19 +108,10 @@ export class PlanningIntentResolver {
     lowered: string,
     request: AgentRunRequest,
     semanticStep: SemanticToolStep | undefined,
-    workflow: PlanningIntent['workflow'],
     codingTaskType: 'bugfix' | 'feature' | 'refactor' | 'generic',
     wantsModification: boolean,
     wantsVerification: boolean,
   ): boolean {
-    if (workflow === 'repo-understanding') {
-      // Repository understanding is an analysis workflow, not a coding workflow,
-      // unless the user explicitly asks to modify/verify code.
-      if (!wantsModification && !wantsVerification && codingTaskType === 'generic') {
-        return false;
-      }
-    }
-
     if (semanticStep) {
       return wantsModification || wantsVerification || codingTaskType !== 'generic';
     }

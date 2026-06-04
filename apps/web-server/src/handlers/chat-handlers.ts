@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { ChatStreamEvent } from '../contracts/api.js';
+import type { TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
 import { sendSuccess } from '../lib/response.js';
 import { createSseStream } from '../lib/sse.js';
 import { parseWithSchema } from '../lib/validation.js';
@@ -36,6 +36,38 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   if (body.stream) {
     const stream = createSseStream(reply);
     stream.comment(`request=${request.requestContext.requestId}`);
+    stream.send('v1', 'delta_encoding');
+
+    const usageByMsg: Record<string, TokenUsage> = {};
+    const knownMessageIds = new Set<string>();
+    const orderedMessageIds = new Set<string>();
+    let lastAppendPointer: string | null = null;
+
+    const sendDelta = (frame: DeltaFrame) => {
+      stream.send(frame, 'delta');
+      if (isFullDeltaFrame(frame) && frame.o === 'append') {
+        lastAppendPointer = frame.p;
+        return;
+      }
+      if (isDeltaShorthandFrame(frame)) {
+        return;
+      }
+      lastAppendPointer = null;
+    };
+
+    const ensureOrderAppended = (msgId: string): FullDeltaFrame | null => {
+      if (orderedMessageIds.has(msgId)) return null;
+      orderedMessageIds.add(msgId);
+      return { p: '/order', o: 'append', v: msgId };
+    };
+
+    const sendAppend = (pointer: string, chunk: string) => {
+      if (lastAppendPointer === pointer) {
+        sendDelta({ v: chunk });
+        return;
+      }
+      sendDelta({ p: pointer, o: 'append', v: chunk });
+    };
 
     try {
       const generator = request.server.services.chatService.streamTurn({
@@ -56,12 +88,112 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
       while (true) {
         const step = await generator.next();
         if (step.done) break;
-        stream.send(step.value);
+
+        const event = step.value;
+        if (event.type === 'error') {
+          stream.send(
+            {
+              code: event.err.code,
+              message: event.err.msg,
+              ...(event.err.details !== undefined ? { details: event.err.details } : {}),
+            },
+            'error',
+          );
+          stream.done();
+          return;
+        }
+
+        if (event.type === 'approval_req') {
+          sendDelta({ p: '/approval', o: 'replace', v: event.approval });
+          continue;
+        }
+
+        if (event.type === 'spec_doc_update') {
+          const pointer = `/spec_docs/${escapeJsonPointerToken(event.doc_type)}`;
+
+          if (typeof event.delta === 'string' && event.delta.length > 0) {
+            sendAppend(pointer, event.delta);
+          }
+
+          if (event.done) {
+            sendDelta({ p: pointer, o: 'replace', v: event.content });
+          }
+          continue;
+        }
+
+        if (event.type === 'msg_delta') {
+          const msgId = event.msg_id;
+          const escapedMsgId = escapeJsonPointerToken(msgId);
+
+          if (!knownMessageIds.has(msgId)) {
+            knownMessageIds.add(msgId);
+
+            const patchOps: FullDeltaFrame[] = [
+              {
+                p: `/messages/${escapedMsgId}`,
+                o: 'replace',
+                v: createAssistantSkeletonMessage(msgId),
+              },
+            ];
+            const orderOp = ensureOrderAppended(msgId);
+            if (orderOp) patchOps.push(orderOp);
+            sendDelta({ o: 'patch', v: patchOps });
+          }
+
+          const pointer = `/messages/${escapedMsgId}/content/0/text`;
+          sendAppend(pointer, event.delta);
+          continue;
+        }
+
+        if (event.type === 'thinking') {
+          const msg = event.msg;
+          knownMessageIds.add(msg.uuid);
+
+          const patchOps: FullDeltaFrame[] = [
+            {
+              p: `/messages/${escapeJsonPointerToken(msg.uuid)}`,
+              o: 'replace',
+              v: toClientMessage(msg),
+            },
+          ];
+          const orderOp = ensureOrderAppended(msg.uuid);
+          if (orderOp) patchOps.push(orderOp);
+          sendDelta({ o: 'patch', v: patchOps });
+          continue;
+        }
+
+        if (event.type === 'msg') {
+          const msg = event.msg;
+          // Web-ui does optimistic user messages; don't stream them to avoid duplicates.
+          if (msg.role === 'user') continue;
+
+          const tokenUsage = msg.metadata?.tokenUsage;
+          if (tokenUsage) {
+            usageByMsg[msg.uuid] = tokenUsage;
+          }
+
+          knownMessageIds.add(msg.uuid);
+
+          const patchOps: FullDeltaFrame[] = [
+            {
+              p: `/messages/${escapeJsonPointerToken(msg.uuid)}`,
+              o: 'replace',
+              v: toClientMessage(msg),
+            },
+          ];
+          const orderOp = ensureOrderAppended(msg.uuid);
+          if (orderOp) patchOps.push(orderOp);
+          sendDelta({ o: 'patch', v: patchOps });
+          continue;
+        }
       }
 
+      if (Object.keys(usageByMsg).length > 0) {
+        stream.send({ usage_by_msg: usageByMsg }, 'usage');
+      }
       stream.done();
     } catch (error) {
-      stream.send(toStreamErrorEvent(error));
+      stream.send(toStreamErrorPayload(error), 'error');
       stream.done();
     }
 
@@ -132,15 +264,53 @@ function toStreamErrorPayload(error: unknown): {
   };
 }
 
-function toStreamErrorEvent(error: unknown): ChatStreamEvent {
-  const payload = toStreamErrorPayload(error);
+type FullDeltaFrame =
+  | { p: string; o: 'add' | 'replace' | 'remove'; v?: unknown }
+  | { p: string; o: 'append'; v: unknown };
+
+type DeltaPatchFrame = { o: 'patch'; v: FullDeltaFrame[] };
+type DeltaShorthandFrame = { v: string };
+
+type DeltaFrame = FullDeltaFrame | DeltaPatchFrame | DeltaShorthandFrame;
+
+function isFullDeltaFrame(frame: DeltaFrame): frame is FullDeltaFrame {
+  return typeof (frame as FullDeltaFrame).p === 'string' && typeof (frame as FullDeltaFrame).o === 'string';
+}
+
+function isDeltaShorthandFrame(frame: DeltaFrame): frame is DeltaShorthandFrame {
+  return !isFullDeltaFrame(frame) && (frame as DeltaShorthandFrame).v !== undefined && typeof (frame as DeltaShorthandFrame).v === 'string';
+}
+
+function escapeJsonPointerToken(token: string): string {
+  return token.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function createAssistantSkeletonMessage(uuid: string): UnifiedMessage {
   return {
-    type: 'error',
-    err: {
-      code: payload.code,
-      msg: payload.message,
-      ...(payload.details !== undefined ? { details: payload.details } : {}),
-    },
+    uuid,
+    parentUuid: null,
+    role: 'assistant',
+    content: [{ type: 'text', text: '' }],
+    timestamp: new Date().toISOString(),
+    metadata: {},
+  };
+}
+
+function toClientMessage(message: UnifiedMessage): UnifiedMessage {
+  const metadata = message.metadata ?? {};
+  const nextMetadata: UnifiedMessage['metadata'] = {};
+
+  if (metadata.modelId !== undefined) nextMetadata.modelId = metadata.modelId;
+  if (metadata.model !== undefined) nextMetadata.model = metadata.model;
+  if (metadata.provider !== undefined) nextMetadata.provider = metadata.provider;
+  if (metadata.isMeta !== undefined) nextMetadata.isMeta = metadata.isMeta;
+  if (metadata.toolDuration !== undefined) nextMetadata.toolDuration = metadata.toolDuration;
+  if (metadata.compactBoundary !== undefined) nextMetadata.compactBoundary = metadata.compactBoundary;
+
+  return {
+    ...message,
+    content: [...message.content],
+    metadata: nextMetadata,
   };
 }
 

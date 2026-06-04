@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CapabilityPlanner, detectSemanticToolStep } from './index.js';
-import type { ContextEnvelope } from '../../types/index.js';
+import type { ContextEnvelope, WorkflowTriageAgent } from '../../types/index.js';
 
 const defaultContext: ContextEnvelope = {
   fragments: [],
@@ -8,6 +8,18 @@ const defaultContext: ContextEnvelope = {
   tokenUsed: 0,
   truncated: false,
 };
+
+function repoUnderstandingTriageAgent(): WorkflowTriageAgent {
+  return {
+    name: 'repo-understanding-triage',
+    async triage() {
+      return {
+        workflow: 'repo-understanding',
+        reason: 'The user is asking for repository understanding rather than code modification.',
+      };
+    },
+  };
+}
 
 describe('detectSemanticToolStep', () => {
   it('returns undefined for empty input', () => {
@@ -130,7 +142,7 @@ describe('CapabilityPlanner', () => {
     });
   });
 
-  it('builds repo-understanding workflow for project overview questions', async () => {
+  it('does not auto-route repository understanding questions without a triage agent', async () => {
     const planner = new CapabilityPlanner();
     const plan = await planner.plan(
       {
@@ -140,11 +152,48 @@ describe('CapabilityPlanner', () => {
       defaultContext,
     );
 
-    expect(plan.steps).toHaveLength(7);
-    expect(plan.steps[0]?.title).toBe('repo.scan');
-    expect(plan.steps[0]?.kind).toBe('tool');
-    expect(plan.steps.at(-1)?.title).toBe('repo.summary');
-    expect(plan.steps.at(-1)?.kind).toBe('llm');
+    expect(plan.steps).toHaveLength(1);
+    expect(plan.steps[0]?.title).toBe('llm-reasoning');
+  });
+
+  it.each([
+    '\u4f60\u4e86\u89e3\u8fd9\u4e2a\u9879\u76ee\u5417\uff1f',
+    '\u4f60\u719f\u6089\u8fd9\u4e2a\u4ed3\u5e93\u5417\uff1f',
+    '\u5e2e\u6211\u770b\u61c2\u8fd9\u4e2a\u4ee3\u7801\u5e93',
+  ])('builds repo-understanding workflow when triage agent selects it for "%s"', async (goal) => {
+    const planner = new CapabilityPlanner({
+      workflowTriageAgent: repoUnderstandingTriageAgent(),
+    });
+    const plan = await planner.plan(
+      {
+        goal,
+        strategy: 'plan',
+      },
+      defaultContext,
+    );
+
+    expect(plan.metadata).toMatchObject({
+      workflow: 'repo-understanding',
+      workflowTriage: {
+        workflow: 'repo-understanding',
+        agent: 'repo-understanding-triage',
+      },
+    });
+    expect(plan.completionContract).toMatchObject({
+      maxRounds: 3,
+      acceptance: {
+        verifierName: 'repo-understanding',
+      },
+    });
+    expect(plan.steps.map((step) => step.title)).toEqual([
+      'repo.scan',
+      'repo.read_readme',
+      'repo.read_package_json',
+      'repo.read_pnpm_workspace',
+      'repo.read_turbo',
+      'repo.analysis',
+      'repo.summary',
+    ]);
   });
 
   it('builds coding workflow plan for modification requests with semantic hint', async () => {
@@ -179,6 +228,25 @@ describe('CapabilityPlanner', () => {
       implementation: plan.steps[2]?.id,
       taskValidation: plan.steps[3]?.id,
     });
+  });
+
+  it('keeps modification requests in coding workflow even when triage agent would choose repo-understanding', async () => {
+    const planner = new CapabilityPlanner({
+      workflowTriageAgent: repoUnderstandingTriageAgent(),
+    });
+    const plan = await planner.plan(
+      {
+        goal: '\u4fee\u6539\u8fd9\u4e2a\u9879\u76ee\u91cc\u7684 bug\uff0c\u5e76\u9a8c\u8bc1\u4fee\u590d\u7ed3\u679c',
+        strategy: 'plan',
+      },
+      defaultContext,
+    );
+
+    expect(plan.metadata).toMatchObject({
+      workflow: 'coding',
+      taskType: 'bugfix',
+    });
+    expect(plan.steps[0]?.title).toBe('coding-analysis');
   });
 
   it('builds coding workflow for feature implementation requests', async () => {

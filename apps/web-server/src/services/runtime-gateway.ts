@@ -15,12 +15,14 @@ import { ModelBackedLlmStepExecutor } from '../runtime/llm-step-executor.js';
 import { ModelChatDriver } from '../runtime/model-chat-driver.js';
 import { ModelToolRunner } from '../runtime/model-tool-runner.js';
 import { RuntimeTurnEngine } from '../runtime/runtime-turn-engine.js';
+import { ModelBackedWorkflowTriageAgent } from '../runtime/workflow-triage-agent.js';
 import type { ModelAdapterService } from './model-adapter-service.js';
 
 export {
   createCoreAgentRuntime,
   createCoreAgentRuntimeBundle,
   ModelBackedLlmStepExecutor,
+  ModelBackedWorkflowTriageAgent,
   type CoreAgentRuntimeBundle,
   type CreateCoreAgentRuntimeOptions,
 };

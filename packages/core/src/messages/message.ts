@@ -34,6 +34,32 @@ export interface ToolResultPart {
   isError?: boolean;
 }
 
+export type ThinkingStatus = 'pending' | 'running' | 'success' | 'error';
+
+export interface ThoughtChainItemPart {
+  key: string;
+  title?: string;
+  description?: string;
+  content?: string;
+  footer?: string;
+  status?: ThinkingStatus;
+  durationMs?: number;
+  collapsible?: boolean;
+}
+
+export interface ThinkingPart {
+  type: 'thinking';
+  text: string;
+  title?: string;
+  description?: string;
+  footer?: string;
+  status?: ThinkingStatus;
+  durationMs?: number;
+  defaultOpen?: boolean;
+  defaultExpandedKeys?: string[];
+  items?: ThoughtChainItemPart[];
+}
+
 export interface RunnerFilesChangedLine {
   type: 'context' | 'add' | 'del';
   text: string;
@@ -82,7 +108,7 @@ export interface FilePart {
   data: string;
 }
 
-export type ContentPart = TextPart | ImagePart | ToolCallPart | ToolResultPart | FilePart;
+export type ContentPart = TextPart | ImagePart | ToolCallPart | ToolResultPart | ThinkingPart | FilePart;
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 

@@ -5,6 +5,7 @@ import type {
   AgentRunResult,
   AgentSession,
   ContextEnvelope,
+  LlmStepExecutorLike,
   Replanner,
   ToolExecutorLike,
   ToolResult,
@@ -48,6 +49,7 @@ async function drainExecution(
     replanner?: Replanner;
     maxReplans?: number;
     request?: AgentRunRequest;
+    llmExecutor?: LlmStepExecutorLike;
   } = {},
 ): Promise<AgentRunResult> {
   const executor = new DefaultPlanExecutor({
@@ -55,6 +57,7 @@ async function drainExecution(
     scheduler: new TopologicalScheduler(),
     guardrails: new GuardrailChain([]),
     toolExecutor,
+    llmExecutor: options.llmExecutor,
     checkpointStore: new InMemoryCheckpointStore(),
     runnerRouter: new RunnerRouter([new InlineRunner()]),
     replanner: options.replanner,
@@ -194,6 +197,62 @@ describe('DefaultPlanExecutor', () => {
         mode: 'analysis',
         discovery: 'read-complete',
       },
+    });
+  });
+
+  it('emits the normalized plan shape when a session starts', async () => {
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        return {
+          name: call.name,
+          ok: true,
+          output: {
+            ok: true,
+          },
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-visible-shape',
+      strategy: 'plan',
+      metadata: {
+        workflow: 'tool-first',
+      },
+      steps: [
+        {
+          id: 'inspect',
+          title: 'inspect workspace',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.list',
+          input: {
+            path: '.',
+          },
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor);
+    const started = result.events.find((event) => event.type === 'session.started');
+
+    expect(started?.payload).toMatchObject({
+      planId: 'plan-visible-shape',
+      strategy: 'plan',
+      metadata: {
+        workflow: 'tool-first',
+      },
+      steps: [
+        {
+          id: 'inspect',
+          title: 'inspect workspace',
+          kind: 'tool',
+          toolName: 'fs.list',
+          input: {
+            path: '.',
+          },
+        },
+      ],
     });
   });
 
@@ -371,6 +430,303 @@ describe('DefaultPlanExecutor', () => {
       recovered: true,
     });
     expect(result.events.some((event) => event.type === 'session.replanned')).toBe(true);
+  });
+
+  it('retries verification on a second Ralph round and succeeds when verifier evidence appears', async () => {
+    let llmCallCount = 0;
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        if (call.name === 'fs.list') {
+          return {
+            name: call.name,
+            ok: true,
+            output: {
+              path: '.',
+              total: 3,
+              entries: [{ name: 'README.md', type: 'file' }],
+            },
+          };
+        }
+        if (call.name === 'fs.read') {
+          return {
+            name: call.name,
+            ok: true,
+            output: {
+              path: String((call.input as Record<string, unknown>).path ?? 'README.md'),
+              size: 10,
+              content: 'agent-flow',
+            },
+          };
+        }
+        return {
+          name: call.name,
+          ok: false,
+          error: `unexpected tool: ${call.name}`,
+        };
+      },
+    };
+
+    const llmExecutor: LlmStepExecutorLike = {
+      async execute(request) {
+        llmCallCount += 1;
+        if (request.step.title === 'repo.analysis') {
+          return {
+            mode: 'llm-step',
+            stepId: request.step.id,
+            title: request.step.title,
+            phase: 'analysis',
+            text: 'The repository is a monorepo.',
+            sections: {
+              analysis: 'The repository is a monorepo.',
+            },
+          };
+        }
+        if (llmCallCount < 3) {
+          return {
+            mode: 'llm-step',
+            stepId: request.step.id,
+            title: request.step.title,
+            phase: 'implementation',
+            text: 'High-level summary only.',
+            sections: {
+              implementation: 'High-level summary only.',
+            },
+            incompleteReason: 'Need direct repo evidence in the final summary.',
+            nextAction: 'Reference actual files that were scanned.',
+          };
+        }
+        return {
+          mode: 'llm-step',
+          stepId: request.step.id,
+          title: request.step.title,
+          phase: 'implementation',
+          text: 'README.md and package.json show this is an agent-flow monorepo. COMPLETE',
+          sections: {
+            implementation: 'README.md and package.json show this is an agent-flow monorepo.',
+          },
+          completionSignal: 'COMPLETE',
+          evidence: ['README.md', 'package.json'],
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-ralph-repo',
+      strategy: 'plan',
+      metadata: {
+        workflow: 'repo-understanding',
+      },
+      completionContract: {
+        objective: 'Understand the repository',
+        completionSignal: 'COMPLETE',
+        maxRounds: 3,
+        acceptance: {
+          verifierName: 'repo-understanding',
+        },
+      },
+      steps: [
+        {
+          id: 'scan',
+          title: 'repo.scan',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.list',
+          input: { path: '.' },
+        },
+        {
+          id: 'readme',
+          title: 'repo.read_readme',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.read',
+          input: { path: 'README.md' },
+        },
+        {
+          id: 'pkg',
+          title: 'repo.read_package_json',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.read',
+          input: { path: 'package.json' },
+        },
+        {
+          id: 'analysis',
+          title: 'repo.analysis',
+          kind: 'llm',
+          dependsOn: ['scan', 'readme', 'pkg'],
+          consumes: {
+            repoTree: 'scan',
+            readme: 'readme',
+            packageJson: 'pkg',
+          },
+        },
+        {
+          id: 'summary',
+          title: 'repo.summary',
+          kind: 'llm',
+          dependsOn: ['analysis'],
+          consumes: {
+            analysis: 'analysis',
+          },
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor, {
+      llmExecutor,
+    });
+
+    expect(result.status).toBe('succeeded');
+    expect(result.rounds).toBe(2);
+    expect(result.events.filter((event) => event.type === 'session.verification')).toHaveLength(2);
+    expect(
+      result.checkpoints.some((checkpoint) => checkpoint.stepId === 'ralph-round-1'),
+    ).toBe(true);
+  });
+
+  it('returns blocked after verifier fails for three Ralph rounds', async () => {
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        return {
+          name: call.name,
+          ok: true,
+          output: {
+            path: '.',
+            total: 1,
+            entries: [{ name: 'README.md', type: 'file' }],
+          },
+        };
+      },
+    };
+
+    const llmExecutor: LlmStepExecutorLike = {
+      async execute(request) {
+        return {
+          mode: 'llm-step',
+          stepId: request.step.id,
+          title: request.step.title,
+          phase: request.step.title.includes('summary') ? 'implementation' : 'analysis',
+          text: 'Still not enough evidence.',
+          sections: {
+            analysis: 'Still not enough evidence.',
+          },
+          incompleteReason: 'Need more concrete evidence.',
+          nextAction: 'Read and cite repository files directly.',
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-ralph-blocked',
+      strategy: 'plan',
+      metadata: {
+        workflow: 'repo-understanding',
+      },
+      completionContract: {
+        objective: 'Understand the repository',
+        completionSignal: 'COMPLETE',
+        maxRounds: 3,
+        acceptance: {
+          verifierName: 'repo-understanding',
+        },
+      },
+      steps: [
+        {
+          id: 'scan',
+          title: 'repo.scan',
+          kind: 'tool',
+          dependsOn: [],
+          toolName: 'fs.list',
+          input: { path: '.' },
+        },
+        {
+          id: 'summary',
+          title: 'repo.summary',
+          kind: 'llm',
+          dependsOn: ['scan'],
+          consumes: {
+            repoTree: 'scan',
+          },
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor, {
+      llmExecutor,
+    });
+
+    expect(result.status).toBe('blocked');
+    expect(result.rounds).toBe(3);
+    expect(result.verification?.status).toBe('blocked');
+    expect(result.error).toContain('Need more concrete evidence.');
+  });
+
+  it('fails verification when completion signal is required but missing', async () => {
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        return {
+          name: call.name,
+          ok: true,
+          output: {
+            command: 'pnpm test',
+            stdout: ['ok'],
+            stderr: [],
+          },
+        };
+      },
+    };
+
+    const llmExecutor: LlmStepExecutorLike = {
+      async execute(request) {
+        return {
+          mode: 'llm-step',
+          stepId: request.step.id,
+          title: request.step.title,
+          phase: 'verification',
+          text: 'Verification looks good.',
+          sections: {
+            verification: 'Verification looks good.',
+          },
+          evidence: ['pnpm test passed'],
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-signal-required',
+      strategy: 'plan',
+      metadata: {
+        workflow: 'generic',
+      },
+      completionContract: {
+        objective: 'Verify completion',
+        completionSignal: 'COMPLETE',
+        maxRounds: 1,
+        acceptance: {
+          verifierName: 'generic',
+          requireCompletionSignal: true,
+        },
+      },
+      steps: [
+        {
+          id: 'verification',
+          title: 'quality-verification',
+          kind: 'llm',
+          dependsOn: [],
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor, {
+      llmExecutor,
+    });
+
+    expect(result.status).toBe('blocked');
+    expect(result.verification).toMatchObject({
+      status: 'blocked',
+      verifierName: 'generic',
+    });
+    expect(result.error).toContain('Completion signal was required');
   });
 
   it('uses built-in coding replanner to recover coding task failures', async () => {

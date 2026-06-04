@@ -1,5 +1,5 @@
 import axios, { type AxiosRequestConfig } from 'axios';
-import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
+import type { FilePart, TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
 
 interface ApiErrorPayload {
   code?: string | number;
@@ -37,7 +37,7 @@ export class ApiBusinessError extends Error {
 
 export interface SessionRecord {
   sessionId: string;
-  projectId?: string;
+  projectId: string | null;
   title?: string;
   createdAt: string;
   updatedAt: string;
@@ -385,11 +385,11 @@ export async function streamRunners({
   const decoder = new TextDecoder();
   let buffer = '';
 
-  const handleData = (payload: string) => {
-    if (payload === '[DONE]') {
-      return;
-    }
-    const parsed = JSON.parse(payload) as { runners?: RunnerRecord[]; error?: string };
+  const handleFrame = (frame: { data: string }) => {
+    if (frame.data === '[DONE]') return;
+    if (!frame.data) return;
+
+    const parsed = JSON.parse(frame.data) as { runners?: RunnerRecord[]; error?: string };
     if (parsed.error) {
       throw new Error(parsed.error);
     }
@@ -402,11 +402,11 @@ export async function streamRunners({
     const chunk = await reader.read();
     if (chunk.done) break;
     buffer += decoder.decode(chunk.value, { stream: true });
-    buffer = consumeSseBuffer(buffer, handleData);
+    buffer = consumeSseBuffer(buffer, handleFrame);
   }
 
   buffer += decoder.decode();
-  consumeSseBuffer(buffer, handleData);
+  consumeSseBuffer(buffer, handleFrame);
 }
 
 export async function fetchRunnerDownloads(): Promise<{
@@ -493,7 +493,8 @@ interface StreamChatOptions {
   approval_ticket?: string;
   attachments?: FilePart[];
   signal?: AbortSignal;
-  onEvent: (event: ChatStreamEvent) => void;
+  onDeltaApplied: (doc: StreamDoc) => void;
+  onUsage?: (usage: UsageFrame, doc: StreamDoc) => void;
 }
 
 export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
@@ -506,53 +507,62 @@ export interface ApprovalReqPayload {
   reason?: string;
 }
 
-export type ChatStreamEvent =
-  | {
-      type: 'msg';
-      msg: UnifiedMessage;
-    }
-  | {
-      type: 'msg_delta';
-      msg_id: string;
-      delta: string;
-    }
-  | {
-      type: 'spec_doc_update';
-      msg_id: string;
-      doc_type: SpecDocType;
-      content: string;
-      delta?: string;
-      done: boolean;
-    }
-  | {
-      type: 'approval_req';
-      approval: ApprovalReqPayload;
-    }
-  | {
-      type: 'error';
-      err: {
-        code: string;
-        msg: string;
-        details?: unknown;
-      };
-    };
+export type StreamDoc = {
+  messages: Record<string, UnifiedMessage>;
+  order: string[];
+  spec_docs: Partial<Record<SpecDocType, string>>;
+  approval: null | ApprovalReqPayload;
+  usage_by_msg: Record<string, TokenUsage>;
+};
 
-function consumeSseBuffer(buffer: string, onData: (data: string) => void): string {
-  let current = buffer;
+export type UsageFrame = {
+  usage_by_msg: Record<string, TokenUsage>;
+};
+
+type FullDeltaFrame =
+  | { p: string; o: 'add' | 'replace' | 'remove'; v?: unknown }
+  | { p: string; o: 'append'; v: unknown };
+
+type DeltaPatchFrame = { o: 'patch'; v: FullDeltaFrame[] };
+type DeltaShorthandFrame = { v: string };
+type DeltaFrame = FullDeltaFrame | DeltaPatchFrame | DeltaShorthandFrame;
+
+type SseFrame = {
+  event: string | null;
+  id: string | null;
+  data: string;
+};
+
+function consumeSseBuffer(buffer: string, onFrame: (frame: SseFrame) => void): string {
+  let current = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   let boundaryIndex = current.indexOf('\n\n');
 
   while (boundaryIndex !== -1) {
     const rawEvent = current.slice(0, boundaryIndex);
     current = current.slice(boundaryIndex + 2);
 
-    const data = rawEvent
-      .split('\n')
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.slice(5).trimStart())
-      .join('\n');
+    let event: string | null = null;
+    let id: string | null = null;
+    const dataLines: string[] = [];
 
-    if (data) {
-      onData(data);
+    rawEvent.split('\n').forEach((line) => {
+      if (!line || line.startsWith(':')) return;
+      if (line.startsWith('event:')) {
+        event = line.slice(6).trim();
+        return;
+      }
+      if (line.startsWith('id:')) {
+        id = line.slice(3).trim();
+        return;
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trimStart());
+      }
+    });
+
+    const data = dataLines.join('\n');
+    if (data || event || id) {
+      onFrame({ event, id, data });
     }
 
     boundaryIndex = current.indexOf('\n\n');
@@ -572,7 +582,8 @@ export async function streamChat({
   approval_ticket,
   attachments,
   signal,
-  onEvent,
+  onDeltaApplied,
+  onUsage,
 }: StreamChatOptions): Promise<void> {
   const token = getAccessToken();
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -611,28 +622,281 @@ export async function streamChat({
   let buffer = '';
   let done = false;
 
-  const handleData = (payload: string) => {
-    if (payload === '[DONE]') {
+  let deltaEncoding: string | null = null;
+  let lastAppendPatch: { p: string; o: 'append' } | null = null;
+
+  let doc: StreamDoc = {
+    messages: {},
+    order: [],
+    spec_docs: {},
+    approval: null,
+    usage_by_msg: {},
+  };
+
+  const applyDelta = (nextDoc: StreamDoc, frame: DeltaFrame): StreamDoc => {
+    if (isDeltaShorthandFrame(frame)) {
+      if (!lastAppendPatch) {
+        throw new Error('Invalid delta shorthand frame: missing previous append operation');
+      }
+      return applyFullDelta(nextDoc, { p: lastAppendPatch.p, o: lastAppendPatch.o, v: frame.v });
+    }
+
+    if (isDeltaPatchFrame(frame)) {
+      lastAppendPatch = null;
+      return frame.v.reduce((acc, op) => applyFullDelta(acc, op), nextDoc);
+    }
+
+    if (frame.o === 'append') {
+      lastAppendPatch = { p: frame.p, o: 'append' };
+    } else {
+      lastAppendPatch = null;
+    }
+
+    return applyFullDelta(nextDoc, frame);
+  };
+
+  const handleFrame = (frame: SseFrame) => {
+    if (frame.data === '[DONE]') {
       done = true;
       return;
     }
 
-    const parsed = JSON.parse(payload) as ChatStreamEvent;
-    if (parsed.type === 'error') {
-      throw new Error(parsed.err.msg || 'Streaming failed');
+    if (frame.event === 'error') {
+      const payload = JSON.parse(frame.data) as { code?: string; message?: string };
+      throw new Error(payload.message || 'Streaming failed');
     }
-    onEvent(parsed);
+
+    if (frame.event === 'delta_encoding') {
+      const parsed = JSON.parse(frame.data) as string;
+      deltaEncoding = parsed;
+      if (deltaEncoding !== 'v1') {
+        throw new Error(`Unsupported delta encoding: ${deltaEncoding}`);
+      }
+      return;
+    }
+
+    if (frame.event === 'usage') {
+      const usage = JSON.parse(frame.data) as UsageFrame;
+      doc = {
+        ...doc,
+        usage_by_msg: { ...doc.usage_by_msg, ...(usage.usage_by_msg ?? {}) },
+      };
+      onUsage?.(usage, doc);
+      onDeltaApplied(doc);
+      return;
+    }
+
+    if (frame.event === 'delta') {
+      if (deltaEncoding !== 'v1') {
+        // Allow servers that send delta before delta_encoding, but still enforce v1 once seen.
+        deltaEncoding = deltaEncoding ?? 'v1';
+      }
+      const delta = JSON.parse(frame.data) as DeltaFrame;
+      doc = applyDelta(doc, delta);
+      onDeltaApplied(doc);
+    }
   };
 
   while (!done) {
     const chunk = await reader.read();
     if (chunk.done) break;
     buffer += decoder.decode(chunk.value, { stream: true });
-    buffer = consumeSseBuffer(buffer, handleData);
+    buffer = consumeSseBuffer(buffer, handleFrame);
   }
 
   buffer += decoder.decode();
-  consumeSseBuffer(buffer, handleData);
+  consumeSseBuffer(buffer, handleFrame);
+}
+
+function isDeltaPatchFrame(frame: DeltaFrame): frame is DeltaPatchFrame {
+  return (frame as DeltaPatchFrame).o === 'patch' && Array.isArray((frame as DeltaPatchFrame).v);
+}
+
+function isDeltaShorthandFrame(frame: DeltaFrame): frame is DeltaShorthandFrame {
+  return (
+    (frame as DeltaShorthandFrame).v !== undefined &&
+    typeof (frame as DeltaShorthandFrame).v === 'string' &&
+    (frame as Partial<FullDeltaFrame>).p === undefined
+  );
+}
+
+function decodeJsonPointer(pointer: string): string[] {
+  if (!pointer) return [];
+  if (!pointer.startsWith('/')) {
+    throw new Error(`Invalid JSON pointer: ${pointer}`);
+  }
+  return pointer
+    .slice(1)
+    .split('/')
+    .map((token) => token.replace(/~1/g, '/').replace(/~0/g, '~'));
+}
+
+function isArrayIndexToken(token: string): boolean {
+  return /^[0-9]+$/.test(token);
+}
+
+function cloneOrCreateContainer(value: unknown, wantArray: boolean): any {
+  if (wantArray) {
+    return Array.isArray(value) ? value.slice() : [];
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>) };
+  }
+  return {};
+}
+
+function getChild(container: any, token: string): any {
+  if (Array.isArray(container)) {
+    const index = Number(token);
+    if (!Number.isFinite(index)) return undefined;
+    return container[index];
+  }
+  if (container && typeof container === 'object') {
+    return container[token];
+  }
+  return undefined;
+}
+
+function setChild(container: any, token: string, value: any): void {
+  if (Array.isArray(container)) {
+    const index = Number(token);
+    if (!Number.isFinite(index)) {
+      throw new Error(`Invalid array index token: ${token}`);
+    }
+    container[index] = value;
+    return;
+  }
+  if (container && typeof container === 'object') {
+    container[token] = value;
+    return;
+  }
+  throw new Error(`Cannot set child on non-container value: ${String(container)}`);
+}
+
+function removeChild(container: any, token: string): void {
+  if (Array.isArray(container)) {
+    const index = Number(token);
+    if (!Number.isFinite(index)) return;
+    container.splice(index, 1);
+    return;
+  }
+  if (container && typeof container === 'object') {
+    delete container[token];
+  }
+}
+
+function getAtPointer(root: any, tokens: string[]): any {
+  let current = root;
+  for (const token of tokens) {
+    if (current == null) return undefined;
+    current = getChild(current, token);
+  }
+  return current;
+}
+
+function setAtPointer<T>(root: T, pointer: string, value: unknown): T {
+  const tokens = decodeJsonPointer(pointer);
+  if (tokens.length === 0) {
+    return value as T;
+  }
+
+  const nextRoot = cloneOrCreateContainer(root as unknown, Array.isArray(root));
+  let nextCursor: any = nextRoot;
+  let prevCursor: any = root;
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const isLast = index === tokens.length - 1;
+
+    if (isLast) {
+      setChild(nextCursor, token, value);
+      break;
+    }
+
+    const nextToken = tokens[index + 1];
+    const wantArray = isArrayIndexToken(nextToken);
+    const prevChild = getChild(prevCursor, token);
+    const ensuredPrevChild = wantArray
+      ? (Array.isArray(prevChild) ? prevChild : [])
+      : (prevChild && typeof prevChild === 'object' && !Array.isArray(prevChild) ? prevChild : {});
+    const clonedChild = cloneOrCreateContainer(ensuredPrevChild, wantArray);
+    setChild(nextCursor, token, clonedChild);
+    nextCursor = clonedChild;
+    prevCursor = ensuredPrevChild;
+  }
+
+  return nextRoot as T;
+}
+
+function removeAtPointer<T>(root: T, pointer: string): T {
+  const tokens = decodeJsonPointer(pointer);
+  if (tokens.length === 0) {
+    return root;
+  }
+
+  const nextRoot = cloneOrCreateContainer(root as unknown, Array.isArray(root));
+  let nextCursor: any = nextRoot;
+  let prevCursor: any = root;
+
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const token = tokens[index];
+    const nextToken = tokens[index + 1];
+    const wantArray = isArrayIndexToken(nextToken);
+    const prevChild = getChild(prevCursor, token);
+    const ensuredPrevChild = wantArray
+      ? (Array.isArray(prevChild) ? prevChild : [])
+      : (prevChild && typeof prevChild === 'object' && !Array.isArray(prevChild) ? prevChild : {});
+    const clonedChild = cloneOrCreateContainer(ensuredPrevChild, wantArray);
+    setChild(nextCursor, token, clonedChild);
+    nextCursor = clonedChild;
+    prevCursor = ensuredPrevChild;
+  }
+
+  removeChild(nextCursor, tokens[tokens.length - 1]);
+  return nextRoot as T;
+}
+
+function appendAtPointer<T>(root: T, pointer: string, value: unknown): T {
+  const tokens = decodeJsonPointer(pointer);
+  const current = getAtPointer(root, tokens);
+
+  if (typeof current === 'string') {
+    return setAtPointer(root, pointer, `${current}${String(value ?? '')}`);
+  }
+
+  if (Array.isArray(current)) {
+    if (Array.isArray(value)) {
+      return setAtPointer(root, pointer, [...current, ...value]);
+    }
+    return setAtPointer(root, pointer, [...current, value]);
+  }
+
+  if (current === undefined || current === null) {
+    if (typeof value === 'string') {
+      return setAtPointer(root, pointer, value);
+    }
+    if (Array.isArray(value)) {
+      return setAtPointer(root, pointer, [...value]);
+    }
+    return setAtPointer(root, pointer, value);
+  }
+
+  if (typeof current === 'object') {
+    // Fallback: treat append as replace for non-string/object values.
+    return setAtPointer(root, pointer, value);
+  }
+
+  return setAtPointer(root, pointer, value);
+}
+
+function applyFullDelta(doc: StreamDoc, frame: FullDeltaFrame): StreamDoc {
+  if (frame.o === 'remove') {
+    return removeAtPointer(doc, frame.p);
+  }
+  if (frame.o === 'append') {
+    return appendAtPointer(doc, frame.p, frame.v);
+  }
+  return setAtPointer(doc, frame.p, frame.v);
 }
 
 export async function retrySessionMessage(input: {

@@ -6,12 +6,13 @@ import { extractApprovalRequiredFromError, parseApprovalRequiredErrorMessage } f
 import { AsyncQueue } from '../lib/async-queue.js';
 import { createTextMessage } from '../lib/messages.js';
 import { ApprovalRequiredError } from './approval-error.js';
-import { toApprovalRequiredEvent, toMessageEvent, toProgressMessage } from './message-mappers.js';
+import { toApprovalRequiredEvent, toMessageEvent, toProgressMessage, toThinkingEvent } from './message-mappers.js';
 import { ModelChatDriver } from './model-chat-driver.js';
 import { buildAgentRequest } from './runtime-request-builder.js';
 import { parseRunnerDirective, resolveRuntimeMode } from './runtime-router.js';
 import { isRuntimeDiagnosticText } from './runtime-diagnostics.js';
 import { extractRuntimeStepTraces, extractRuntimeSteps, renderAssistantText } from './runtime-renderers.js';
+import { buildRuntimeThinkingMessage } from './runtime-thinking.js';
 import {
   MAX_AUTONOMOUS_MODEL_TOOL_ROUNDS,
   type RunnerDirective,
@@ -140,19 +141,44 @@ export class RuntimeTurnEngine {
   ): Promise<void> {
     const { input, parentUuid, queue, span } = context;
     const eventCountByType = new Map<string, number>();
-    const emittedEventIds = new Set<string>();
+    const seenEventIds = new Set<string>();
+    const runtimeEvents: AgentEvent[] = [];
+    const thinkingStartedAt = Date.now();
     const runRequest = buildAgentRequest(input, recalled, runnerDirective, runtimeMode);
+    const recordRuntimeEvent = (event: AgentEvent): boolean => {
+      if (seenEventIds.has(event.id)) {
+        return false;
+      }
+      seenEventIds.add(event.id);
+      runtimeEvents.push(event);
+      eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
+      return true;
+    };
     const emitRuntimeProgress = (event: AgentEvent) => {
-      emittedEventIds.add(event.id);
       const progressMessage = toProgressMessage(input, parentUuid, event);
       if (progressMessage) {
         queue.push(toMessageEvent(progressMessage));
       }
     };
+    const emitThinkingSnapshot = (result?: Awaited<ReturnType<AgentRuntime['run']>>) => {
+      queue.push(
+        toThinkingEvent(
+          buildRuntimeThinkingMessage({
+            input,
+            parentUuid,
+            runtimeMode,
+            runnerDirective,
+            events: runtimeEvents,
+            result,
+            startedAt: thinkingStartedAt,
+          }),
+        ),
+      );
+    };
 
     const result = await this.runtime.run(runRequest, {
       onEvent: async (event) => {
-        eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
+        const isNew = recordRuntimeEvent(event);
         // Emit raw runtime events for end-to-end traceability. Enable via LOG_LEVEL=debug.
         void this.logger?.debug('runtime.event', 'core runtime event', {
           traceId: span?.traceId,
@@ -165,18 +191,25 @@ export class RuntimeTurnEngine {
           },
         });
         emitRuntimeProgress(event);
+        if (isNew && shouldRefreshThinking(event)) {
+          emitThinkingSnapshot();
+        }
       },
     });
 
     // Some executors expose fine-grained events only on the final result. Flush any events
     // missed by live onEvent delivery so the UI can always reconstruct the runtime trace.
     for (const event of result.events) {
-      if (emittedEventIds.has(event.id)) {
+      const isNew = recordRuntimeEvent(event);
+      if (!isNew) {
         continue;
       }
-      eventCountByType.set(event.type, (eventCountByType.get(event.type) ?? 0) + 1);
       emitRuntimeProgress(event);
+      if (shouldRefreshThinking(event)) {
+        emitThinkingSnapshot();
+      }
     }
+    emitThinkingSnapshot(result);
 
     const approvalFromResult = extractApprovalFromAgentRunResult(result);
     if (approvalFromResult) {
@@ -266,6 +299,8 @@ export class RuntimeTurnEngine {
               coreSessionId: result.sessionId,
               status: result.status,
               eventCount: result.events.length,
+              rounds: result.rounds,
+              verification: result.verification,
               runtimeMode,
               plannedSteps: extractRuntimeSteps(result),
               plannedStepDetails: extractRuntimeStepTraces(result),
@@ -368,6 +403,19 @@ function extractApprovalFromAgentRunResult(
     return null;
   }
   return parseApprovalRequiredErrorMessage(result.error);
+}
+
+function shouldRefreshThinking(event: AgentEvent): boolean {
+  return (
+    event.type === 'session.started' ||
+    event.type === 'session.replanned' ||
+    event.type === 'session.completed' ||
+    event.type === 'session.failed' ||
+    event.type === 'step.completed' ||
+    event.type === 'step.failed' ||
+    event.type === 'tool.result' ||
+    event.type === 'checkpoint.created'
+  );
 }
 
 function extractApprovalFromUnknown(

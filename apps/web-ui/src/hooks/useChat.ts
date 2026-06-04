@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
-import type { ContentPart, FilePart, UnifiedMessage } from '@agent-flow/core/messages';
+import type { ContentPart, FilePart, TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
 import {
   fetchSession,
   streamChat,
   type SessionRecord,
   type ApprovalReqPayload,
-  type ChatStreamEvent,
+  type SpecDocType,
+  type StreamDoc,
 } from '../api.js';
 
 interface SendMessageInput {
@@ -20,7 +21,7 @@ interface SendMessageInput {
   approvalTicket?: string;
   attachments?: FileAttachment[];
   optimisticUserMessage?: boolean;
-  onSpecDocUpdate?: (event: Extract<ChatStreamEvent, { type: 'spec_doc_update' }>) => void;
+  onSpecDocUpdate?: (event: { doc_type: SpecDocType; content: string }) => void;
 }
 
 export interface PendingApprovalRequest {
@@ -40,6 +41,7 @@ interface UseChatReturn {
   isConnecting: boolean;
   isStreaming: boolean;
   typingMessageId: string | null;
+  usageByMessageId: Record<string, TokenUsage>;
 }
 
 function createMessageId(): string {
@@ -74,50 +76,66 @@ function createUserContent(text: string, attachments?: FileAttachment[]): Conten
   return fileParts.length ? [...content, ...fileParts] : content;
 }
 
-function upsertMessage(messages: UnifiedMessage[], message: UnifiedMessage): UnifiedMessage[] {
-  const index = messages.findIndex((candidate) => candidate.uuid === message.uuid);
-  if (index < 0) {
-    return [...messages, message];
+function toClientMessage(message: UnifiedMessage): UnifiedMessage {
+  const metadata = message.metadata ?? {};
+  const nextMetadata: UnifiedMessage['metadata'] = {};
+
+  if (metadata.modelId !== undefined) nextMetadata.modelId = metadata.modelId;
+  if (metadata.model !== undefined) nextMetadata.model = metadata.model;
+  if (metadata.provider !== undefined) nextMetadata.provider = metadata.provider;
+  if (metadata.isMeta !== undefined) nextMetadata.isMeta = metadata.isMeta;
+  if (metadata.toolDuration !== undefined) nextMetadata.toolDuration = metadata.toolDuration;
+  if (metadata.compactBoundary !== undefined) nextMetadata.compactBoundary = metadata.compactBoundary;
+
+  return {
+    ...message,
+    content: [...message.content],
+    metadata: nextMetadata,
+  };
+}
+
+function mergeStreamDoc(messages: UnifiedMessage[], doc: StreamDoc): UnifiedMessage[] {
+  if (!doc.order.length) return messages;
+
+  const indexById = new Map(messages.map((message, index) => [message.uuid, index]));
+  let next = messages;
+  let cloned = false;
+
+  for (const msgId of doc.order) {
+    const message = doc.messages[msgId];
+    if (!message) continue;
+
+    const existingIndex = indexById.get(msgId);
+    if (existingIndex == null) {
+      if (!cloned) {
+        next = [...next];
+        cloned = true;
+      }
+      next.push(message);
+      indexById.set(msgId, next.length - 1);
+      continue;
+    }
+
+    if (next[existingIndex] !== message) {
+      if (!cloned) {
+        next = [...next];
+        cloned = true;
+      }
+      next[existingIndex] = message;
+    }
   }
-  const next = [...messages];
-  next[index] = message;
+
   return next;
 }
 
-function upsertMessageDelta(
-  messages: UnifiedMessage[],
-  deltaEvent: Extract<ChatStreamEvent, { type: 'msg_delta' }>,
-): UnifiedMessage[] {
-  const index = messages.findIndex((candidate) => candidate.uuid === deltaEvent.msg_id);
-  if (index < 0) {
-    return [
-      ...messages,
-      {
-        uuid: deltaEvent.msg_id,
-        parentUuid: null,
-        role: 'assistant',
-        content: [{ type: 'text', text: deltaEvent.delta }],
-        timestamp: new Date().toISOString(),
-        metadata: {},
-      },
-    ];
+function findLatestAssistantMessageId(doc: StreamDoc): string | null {
+  for (let i = doc.order.length - 1; i >= 0; i -= 1) {
+    const msgId = doc.order[i];
+    const message = doc.messages[msgId];
+    if (!message) continue;
+    if (message.role === 'assistant') return msgId;
   }
-
-  const target = messages[index];
-  const currentText = target.content
-    .filter((part): part is Extract<ContentPart, { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('');
-
-  const next: UnifiedMessage = {
-    ...target,
-    role: 'assistant',
-    timestamp: new Date().toISOString(),
-    content: [{ type: 'text', text: `${currentText}${deltaEvent.delta}` }],
-  };
-  const cloned = [...messages];
-  cloned[index] = next;
-  return cloned;
+  return null;
 }
 
 export function useChat(): UseChatReturn {
@@ -127,6 +145,7 @@ export function useChat(): UseChatReturn {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [typingMessageId, setTypingMessageId] = useState<string | null>(null);
+  const [usageByMessageId, setUsageByMessageId] = useState<Record<string, TokenUsage>>({});
   const streamAbortRef = useRef<AbortController | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const loadSequenceRef = useRef(0);
@@ -160,6 +179,7 @@ export function useChat(): UseChatReturn {
       setMessages([]);
       setSessionRecord(null);
       setTypingMessageId(null);
+      setUsageByMessageId({});
       setIsConnecting(false);
       commitPendingApproval(null);
       return;
@@ -173,9 +193,10 @@ export function useChat(): UseChatReturn {
       }
       // Avoid overriding optimistic stream state while a response is still in flight.
       if (streamAbortRef.current) return;
-      setMessages(payload.messages);
+      setMessages(payload.messages.map(toClientMessage));
       setSessionRecord(payload.session);
       setTypingMessageId(null);
+      setUsageByMessageId({});
     } finally {
       if (loadSequenceRef.current === currentLoad) {
         setIsConnecting(false);
@@ -188,15 +209,17 @@ export function useChat(): UseChatReturn {
       setMessages([]);
       setSessionRecord(null);
       setTypingMessageId(null);
+      setUsageByMessageId({});
       commitPendingApproval(null);
       return;
     }
 
     const payload = await fetchSession(sessionId);
     if (activeSessionRef.current === sessionId && !streamAbortRef.current) {
-      setMessages(payload.messages);
+      setMessages(payload.messages.map(toClientMessage));
       setSessionRecord(payload.session);
       setTypingMessageId(null);
+      setUsageByMessageId({});
     }
   }, [commitPendingApproval]);
 
@@ -239,6 +262,7 @@ export function useChat(): UseChatReturn {
       setTypingMessageId(null);
       setIsStreaming(true);
       setIsConnecting(false);
+      setUsageByMessageId({});
 
       const controller = new AbortController();
       streamAbortRef.current = controller;
@@ -248,6 +272,8 @@ export function useChat(): UseChatReturn {
         .filter((part): part is FilePart => part !== null);
 
       try {
+        let lastSpecDocs: Partial<Record<SpecDocType, string>> = {};
+
         await streamChat({
           message: userInput,
           model_id: model,
@@ -259,12 +285,12 @@ export function useChat(): UseChatReturn {
           approval_ticket: approvalTicket,
           attachments: attachmentParts.length ? attachmentParts : undefined,
           signal: controller.signal,
-          onEvent: (event) => {
+          onDeltaApplied: (doc) => {
             if (activeSessionRef.current !== sessionId) return;
 
-            if (event.type === 'approval_req') {
+            if (doc.approval && !pendingApprovalRef.current) {
               commitPendingApproval({
-                approval: event.approval,
+                approval: doc.approval,
                 pendingInput: {
                   text: userInput,
                   sessionId,
@@ -277,30 +303,26 @@ export function useChat(): UseChatReturn {
                 },
               });
               setTypingMessageId(null);
-              return;
             }
 
-            if (event.type === 'spec_doc_update') {
-              onSpecDocUpdate?.(event);
-              return;
+            if (onSpecDocUpdate) {
+              (Object.keys(doc.spec_docs) as SpecDocType[]).forEach((docType) => {
+                const content = doc.spec_docs[docType];
+                if (typeof content !== 'string') return;
+                if (lastSpecDocs[docType] === content) return;
+                lastSpecDocs = { ...lastSpecDocs, [docType]: content };
+                onSpecDocUpdate({ doc_type: docType, content });
+              });
             }
 
-            if (event.type === 'msg_delta') {
-              setMessages((prev) => upsertMessageDelta(prev, event));
-              setTypingMessageId(event.msg_id);
-              return;
-            }
-            if (event.type === 'error') {
-              throw new Error(event.err.msg || 'Streaming failed');
-            }
-
-            const msg = event.msg;
-            // Server stream includes the user message; skip it to avoid duplicates.
-            if (msg.role === 'user') return;
-            setMessages((prev) => upsertMessage(prev, msg));
-            if (msg.role === 'assistant' && !msg.metadata?.isMeta) {
-              setTypingMessageId(msg.uuid);
-            }
+            setUsageByMessageId(doc.usage_by_msg);
+            setMessages((prev) => mergeStreamDoc(prev, doc));
+            setTypingMessageId(findLatestAssistantMessageId(doc));
+          },
+          onUsage: (usage, doc) => {
+            if (activeSessionRef.current !== sessionId) return;
+            setUsageByMessageId((prev) => ({ ...prev, ...(usage.usage_by_msg ?? {}) }));
+            setMessages((prev) => mergeStreamDoc(prev, doc));
           },
         });
       } finally {
@@ -355,5 +377,6 @@ export function useChat(): UseChatReturn {
     isConnecting,
     isStreaming,
     typingMessageId,
+    usageByMessageId,
   };
 }

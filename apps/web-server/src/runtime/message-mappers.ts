@@ -126,6 +126,9 @@ export function toAdapterParts(message: UnifiedMessage): MessagePart[] {
         result: part.output,
         isError: part.isError,
       });
+    } else if (part.type === 'thinking') {
+      // Thinking cards are visible execution summaries, not prompt context for the next model turn.
+      continue;
     }
   }
 
@@ -156,6 +159,17 @@ export function toUnifiedTokenUsage(usage: AdapterTokenUsage): TokenUsage {
 export function toMessageEvent(message: UnifiedMessage): ChatStreamEvent {
   return {
     type: 'msg',
+    msg: {
+      ...message,
+      content: [...message.content],
+      metadata: cloneMessageMetadata(message.metadata),
+    },
+  };
+}
+
+export function toThinkingEvent(message: UnifiedMessage): ChatStreamEvent {
+  return {
+    type: 'thinking',
     msg: {
       ...message,
       content: [...message.content],
@@ -235,12 +249,53 @@ export function toProgressMessage(
     );
   }
 
+  if (event.type === 'session.verification') {
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      event.id,
+      'agent.verification',
+      {
+        status: readString(payload.status) ?? 'unknown',
+        round: payload.round,
+        verifierName: readString(payload.verifierName),
+        reason: readString(payload.reason),
+        missingEvidence: payload.missingEvidence,
+        evidence: payload.evidence,
+        nextAction: readString(payload.nextAction),
+        completionSignalObserved: payload.completionSignalObserved === true,
+      },
+      payload.status === 'blocked',
+      {
+        streamEvent: event.type,
+        payload: event.payload,
+      },
+    );
+  }
+
   if (event.type === 'session.completed') {
     return createProgressToolResultMessage(input, parentUuid, event.id, 'agent.session', {
       status: 'completed',
       checkpoints: payload.checkpoints,
       replanCount: payload.replanCount,
+      rounds: payload.rounds,
+      verification: payload.verification,
     }, false, {
+      streamEvent: event.type,
+      payload: event.payload,
+    });
+  }
+
+  if (event.type === 'session.blocked') {
+    return createProgressToolResultMessage(input, parentUuid, event.id, 'agent.session', {
+      status: 'blocked',
+      reason: readString(payload.reason) ?? 'verification blocked',
+      rounds: payload.rounds,
+      verifierName: readString(payload.verifierName),
+      missingEvidence: payload.missingEvidence,
+      nextAction: readString(payload.nextAction),
+      verification: payload.verification,
+    }, true, {
       streamEvent: event.type,
       payload: event.payload,
     });
@@ -251,6 +306,8 @@ export function toProgressMessage(
       status: 'failed',
       error: readString(payload.error) ?? 'unknown error',
       replanCount: payload.replanCount,
+      rounds: payload.rounds,
+      verification: payload.verification,
       details: payload,
     }, true, {
       streamEvent: event.type,

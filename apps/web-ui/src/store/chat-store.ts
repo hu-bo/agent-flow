@@ -20,7 +20,7 @@ export const useChatStore = create<ChatStoreState>((set) => ({
   activeProjectId: null,
   pendingNewChatProjectId: null,
   pendingNewChatPlacement: null,
-  runtimeTraceEnabled: true,
+  runtimeTraceEnabled: false,
   sessionListRefreshVersion: 0,
   setActiveSession: (sessionId) => set({ activeSessionId: sessionId }),
   setActiveProject: (projectId) => set({ activeProjectId: projectId }),

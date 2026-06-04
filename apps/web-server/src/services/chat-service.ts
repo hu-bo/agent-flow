@@ -241,6 +241,15 @@ export class ChatService {
           continue;
         }
 
+        if (event.type === 'thinking') {
+          const upserted = await this.sessionService.upsertMessage(prepared.session.sessionId, event.msg);
+          yield {
+            type: 'thinking',
+            msg: upserted,
+          };
+          continue;
+        }
+
         yield event;
       }
 
@@ -263,7 +272,7 @@ export class ChatService {
         session = step.value;
         break;
       }
-      if (step.value.type === 'msg') {
+      if (step.value.type === 'msg' || step.value.type === 'thinking') {
         messages.push(step.value.msg);
       }
     }
@@ -478,6 +487,7 @@ function extractMemoryText(message: UnifiedMessage): string {
       if (part.type === 'file') return `[file:${part.mimeType}]`;
       if (part.type === 'tool-call') return `[tool-call:${part.toolName}]`;
       if (part.type === 'tool-result') return `[tool-result:${part.toolName}]`;
+      if (part.type === 'thinking') return part.text;
       if (part.type === 'image') return '[image]';
       return '';
     })

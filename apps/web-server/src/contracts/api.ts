@@ -151,6 +151,11 @@ export interface ChatStreamSpecDocUpdateEvent {
   done: boolean;
 }
 
+export interface ChatStreamThinkingEvent {
+  type: 'thinking';
+  msg: UnifiedMessage;
+}
+
 export type ApprovalRiskLevel = ApprovalRequiredPayload['risk'];
 export type ChatStreamApprovalPayload = ApprovalRequiredPayload;
 
@@ -172,6 +177,7 @@ export type ChatStreamEvent =
   | ChatStreamMessageEvent
   | ChatStreamMessageDeltaEvent
   | ChatStreamSpecDocUpdateEvent
+  | ChatStreamThinkingEvent
   | ChatStreamApprovalRequiredEvent
   | ChatStreamErrorEvent;
 

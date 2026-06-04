@@ -17,7 +17,13 @@ import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
 import { RunnerApprovalService } from './runner-approval-service.js';
 import { RemoteRunner } from './remote-runner.js';
-import { ModelBackedLlmStepExecutor, createCoreAgentRuntimeBundle, createCoreRuntimeTurnEngine } from './runtime-gateway.js';
+import {
+  ModelBackedLlmStepExecutor,
+  ModelBackedWorkflowTriageAgent,
+  createCoreAgentRuntimeBundle,
+  createCoreRuntimeTurnEngine,
+} from './runtime-gateway.js';
+import { DbCheckpointStore, DbReplayStore, DbSessionStore } from '../runtime/db-runtime-stores.js';
 import { SessionService } from './session-service.js';
 import { SpecWorkflowService } from './spec-workflow-service.js';
 import { TaskService } from './task-service.js';
@@ -65,11 +71,22 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const sessionService = new SessionService(db, process.cwd());
   const runnerDirectoryService = new RunnerDirectoryService(runnerDispatchService, runnerRegistryService);
   const remoteRunner = new RemoteRunner(runnerDispatchService);
+  const coreSessionStore = new DbSessionStore(db);
+  const coreCheckpointStore = new DbCheckpointStore(db);
+  const coreReplayStore = new DbReplayStore(db);
   const runtimeBundle = createCoreAgentRuntimeBundle({
     cwd: process.cwd(),
     runners: [remoteRunner],
     runnerDispatchService,
-    llmExecutor: new ModelBackedLlmStepExecutor(modelAdapterService),
+    createLlmExecutor: ({ toolRegistry, toolExecutor }) =>
+      new ModelBackedLlmStepExecutor(modelAdapterService, {
+        toolRegistry,
+        toolExecutor,
+      }),
+    workflowTriageAgent: new ModelBackedWorkflowTriageAgent(modelAdapterService),
+    sessionStore: coreSessionStore,
+    checkpointStore: coreCheckpointStore,
+    replayStore: coreReplayStore,
   });
   const { runtime, toolRegistry, toolExecutor } = runtimeBundle;
   const runtimeTurnEngine = createCoreRuntimeTurnEngine({

@@ -50,7 +50,7 @@ export function createSseStream(
       writeFrame([`:${text}`]);
     },
     send(data: unknown, event?: string) {
-      const payload = typeof data === 'string' ? data : JSON.stringify(data);
+      const payload = JSON.stringify(data);
       const lines = event ? [`event: ${event}`, `data: ${payload}`] : [`data: ${payload}`];
       writeFrame(lines);
     },

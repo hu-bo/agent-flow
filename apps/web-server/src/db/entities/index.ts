@@ -1,6 +1,9 @@
 import { AuditLogEntity } from './audit-log.entity.js';
 import { ChatMessageEntity } from './chat-message.entity.js';
 import { ChatSessionEntity } from './chat-session.entity.js';
+import { CoreRuntimeCheckpointEntity } from './core-runtime-checkpoint.entity.js';
+import { CoreRuntimeReplayEntity } from './core-runtime-replay.entity.js';
+import { CoreRuntimeSessionEntity } from './core-runtime-session.entity.js';
 import { ModelProfileEntity } from './model-profile.entity.js';
 import { ProjectEntity } from './project.entity.js';
 import { ProviderCredentialEntity } from './provider-credential.entity.js';
@@ -24,4 +27,7 @@ export const entities = [
   ProjectEntity,
   ChatSessionEntity,
   ChatMessageEntity,
+  CoreRuntimeSessionEntity,
+  CoreRuntimeCheckpointEntity,
+  CoreRuntimeReplayEntity,
 ];

@@ -164,7 +164,7 @@ export class RunnerDispatchService {
       const workingDir = resolveTaskWorkingDir(task.metadata);
       const sandboxPolicy = deriveSandboxPolicy(task.command, workingDir, task.input);
       const engine = resolveEngine(task.metadata);
-      const riskLevel = classifyRiskLevel(task.command);
+      const riskLevel = classifyRiskLevel(task.command, task.input);
       const approval = validateApprovalForTask(this.runnerApprovalService, task, workingDir, riskLevel);
       if (riskLevel === 'high' && !approval.ok) {
         throw new AppError(
@@ -289,7 +289,7 @@ export class RunnerDispatchService {
           exitCode: normalized.type === 'completed' ? normalized.exitCode : undefined,
           durationMs: normalized.type === 'completed' ? normalized.durationMs : undefined,
           error: normalized.type === 'error' ? normalized.error : undefined,
-          riskLevel: classifyRiskLevel(execution.task.command),
+          riskLevel: classifyRiskLevel(execution.task.command, execution.task.input),
         },
       });
     }
@@ -433,6 +433,7 @@ function deriveSandboxPolicy(
     command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots';
   const semanticFsWrite = command === 'fs.write' || command === 'fs.patch';
   const shellExec = command === 'shell.exec';
+  const shellReadOnly = shellExec && isReadOnlyShellExec(input);
   const enabled = semanticFsReadOnly || semanticFsWrite || shellExec || !isKnownSafeCommand(command);
   const allowedReadPaths = semanticFsReadOnly
     ? uniqueStrings([workingDir, ...extractAbsoluteFsInputPaths(input)])
@@ -440,7 +441,7 @@ function deriveSandboxPolicy(
 
   return {
     enabled,
-    readOnly: semanticFsReadOnly,
+    readOnly: semanticFsReadOnly || shellReadOnly,
     allowNetwork: false,
     allowedWorkingDirs: [workingDir],
     allowedReadPaths,
@@ -471,12 +472,12 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
-function classifyRiskLevel(command: string): 'low' | 'medium' | 'high' {
+function classifyRiskLevel(command: string, input?: Record<string, unknown>): 'low' | 'medium' | 'high' {
   if (command === 'fs.write' || command === 'fs.patch') {
     return 'high';
   }
   if (command === 'shell.exec') {
-    return 'high';
+    return isReadOnlyShellExec(input) ? 'medium' : 'high';
   }
   if (command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots') {
     return 'medium';
@@ -487,6 +488,89 @@ function classifyRiskLevel(command: string): 'low' | 'medium' | 'high' {
 function isKnownSafeCommand(command: string): boolean {
   return command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots';
 }
+
+function isReadOnlyShellExec(input: Record<string, unknown> | undefined): boolean {
+  const command = readShellCommand(input);
+  if (!command) {
+    return false;
+  }
+
+  const executable = normalizeExecutable(command);
+  if (!READ_ONLY_SHELL_COMMANDS.has(executable)) {
+    return false;
+  }
+
+  const line = normalizeCommandLine(command, input);
+  if (SHELL_MUTATION_PATTERN.test(line)) {
+    return false;
+  }
+
+  if (SHELL_REDIRECT_PATTERN.test(line)) {
+    return false;
+  }
+
+  return true;
+}
+
+function readShellCommand(input: Record<string, unknown> | undefined): string | undefined {
+  const command = input?.command;
+  if (typeof command === 'string' && command.trim().length > 0) {
+    return command.trim();
+  }
+
+  const args = input?.args;
+  const firstArg = Array.isArray(args) ? args[0] : undefined;
+  return typeof firstArg === 'string' && firstArg.trim().length > 0 ? firstArg.trim() : undefined;
+}
+
+function normalizeExecutable(command: string): string {
+  const trimmed = command.trim();
+  const firstToken = trimmed.match(/^"([^"]+)"|^'([^']+)'|^(\S+)/)?.[1]
+    ?? trimmed.match(/^"([^"]+)"|^'([^']+)'|^(\S+)/)?.[2]
+    ?? trimmed.match(/^"([^"]+)"|^'([^']+)'|^(\S+)/)?.[3]
+    ?? trimmed;
+  return firstToken.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? firstToken.toLowerCase();
+}
+
+function normalizeCommandLine(command: string, input: Record<string, unknown> | undefined): string {
+  const args = Array.isArray(input?.args)
+    ? input.args.map((value) => String(value))
+    : [];
+  return ` ${[command, ...args].join(' ').toLowerCase()} `;
+}
+
+const READ_ONLY_SHELL_COMMANDS = new Set([
+  'cat',
+  'cmd',
+  'dir',
+  'find',
+  'findstr',
+  'git',
+  'grep',
+  'head',
+  'ls',
+  'pwd',
+  'rg',
+  'sed',
+  'tail',
+  'type',
+  'wc',
+  'where',
+  'which',
+  'powershell',
+  'powershell.exe',
+  'pwsh',
+  'pwsh.exe',
+  'get-childitem',
+  'get-content',
+  'select-string',
+  'resolve-path',
+  'test-path',
+]);
+
+const SHELL_REDIRECT_PATTERN = /\s(?:>|>>|2>|2>>|&>|<)\s/;
+const SHELL_MUTATION_PATTERN =
+  /\s(?:rm|rmdir|del|erase|move|mv|copy|cp|new-item|remove-item|set-content|add-content|out-file|rename-item|move-item|copy-item|mkdir|ni|sc|ac|write-output|tee|git\s+(?:add|commit|push|pull|checkout|switch|reset|merge|rebase|clean|apply)|npm\s+(?:install|i)|pnpm\s+(?:install|i)|yarn\s+(?:install|add)|pip\s+install|go\s+(?:get|install)|curl|wget|invoke-webrequest|iwr|format|shutdown|reboot)\b/;
 
 function isRiskyApprovalGranted(metadata: Record<string, unknown> | undefined): boolean {
   return metadata?.approveRiskyOps === true;

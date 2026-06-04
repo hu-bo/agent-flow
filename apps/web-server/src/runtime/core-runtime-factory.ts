@@ -3,6 +3,10 @@ import {
   type AgentRuntime,
   type LlmStepExecutorLike,
   type Runner,
+  type CheckpointStore,
+  type ReplayStore,
+  type SessionStore,
+  type WorkflowTriageAgent,
   ToolExecutor,
   ToolRegistry,
 } from '@agent-flow/core';
@@ -10,11 +14,21 @@ import { registerBuiltinTools } from '@agent-flow/tools-impl';
 import { registerRunnerBackedTools } from '../services/runner-backed-tools.js';
 import type { RunnerDispatchService } from '../services/runner-dispatch-service.js';
 
+export interface RuntimeToolBundle {
+  toolRegistry: ToolRegistry;
+  toolExecutor: ToolExecutor;
+}
+
 export interface CreateCoreAgentRuntimeOptions {
   cwd?: string;
   runners?: Runner[];
   runnerDispatchService?: RunnerDispatchService;
   llmExecutor?: LlmStepExecutorLike;
+  createLlmExecutor?: (bundle: RuntimeToolBundle) => LlmStepExecutorLike;
+  workflowTriageAgent?: WorkflowTriageAgent;
+  sessionStore?: SessionStore;
+  checkpointStore?: CheckpointStore;
+  replayStore?: ReplayStore;
 }
 
 export interface CoreAgentRuntimeBundle {
@@ -32,11 +46,21 @@ export function createCoreAgentRuntimeBundle(options: CreateCoreAgentRuntimeOpti
     registerRunnerBackedTools(toolRegistry, options.runnerDispatchService);
   }
   const toolExecutor = new ToolExecutor(toolRegistry);
+  const llmExecutor =
+    options.llmExecutor ??
+    options.createLlmExecutor?.({
+      toolRegistry,
+      toolExecutor,
+    });
   const runtime = createAgent({
     toolRegistry,
     toolExecutor,
     runners: options.runners,
-    llmExecutor: options.llmExecutor,
+    llmExecutor,
+    workflowTriageAgent: options.workflowTriageAgent,
+    sessionStore: options.sessionStore,
+    checkpointStore: options.checkpointStore,
+    replayStore: options.replayStore,
   });
   return {
     runtime,

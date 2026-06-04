@@ -1,4 +1,4 @@
-import type { ToolExecutorLike, ToolRegistryLike } from '@agent-flow/core';
+import type { ToolContext, ToolExecutorLike, ToolRegistryLike } from '@agent-flow/core';
 import type { ToolSpec } from '@agent-flow/model-adapters/types';
 import type { RuntimeChatInput } from '../contracts/api.js';
 import { parseApprovalRequiredErrorMessage } from '../lib/approval.js';
@@ -14,20 +14,32 @@ import { buildToolContextMetadata } from './runtime-request-builder.js';
 import type { ModelToolCall, ToolResultPart } from './runtime-types.js';
 import { isPlainObject } from './runtime-types.js';
 
+interface ModelToolSpecOptions {
+  internalToolNames?: readonly string[];
+}
+
+interface ModelToolExecutionInput {
+  toolCall: ModelToolCall;
+  stepId: string;
+  context: ToolContext;
+}
+
 export class ModelToolRunner {
   constructor(
     private readonly toolRegistry?: ToolRegistryLike,
     private readonly toolExecutor?: ToolExecutorLike,
   ) {}
 
-  getModelToolSpecs(): ToolSpec[] {
+  getModelToolSpecs(options: ModelToolSpecOptions = {}): ToolSpec[] {
     if (!this.toolRegistry) {
       return [];
     }
 
+    const allowed = options.internalToolNames ? new Set(options.internalToolNames) : undefined;
     return this.toolRegistry
       .list()
       .filter(isModelVisibleTool)
+      .filter((tool) => !allowed || allowed.has(tool.schema.name))
       .map((tool) => ({
         name: MODEL_TOOL_NAME_BY_INTERNAL.get(tool.schema.name) ?? tool.schema.name,
         description: tool.schema.description,
@@ -40,15 +52,28 @@ export class ModelToolRunner {
     toolCall: ModelToolCall,
     index: number,
   ): Promise<ToolResultPart> {
-    const internalToolName = INTERNAL_TOOL_NAME_BY_MODEL.get(toolCall.toolName) ?? toolCall.toolName;
-    const toolInput = isPlainObject(toolCall.args) ? toolCall.args : {};
     const stepId = `model_tool_${index + 1}`;
     const metadata = buildToolContextMetadata(input);
+    return this.executeModelToolCallWithContext({
+      toolCall,
+      stepId,
+      context: {
+        taskId: input.requestId,
+        sessionId: input.session.sessionId,
+        stepId,
+        metadata,
+      },
+    });
+  }
+
+  async executeModelToolCallWithContext(input: ModelToolExecutionInput): Promise<ToolResultPart> {
+    const internalToolName = INTERNAL_TOOL_NAME_BY_MODEL.get(input.toolCall.toolName) ?? input.toolCall.toolName;
+    const toolInput = isPlainObject(input.toolCall.args) ? input.toolCall.args : {};
     if (!this.toolExecutor) {
       return {
         type: 'tool-result',
-        callId: toolCall.callId,
-        toolName: toolCall.toolName,
+        callId: input.toolCall.callId,
+        toolName: input.toolCall.toolName,
         result: { error: 'Tool executor is not configured.' },
         isError: true,
       };
@@ -59,10 +84,8 @@ export class ModelToolRunner {
       toolName: internalToolName,
       toolInput,
       toolContext: {
-        taskId: input.requestId,
-        sessionId: input.session.sessionId,
-        stepId,
-        metadata,
+        ...input.context,
+        stepId: input.stepId,
       },
     });
 
@@ -72,10 +95,8 @@ export class ModelToolRunner {
         input: toolInput,
       },
       {
-        taskId: input.requestId,
-        sessionId: input.session.sessionId,
-        stepId,
-        metadata,
+        ...input.context,
+        stepId: input.stepId,
       },
       {
         retries: 0,
@@ -95,8 +116,8 @@ export class ModelToolRunner {
 
     return {
       type: 'tool-result',
-      callId: toolCall.callId,
-      toolName: toolCall.toolName,
+      callId: input.toolCall.callId,
+      toolName: input.toolCall.toolName,
       result: output,
       isError: !result.ok,
     };

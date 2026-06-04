@@ -3,6 +3,7 @@ import { DefaultContextLoader } from './context/loader/index.js';
 import { KeywordContextSelector } from './context/selector/index.js';
 import { FixedTokenWindowManager } from './context/window/index.js';
 import { DefaultPlanExecutor, InlineRunner, RunnerRouter } from './orchestration/executor/index.js';
+import { ObjectiveVerifierRegistry } from './orchestration/executor/objective-verifiers.js';
 import { DagGraphBuilder } from './orchestration/graph/index.js';
 import { CommandBlocklistGuardrail, GuardrailChain } from './orchestration/guardrails/index.js';
 import { CapabilityPlanner, CodingReplanner } from './orchestration/planner/index.js';
@@ -190,7 +191,9 @@ export function createAgent(options: CreateAgentOptions = {}): AgentRuntime {
       }
     );
 
-  const planner = options.planner ?? new CapabilityPlanner();
+  const planner = options.planner ?? new CapabilityPlanner({
+    workflowTriageAgent: options.workflowTriageAgent,
+  });
   const replanner = options.replanner ?? new CodingReplanner();
   const guardrails =
     options.guardrails ?? new GuardrailChain([new CommandBlocklistGuardrail()]);
@@ -210,7 +213,8 @@ export function createAgent(options: CreateAgentOptions = {}): AgentRuntime {
       checkpointStore,
       runnerRouter,
       replanner,
-      maxReplans: options.maxReplans
+      maxReplans: options.maxReplans,
+      objectiveVerifierRegistry: new ObjectiveVerifierRegistry(options.objectiveVerifiers),
     });
 
   const promptLoader = options.promptLoader ?? new LayeredPromptSystemLoader();

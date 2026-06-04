@@ -4,6 +4,7 @@ import { ChatPanel } from '@agent-flow/chat-ui';
 import type { FileAttachment } from '@agent-flow/chat-ui';
 import { Activity, MessageCircle, NotebookPen } from 'lucide-react';
 
+import { PendingApprovalPrompt } from '../components/PendingApprovalPrompt';
 import { createSession, triggerCompact } from '../api';
 import { useMessageActions } from '../hooks/useMessageActions';
 import { useWorkspaceChatRuntime } from '../hooks/useWorkspaceChatRuntime';
@@ -18,6 +19,10 @@ export function ChatPage() {
   const {
     messages,
     sessionRecord,
+    pendingApproval,
+    approvePendingApproval,
+    cancelPendingApproval,
+    isApprovingPendingApproval,
     activeSession,
     setActiveSession,
     sendMessage,
@@ -206,6 +211,14 @@ export function ChatPage() {
 
   const compactDisabled = !activeSession || isConnecting || isStreaming || isCompacting;
   const showModeGate = !activeSession && !isStreaming;
+  const approvalPrompt = pendingApproval ? (
+    <PendingApprovalPrompt
+      pendingApproval={pendingApproval}
+      disabled={isApprovingPendingApproval || isStreaming || isConnecting}
+      onApprove={approvePendingApproval}
+      onCancel={cancelPendingApproval}
+    />
+  ) : null;
 
   return (
     <>
@@ -308,6 +321,7 @@ export function ChatPage() {
             onCompactContext={handleCompact}
             compactContextDisabled={compactDisabled}
             onFileSelect={handleFileSelect}
+            actionPrompt={approvalPrompt}
           />
         </div>
       </section>

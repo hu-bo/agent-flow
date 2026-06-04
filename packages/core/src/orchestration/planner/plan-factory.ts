@@ -1,4 +1,4 @@
-import type { AgentPlan, AgentRunRequest, AgentStep } from '../../types/index.js';
+import type { AgentPlan, AgentRunRequest, AgentStep, CompletionContract } from '../../types/index.js';
 import type { PlanningIntent } from './intent-resolver.js';
 import type { SemanticToolStep } from './semantic-detector.js';
 
@@ -93,7 +93,17 @@ export class PlanFactory {
           goal: request.goal,
         },
       },
-    ]);
+    ], {
+      workflow: 'runner',
+      thinkingPath: ['plan', 'implementation', 'verification'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 1,
+      acceptance: {
+        verifierName: 'generic',
+      },
+    });
   }
 
   semanticInspection(request: AgentRunRequest, semanticStep: SemanticToolStep): AgentPlan {
@@ -106,7 +116,17 @@ export class PlanFactory {
         toolName: semanticStep.toolName,
         input: semanticStep.input,
       },
-    ]);
+    ], {
+      workflow: 'tool-inspection',
+      thinkingPath: ['plan', 'tool-evidence', 'final'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 1,
+      acceptance: {
+        verifierName: 'generic',
+      },
+    });
   }
 
   toolFirstExecution(request: AgentRunRequest, semanticStep: SemanticToolStep, intent: PlanningIntent): AgentPlan {
@@ -151,7 +171,18 @@ export class PlanFactory {
       });
     }
 
-    return this.build(request.strategy, steps);
+    return this.build(request.strategy, steps, {
+      workflow: 'tool-first',
+      complexityScore: intent.complexityScore,
+      thinkingPath: ['plan', 'tool-evidence', 'implementation', 'verification'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 2,
+      acceptance: {
+        verifierName: 'generic',
+      },
+    });
   }
 
   repoUnderstandingExecution(request: AgentRunRequest, intent: PlanningIntent): AgentPlan {
@@ -259,7 +290,18 @@ export class PlanFactory {
       },
     ];
 
-    return this.build(request.strategy, steps);
+    return this.build(request.strategy, steps, {
+      workflow: 'repo-understanding',
+      complexityScore: intent.complexityScore,
+      thinkingPath: ['plan', 'tool-evidence', 'analysis', 'final'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 3,
+      acceptance: {
+        verifierName: 'repo-understanding',
+      },
+    });
   }
 
   codingExecution(
@@ -370,7 +412,19 @@ export class PlanFactory {
       },
     });
 
-    return this.build(request.strategy, steps);
+    return this.build(request.strategy, steps, {
+      workflow: 'coding',
+      taskType: intent.codingTaskType,
+      complexityScore: intent.complexityScore,
+      thinkingPath: ['plan', 'analysis', 'implementation', 'verification'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 3,
+      acceptance: {
+        verifierName: 'coding',
+      },
+    });
   }
 
   decomposedExecution(request: AgentRunRequest, intent: PlanningIntent): AgentPlan {
@@ -423,7 +477,18 @@ export class PlanFactory {
       });
     }
 
-    return this.build(request.strategy, steps);
+    return this.build(request.strategy, steps, {
+      workflow: 'decomposed',
+      complexityScore: intent.complexityScore,
+      thinkingPath: ['plan', 'analysis', 'implementation', 'verification'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 2,
+      acceptance: {
+        verifierName: 'generic',
+      },
+    });
   }
 
   direct(request: AgentRunRequest): AgentPlan {
@@ -437,14 +502,31 @@ export class PlanFactory {
           goal: request.goal,
         },
       },
-    ]);
+    ], {
+      workflow: 'direct',
+      thinkingPath: ['intent', 'answer'],
+    }, {
+      objective: request.goal,
+      completionSignal: 'COMPLETE',
+      maxRounds: 1,
+      acceptance: {
+        verifierName: 'generic',
+      },
+    });
   }
 
-  private build(strategy: AgentRunRequest['strategy'], steps: AgentStep[]): AgentPlan {
+  private build(
+    strategy: AgentRunRequest['strategy'],
+    steps: AgentStep[],
+    metadata: Record<string, unknown> = {},
+    completionContract?: CompletionContract,
+  ): AgentPlan {
     return {
       id: nextPlanId(),
       strategy: strategy ?? 'plan',
       steps,
+      metadata,
+      completionContract,
     };
   }
 }

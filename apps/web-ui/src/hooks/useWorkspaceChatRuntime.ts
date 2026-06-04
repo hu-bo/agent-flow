@@ -8,7 +8,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { aggregateRuntimeTraceMessages } from '@agent-flow/chat-ui';
 import type { ChatMessage, FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
 import {
   bindSessionRunner,
@@ -28,7 +27,6 @@ import {
   type ModelSelectOption,
   type NoticeState,
 } from '../pages/chat-page-utils';
-import type { UnifiedMessage } from '@agent-flow/core/messages';
 
 interface UseWorkspaceChatRuntimeOptions {
   routeSessionId?: string;
@@ -37,6 +35,10 @@ interface UseWorkspaceChatRuntimeOptions {
 interface UseWorkspaceChatRuntimeResult {
   messages: ChatMessage[];
   sessionRecord: SessionRecord | null;
+  pendingApproval: ReturnType<typeof useChat>['pendingApproval'];
+  approvePendingApproval: () => Promise<void>;
+  cancelPendingApproval: () => void;
+  isApprovingPendingApproval: boolean;
   activeSession: string | null;
   setActiveSession: (sessionId: string | null) => void;
   runtimeTraceEnabled: boolean;
@@ -81,6 +83,7 @@ export function useWorkspaceChatRuntime({
     isStreaming,
     typingMessageId,
     loadSessionMessages,
+    usageByMessageId,
   } = useChat();
   const activeSession = useChatStore((state) => state.activeSessionId);
   const setActiveSession = useChatStore((state) => state.setActiveSession);
@@ -95,6 +98,7 @@ export function useWorkspaceChatRuntime({
   const [runners, setRunners] = useState<RunnerRecord[]>([]);
   const [selectedRunnerId, setSelectedRunnerId] = useState('');
   const [isBindingRunner, setIsBindingRunner] = useState(false);
+  const [isApprovingPendingApproval, setIsApprovingPendingApproval] = useState(false);
   const boundRunnerBySessionRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
@@ -255,55 +259,38 @@ export function useWorkspaceChatRuntime({
     };
   }, [activeSession, bindRunnerToSession, selectedRunnerId, sessionRecord?.boundRunnerId, sessionRecord?.sessionId]);
 
-  useEffect(() => {
-    if (!pendingApproval) return;
-    let cancelled = false;
+  const approvePendingApproval = useCallback(async () => {
+    if (!pendingApproval) {
+      throw new Error('No pending approval request');
+    }
 
-    const requestApproval = async () => {
-      const { approval } = pendingApproval;
-      const confirmed = window.confirm(
-        [
-          'This action is high-risk and needs your confirmation.',
-          `Command: ${approval.cmd}`,
-          `Working directory: ${approval.workdir}`,
-          'Approve this turn and continue execution?',
-        ].join('\n'),
-      );
-
-      if (!confirmed) {
-        if (!cancelled) {
-          dismissPendingApproval();
-          setNotice({
-            kind: 'success',
-            message: 'Risky operation was canceled.',
-          });
-        }
-        return;
-      }
-
-      try {
-        const ticket = await issueRunnerApprovalTicket({
-          session_id: approval.session_id,
-          cmd: approval.cmd,
-          workdir: approval.workdir,
-        });
-        await approvePendingRequest(ticket.approval_ticket);
-      } catch (error: unknown) {
-        if (!cancelled) {
-          dismissPendingApproval();
-          setNotice({
-            kind: 'error',
-            message: readErrorMessage(error, 'Failed to run approved risky operation'),
-          });
-        }
-      }
-    };
-
-    void requestApproval();
-    return () => {
-      cancelled = true;
-    };
+    setIsApprovingPendingApproval(true);
+    try {
+      const ticket = await issueRunnerApprovalTicket({
+        session_id: pendingApproval.approval.session_id,
+        cmd: pendingApproval.approval.cmd,
+        workdir: pendingApproval.approval.workdir,
+      });
+      await approvePendingRequest(ticket.approval_ticket);
+    } catch (error: unknown) {
+      dismissPendingApproval();
+      setNotice({
+        kind: 'error',
+        message: readErrorMessage(error, 'Failed to run approved risky operation'),
+      });
+      throw error;
+    } finally {
+      setIsApprovingPendingApproval(false);
+    }
   }, [approvePendingRequest, dismissPendingApproval, pendingApproval]);
+
+  const cancelPendingApproval = useCallback(() => {
+    dismissPendingApproval();
+    setNotice({
+      kind: 'success',
+      message: 'Risky operation was canceled.',
+    });
+  }, [dismissPendingApproval]);
 
   const handleFileSelect = useCallback(prepareFileAttachments, []);
 
@@ -330,14 +317,13 @@ export function useWorkspaceChatRuntime({
   );
   const chatMessages = useMemo(() => {
     if (runtimeTraceEnabled) {
-      return aggregateRuntimeTraceMessages(messages);
+      return messages as unknown as ChatMessage[];
     }
-    return messages
-      .filter((message) => !isRuntimeMetaToolMessage(message) && message.metadata?.extensions?.runtimeTrace !== true) as unknown as ChatMessage[];
+    return messages.filter((message) => message.role !== 'tool') as unknown as ChatMessage[];
   }, [messages, runtimeTraceEnabled]);
   const tokenUsage = useMemo(
-    () => buildTokenUsage(chatMessages, tokenBudget),
-    [chatMessages, tokenBudget],
+    () => buildTokenUsage(chatMessages, usageByMessageId, tokenBudget),
+    [chatMessages, usageByMessageId, tokenBudget],
   );
   const rendererContext = useMemo(
     () => ({
@@ -349,6 +335,10 @@ export function useWorkspaceChatRuntime({
   return {
     messages: chatMessages,
     sessionRecord,
+    pendingApproval,
+    approvePendingApproval,
+    cancelPendingApproval,
+    isApprovingPendingApproval,
     activeSession,
     setActiveSession,
     runtimeTraceEnabled,
@@ -375,10 +365,4 @@ export function useWorkspaceChatRuntime({
     tokenUsage,
     rendererContext,
   };
-}
-
-function isRuntimeMetaToolMessage(message: UnifiedMessage): boolean {
-  if (message.role !== 'tool') return false;
-  if (message.metadata?.isMeta !== true || message.metadata.provider !== 'core-runtime') return false;
-  return message.content.some((part) => part.type === 'tool-call' || part.type === 'tool-result');
 }
