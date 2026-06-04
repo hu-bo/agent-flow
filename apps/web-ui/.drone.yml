@@ -31,9 +31,9 @@ steps:
       - name: pnpm-cache
         path: /cache
     commands:
-      - APP_NAME=aflow-web-ui
-      - APP_DIR=apps/$APP_NAME
-      - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
+      - APP_NAME=@agent-flow/web-ui
+      - APP_DIR=apps/web-ui
+      - APP_DEPLOY_DIR=/drone/src/web-ui-deploy
       - npm install -g pnpm@9
       # 使用 corepack，避免 npm / yarn 污染
       - corepack enable
@@ -49,7 +49,7 @@ steps:
       # 单应用构建
       - pnpm run build
       # 打包
-      - tar -czf /drone/src/$APP_NAME.tar.gz ./dist
+      - tar -czf /drone/src/aflow-web-ui.tar.gz ./dist
   # 3. 保存 pnpm store 缓存
   - name: rebuild-pnpm-cache
     image: drillster/drone-volume-cache
