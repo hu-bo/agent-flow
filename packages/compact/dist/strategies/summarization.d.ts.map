@@ -1,0 +1,1 @@
+{"version":3,"file":"summarization.d.ts","sourceRoot":"","sources":["../../src/strategies/summarization.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAe,cAAc,EAAE,aAAa,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAE/F,qBAAa,4BAA6B,YAAW,eAAe;IAClE,QAAQ,CAAC,IAAI,EAAG,eAAe,CAAU;IAEnC,OAAO,CAAC,OAAO,EAAE,cAAc,GAAG,OAAO,CAAC,aAAa,CAAC;CAuB/D"}

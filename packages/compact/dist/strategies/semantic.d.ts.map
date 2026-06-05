@@ -1,0 +1,1 @@
+{"version":3,"file":"semantic.d.ts","sourceRoot":"","sources":["../../src/strategies/semantic.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAe,cAAc,EAAE,aAAa,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAE/F,qBAAa,uBAAwB,YAAW,eAAe;IAC7D,QAAQ,CAAC,IAAI,EAAG,UAAU,CAAU;IAE9B,OAAO,CAAC,OAAO,EAAE,cAAc,GAAG,OAAO,CAAC,aAAa,CAAC;CAoC/D"}

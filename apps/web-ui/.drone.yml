@@ -34,7 +34,7 @@ steps:
       - APP_NAME=web-ui
       - APP_DIR=apps/$APP_NAME
       - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
-      - npm install -g pnpm@9 tsup
+      - npm install -g pnpm@9
       # 使用 corepack，避免 npm / yarn 污染
       - corepack enable
       - corepack prepare pnpm@9 --activate
@@ -44,14 +44,7 @@ steps:
       - pnpm config set registry https://registry.npmmirror.com/
 
       # workspace 依赖安装
-      # - pnpm -w install --no-frozen-lockfile --filter "$APP_NAME..."
-      - pnpm install --frozen-lockfile
-
-      - pnpm -w --filter "@agent-flow/core" run build
-      - pnpm -w --filter "@agent-flow/chat-ui" run build
-      - pnpm -w --filter "@hquant/casdoor" run build
-
-      - pnpm --filter "@agent-flow/web-ui" run build
+      - pnpm -w install --no-frozen-lockfile --filter "$APP_NAME..."
       - cd $APP_DIR
       # 单应用构建
       - pnpm run build
