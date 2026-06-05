@@ -44,7 +44,9 @@ steps:
       - pnpm config set registry https://registry.npmmirror.com/
 
       # workspace 依赖安装
-      - pnpm -w install --no-frozen-lockfile --filter "$APP_NAME..."
+      # - pnpm -w install --no-frozen-lockfile --filter "$APP_NAME..."
+      - pnpm -w --filter "@agent-flow/core" --filter "@agent-flow/chat-ui" --filter "@hquant/casdoor" run build
+      - pnpm --filter "@agent-flow/web-ui" run build
       - cd $APP_DIR
       # 单应用构建
       - pnpm run build
