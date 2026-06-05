@@ -34,7 +34,7 @@ steps:
       - APP_NAME=web-ui
       - APP_DIR=apps/$APP_NAME
       - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
-      - npm install -g pnpm@9
+      - npm install -g pnpm@9 tsup
       # 使用 corepack，避免 npm / yarn 污染
       - corepack enable
       - corepack prepare pnpm@9 --activate
