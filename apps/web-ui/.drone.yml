@@ -31,9 +31,9 @@ steps:
       - name: pnpm-cache
         path: /cache
     commands:
-      - APP_NAME=@agent-flow/web-ui
-      - APP_DIR=apps/web-ui
-      - APP_DEPLOY_DIR=/drone/src/web-ui-deploy
+      - APP_NAME=web-ui
+      - APP_DIR=apps/$APP_NAME
+      - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
       - npm install -g pnpm@9
       # 使用 corepack，避免 npm / yarn 污染
       - corepack enable
