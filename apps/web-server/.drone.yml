@@ -40,7 +40,7 @@ steps:
         from_secret: API_CONFIG_TOKEN_SECRET
     commands:
       # 基础环境
-      - APP_NAME=aflow-server
+      - APP_NAME=web-server
       - APP_DIR=apps/$APP_NAME
       - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
 
