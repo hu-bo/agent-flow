@@ -4,7 +4,8 @@ coverage
 *.log
 
 # build artifacts
-dist
+apps/**/dist
+pkg/**/dist
 .env
 # local caches
 .vscode
