@@ -73,11 +73,11 @@ const SURFACE_LINKS = [
 
 const DESKTOP_PREVIEW_IMAGES = [
   {
-    src: '//minio.8and1.cn/static/aflow/show-a.jpg',
+    src: '//minio.8and1.cn/static/aflow/show-a.png',
     alt: 'AFlow desktop workspace preview A',
   },
   {
-    src: '//minio.8and1.cn/static/aflow/show-b.jpg',
+    src: '//minio.8and1.cn/static/aflow/show-b.png',
     alt: 'AFlow desktop workspace preview B',
   },
 ] as const;
