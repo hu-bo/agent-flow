@@ -44,6 +44,27 @@ export class RunnerEntity {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   capabilities!: string[];
 
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  os!: string | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  arch!: string | null;
+
+  @Column({ name: 'default_shell', type: 'varchar', length: 128, nullable: true })
+  defaultShell!: string | null;
+
+  @Column({ name: 'path_separator', type: 'varchar', length: 8, nullable: true })
+  pathSeparator!: string | null;
+
+  @Column({ name: 'line_ending', type: 'varchar', length: 8, nullable: true })
+  lineEnding!: string | null;
+
+  @Column({ name: 'workspace_roots', type: 'jsonb', default: () => "'[]'::jsonb" })
+  workspaceRoots!: string[];
+
+  @Column({ name: 'available_commands', type: 'jsonb', default: () => "'[]'::jsonb" })
+  availableCommands!: string[];
+
   @Column({ name: 'last_seen_at', type: 'timestamptz', nullable: true })
   lastSeenAt!: Date | null;
 

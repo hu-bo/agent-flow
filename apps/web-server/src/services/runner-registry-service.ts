@@ -21,6 +21,13 @@ export interface RunnerRegisterInput {
   hostIp?: string;
   version?: string;
   capabilities?: string[];
+  os?: string;
+  arch?: string;
+  defaultShell?: string;
+  pathSeparator?: string;
+  lineEnding?: string;
+  workspaceRoots?: string[];
+  availableCommands?: string[];
 }
 
 export interface RunnerHeartbeatInput {
@@ -192,6 +199,13 @@ export class RunnerRegistryService {
     runner.hostIp = hostIp ?? runner.hostIp ?? null;
     runner.version = normalizeText(input.version) ?? runner.version ?? null;
     runner.capabilities = normalizeCapabilities(input.capabilities ?? runner.capabilities ?? []);
+    runner.os = normalizeText(input.os) ?? runner.os ?? null;
+    runner.arch = normalizeText(input.arch) ?? runner.arch ?? null;
+    runner.defaultShell = normalizeText(input.defaultShell) ?? runner.defaultShell ?? null;
+    runner.pathSeparator = normalizeText(input.pathSeparator) ?? runner.pathSeparator ?? null;
+    runner.lineEnding = normalizeText(input.lineEnding) ?? runner.lineEnding ?? null;
+    runner.workspaceRoots = normalizeStringList(input.workspaceRoots ?? runner.workspaceRoots ?? []);
+    runner.availableCommands = normalizeStringList(input.availableCommands ?? runner.availableCommands ?? []);
     runner.lastSeenAt = new Date();
     return this.runnerRepository.save(runner);
   }
@@ -241,4 +255,8 @@ function normalizeCapabilities(capabilities: string[] | undefined): string[] {
     normalized.add('fs.roots');
   }
   return [...normalized];
+}
+
+function normalizeStringList(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))];
 }

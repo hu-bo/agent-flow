@@ -52,8 +52,11 @@ export function formatUnknown(value: unknown): string {
   if (typeof value === 'string') {
     return value;
   }
+  if (value === undefined) {
+    return 'undefined';
+  }
   try {
-    return JSON.stringify(value, null, 2);
+    return JSON.stringify(value, null, 2) ?? String(value);
   } catch {
     return String(value);
   }

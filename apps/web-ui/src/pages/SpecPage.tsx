@@ -529,7 +529,7 @@ export function SpecPage() {
     return (
       <PendingApprovalPrompt
         pendingApproval={pendingApproval}
-        disabled={isApprovingPendingApproval || isStreaming || isConnecting}
+        disabled={isApprovingPendingApproval || isConnecting}
         onApprove={approvePendingApproval}
         onCancel={cancelPendingApproval}
       />
@@ -539,7 +539,6 @@ export function SpecPage() {
     cancelPendingApproval,
     isApprovingPendingApproval,
     isConnecting,
-    isStreaming,
     pendingApproval,
   ]);
 

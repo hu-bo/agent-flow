@@ -1,9 +1,10 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { MemoryService } from '@agent-flow/memory';
-import type { ChatStreamEvent, ReasoningEffort, SessionRecord } from '../contracts/api.js';
+import type { ChatStreamEvent, ReasoningEffort, RunnerPlatformProfile, SessionRecord } from '../contracts/api.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import { createUnifiedMessage, createUserContent } from '../lib/messages.js';
 import type { RuntimeTurnEngine } from '../runtime/runtime-turn-engine.js';
+import type { RunnerRegistryService } from './runner-registry-service.js';
 import { createSpecPromptMessage, type SpecWorkflowService } from './spec-workflow-service.js';
 import type { ModelService } from './model-service.js';
 import type { SessionService } from './session-service.js';
@@ -60,6 +61,7 @@ export class ChatService {
     private readonly modelService: ModelService,
     private readonly runtimeTurnEngine: RuntimeTurnEngine,
     private readonly specWorkflowService: SpecWorkflowService,
+    private readonly runnerRegistryService: RunnerRegistryService,
     private readonly memoryService?: MemoryService,
   ) {}
 
@@ -205,6 +207,7 @@ export class ChatService {
 
     while (true) {
       const preferredRunnerId = await this.sessionService.getBoundRunner(prepared.session.sessionId);
+      const runnerPlatform = await this.resolveRunnerPlatform(input.userId, preferredRunnerId);
       let shouldRestart = false;
       for await (const event of this.runtimeTurnEngine.streamChat({
         session: prepared.session,
@@ -217,6 +220,7 @@ export class ChatService {
         reasoningEffort: input.reasoningEffort,
         attachments: prepared.attachments,
         preferredRunnerId,
+        runnerPlatform,
         approveRiskyOps: input.approveRiskyOps,
         approvalTicket: input.approvalTicket,
       })) {
@@ -476,6 +480,29 @@ export class ChatService {
       });
     } catch {
       // Memory writes are best-effort; chat must continue if the backend is unavailable.
+    }
+  }
+
+  private async resolveRunnerPlatform(
+    ownerUserId: string,
+    runnerId: string | undefined,
+  ): Promise<RunnerPlatformProfile | undefined> {
+    if (!runnerId) {
+      return undefined;
+    }
+    try {
+      const runner = await this.runnerRegistryService.getRunnerForUser(ownerUserId, runnerId);
+      return {
+        os: runner.os ?? undefined,
+        arch: runner.arch ?? undefined,
+        defaultShell: runner.defaultShell ?? undefined,
+        pathSeparator: runner.pathSeparator ?? undefined,
+        lineEnding: runner.lineEnding ?? undefined,
+        workspaceRoots: runner.workspaceRoots ?? [],
+        availableCommands: runner.availableCommands ?? [],
+      };
+    } catch {
+      return undefined;
     }
   }
 }

@@ -717,6 +717,20 @@ export class DefaultPlanExecutor implements PlanExecutor {
             });
 
             let output: unknown;
+            const emitStepEvent = async (
+              type: AgentEvent['type'],
+              payload: Record<string, unknown>
+            ) => {
+              await emit(
+                createEvent(session.taskId, session.id, type, {
+                  stepId: step.id,
+                  title: step.title,
+                  kind: step.kind,
+                  round,
+                  ...payload,
+                })
+              );
+            };
 
             if (step.kind === 'llm') {
               if (this.options.llmExecutor) {
@@ -727,7 +741,8 @@ export class DefaultPlanExecutor implements PlanExecutor {
                   input: resolvedInput,
                   context,
                   outputs: { ...outputs },
-                  signal: executeOptions.signal
+                  signal: executeOptions.signal,
+                  onEvent: emitStepEvent
                 });
               } else {
                 output = {
@@ -761,7 +776,8 @@ export class DefaultPlanExecutor implements PlanExecutor {
                   sessionId: session.id,
                   stepId: step.id,
                   signal: executeOptions.signal,
-                  metadata: request.metadata
+                  metadata: request.metadata,
+                  onEvent: emitStepEvent
                 },
                 {
                   retries: 1

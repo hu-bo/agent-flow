@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteRunner,
-  fetchRunnerDownloads,
+  downloadRunnerPackage,
   fetchRunners,
   formatDeleteRunnerError,
   issueRunnerToken,
@@ -73,12 +73,12 @@ function buildStartCommands(token: RunnerTokenIssueResult | null): {
 
 export function RunnerPage() {
   const [runners, setRunners] = useState<RunnerRecord[]>([]);
-  const [downloads, setDownloads] = useState<RunnerTokenIssueResult['downloadUrls'] | null>(null);
   const [tokenIssue, setTokenIssue] = useState<RunnerTokenIssueResult | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState<NoticeState>(null);
   const [isCreatingToken, setIsCreatingToken] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [deletingRunnerId, setDeletingRunnerId] = useState<string | null>(null);
 
   const refreshRunners = useCallback(async () => {
@@ -93,20 +93,17 @@ export function RunnerPage() {
   useEffect(() => {
     async function bootstrap() {
       try {
-        const [runnerPayload, downloadPayload] = await Promise.all([fetchRunners(), fetchRunnerDownloads()]);
+        const runnerPayload = await fetchRunners();
         setRunners(runnerPayload.runners ?? []);
-        setDownloads(downloadPayload.downloadUrls);
         const storedTokenIssue = loadStoredTokenIssue();
         if (storedTokenIssue) {
           setTokenIssue(storedTokenIssue);
-          setDownloads(storedTokenIssue.downloadUrls);
           return;
         }
 
         const issued = await issueRunnerToken();
         persistTokenIssue(issued);
         setTokenIssue(issued);
-        setDownloads(issued.downloadUrls);
         setIsConnecting(true);
       } catch (error: unknown) {
         setNotice({
@@ -171,7 +168,6 @@ export function RunnerPage() {
   const state = deriveState(runners, isConnecting);
   const onlineCount = runners.filter((runner) => runner.status === 'online').length;
   const commands = buildStartCommands(tokenIssue);
-  const resolvedDownloads = tokenIssue?.downloadUrls ?? downloads;
 
   const statusText = useMemo(() => {
     if (state === 'ONLINE') return `Runner online (${onlineCount})`;
@@ -180,28 +176,7 @@ export function RunnerPage() {
     return 'No runner detected. Download and run it with the command below.';
   }, [onlineCount, state]);
 
-  const handleGenerate = useCallback(async (rotate = false) => {
-    setIsCreatingToken(true);
-    try {
-      const issued = rotate ? await rotateRunnerToken() : await issueRunnerToken();
-      persistTokenIssue(issued);
-      setTokenIssue(issued);
-      setDownloads(issued.downloadUrls);
-      setIsConnecting(true);
-      await refreshRunners();
-      setNotice({
-        kind: 'success',
-        message: rotate ? 'Runner token rotated.' : 'Runner token created.',
-      });
-    } catch (error: unknown) {
-      setNotice({
-        kind: 'error',
-        message: readErrorMessage(error, 'Failed to generate runner token'),
-      });
-    } finally {
-      setIsCreatingToken(false);
-    }
-  }, [refreshRunners]);
+
 
   const handleRefresh = useCallback(async () => {
     try {
@@ -217,6 +192,24 @@ export function RunnerPage() {
       });
     }
   }, [refreshRunners]);
+
+  const handleDownloadRunner = useCallback(async () => {
+    setIsDownloading(true);
+    try {
+      await downloadRunnerPackage('windows-amd64');
+      setNotice({
+        kind: 'success',
+        message: 'Runner package download started.',
+      });
+    } catch (error: unknown) {
+      setNotice({
+        kind: 'error',
+        message: readErrorMessage(error, 'Failed to download runner package'),
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  }, []);
 
   const handleDeleteRunner = useCallback(async (runnerId: string) => {
     if (typeof window !== 'undefined') {
@@ -268,21 +261,15 @@ export function RunnerPage() {
           </div>
 
           <div className="runner-actions">
-            <a
+            <button
               className="workspace-action-btn runner-action-link"
-              href={resolvedDownloads?.windows ?? '#'}
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!resolvedDownloads}
+              type="button"
+              onClick={() => void handleDownloadRunner()}
+              disabled={isDownloading}
             >
-              Download Runner
-            </a>
-            {/* <button className="workspace-action-btn" onClick={() => void handleGenerate(false)} disabled={isCreatingToken}>
-              Generate Start Command
+              {isDownloading ? 'Downloading...' : 'Download Runner'}
             </button>
-            <button className="workspace-action-btn" onClick={() => void handleGenerate(true)} disabled={isCreatingToken}>
-              Rotate Token
-            </button> */}
+
             <button className="workspace-action-btn" onClick={() => void handleRefresh()} disabled={isLoading}>
               Refresh Status
             </button>

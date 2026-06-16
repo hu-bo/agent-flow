@@ -29,6 +29,9 @@ export class GitTool implements ToolDefinition<GitExecInput, GitExecOutput> {
   readonly schema: ToolSchema = {
     name: 'git.exec',
     description: 'Execute a safe git command and return stdout/stderr.',
+    risk: 'low',
+    access: 'git',
+    approval: 'never',
     input: {
       type: 'object',
       required: ['args'],
@@ -61,7 +64,20 @@ export class GitTool implements ToolDefinition<GitExecInput, GitExecOutput> {
   constructor(options: GitToolOptions = {}) {
     this.cwd = options.cwd ?? process.cwd();
     this.blockedSubcommands = new Set(
-      (options.blockedSubcommands ?? ['reset', 'clean'])
+      (options.blockedSubcommands ?? [
+        'add',
+        'apply',
+        'checkout',
+        'clean',
+        'commit',
+        'merge',
+        'pull',
+        'push',
+        'rebase',
+        'reset',
+        'restore',
+        'switch',
+      ])
         .map((value) => value.trim().toLowerCase())
         .filter(Boolean)
     );

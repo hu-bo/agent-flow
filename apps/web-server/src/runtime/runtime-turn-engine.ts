@@ -2,11 +2,9 @@ import type { AgentEvent, AgentRuntime } from '@agent-flow/core';
 import type { StructuredLogger, Tracer } from '@agent-flow/events';
 import type { MemoryService, RecalledMemory } from '@agent-flow/memory';
 import type { ChatStreamEvent, RuntimeChatInput } from '../contracts/api.js';
-import { extractApprovalRequiredFromError, parseApprovalRequiredErrorMessage } from '../lib/approval.js';
 import { AsyncQueue } from '../lib/async-queue.js';
 import { createTextMessage } from '../lib/messages.js';
-import { ApprovalRequiredError } from './approval-error.js';
-import { toApprovalRequiredEvent, toMessageEvent, toProgressMessage, toThinkingEvent } from './message-mappers.js';
+import { toMessageEvent, toProgressMessage, toRuntimeEvent, toThinkingEvent } from './message-mappers.js';
 import { ModelChatDriver } from './model-chat-driver.js';
 import { buildAgentRequest } from './runtime-request-builder.js';
 import { parseRunnerDirective, resolveRuntimeMode } from './runtime-router.js';
@@ -190,6 +188,10 @@ export class RuntimeTurnEngine {
             payload: event.payload,
           },
         });
+        const runtimeStreamEvent = toRuntimeEvent(event);
+        if (runtimeStreamEvent) {
+          queue.push(runtimeStreamEvent);
+        }
         emitRuntimeProgress(event);
         if (isNew && shouldRefreshThinking(event)) {
           emitThinkingSnapshot();
@@ -204,23 +206,16 @@ export class RuntimeTurnEngine {
       if (!isNew) {
         continue;
       }
+      const runtimeStreamEvent = toRuntimeEvent(event);
+      if (runtimeStreamEvent) {
+        queue.push(runtimeStreamEvent);
+      }
       emitRuntimeProgress(event);
       if (shouldRefreshThinking(event)) {
         emitThinkingSnapshot();
       }
     }
     emitThinkingSnapshot(result);
-
-    const approvalFromResult = extractApprovalFromAgentRunResult(result);
-    if (approvalFromResult) {
-      queue.push(toApprovalRequiredEvent(approvalFromResult));
-      await span?.end({
-        status: 'succeeded',
-        mode: 'approval-required',
-        eventCount: result.events.length,
-      });
-      return;
-    }
 
     const responseText = renderAssistantText({
       input,
@@ -353,16 +348,6 @@ export class RuntimeTurnEngine {
     error: unknown,
   ): Promise<void> {
     const { input, parentUuid, queue, span } = context;
-    const approval = extractApprovalFromUnknown(error);
-    if (approval) {
-      queue.push(toApprovalRequiredEvent(approval));
-      await span?.end({
-        status: 'succeeded',
-        mode: 'approval-required',
-      });
-      return;
-    }
-
     const message = error instanceof Error ? error.message : String(error);
     this.logger?.error('chat.turn.failed', 'core runtime turn failed', {
       attributes: {
@@ -396,35 +381,19 @@ export class RuntimeTurnEngine {
   }
 }
 
-function extractApprovalFromAgentRunResult(
-  result: Awaited<ReturnType<AgentRuntime['run']>>,
-): NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>> | null {
-  if (typeof result.error !== 'string') {
-    return null;
-  }
-  return parseApprovalRequiredErrorMessage(result.error);
-}
-
 function shouldRefreshThinking(event: AgentEvent): boolean {
   return (
     event.type === 'session.started' ||
     event.type === 'session.replanned' ||
     event.type === 'session.completed' ||
     event.type === 'session.failed' ||
+    event.type === 'approval_request' ||
+    event.type === 'approval_response' ||
     event.type === 'step.completed' ||
     event.type === 'step.failed' ||
     event.type === 'tool.result' ||
     event.type === 'checkpoint.created'
   );
-}
-
-function extractApprovalFromUnknown(
-  error: unknown,
-): NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>> | null {
-  if (error instanceof ApprovalRequiredError) {
-    return error.approval;
-  }
-  return extractApprovalRequiredFromError(error);
 }
 
 function serializeErrorForLog(error: unknown): Record<string, unknown> {

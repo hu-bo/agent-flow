@@ -108,6 +108,27 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
           continue;
         }
 
+        if (event.type === 'runtime_event') {
+          stream.send(event.event, event.event.type);
+          if (event.event.type === 'approval_request') {
+            sendDelta({
+              p: '/approval',
+              o: 'replace',
+              v: {
+                request_id: String(event.event.payload.requestId ?? event.event.id),
+                session_id: String(event.event.payload.session_id ?? ''),
+                cmd: String(event.event.payload.cmd ?? ''),
+                workdir: String(event.event.payload.workdir ?? ''),
+                risk: event.event.payload.risk === 'low' || event.event.payload.risk === 'medium'
+                  ? event.event.payload.risk
+                  : 'high',
+                reason: typeof event.event.payload.reason === 'string' ? event.event.payload.reason : undefined,
+              },
+            });
+          }
+          continue;
+        }
+
         if (event.type === 'spec_doc_update') {
           const pointer = `/spec_docs/${escapeJsonPointerToken(event.doc_type)}`;
 

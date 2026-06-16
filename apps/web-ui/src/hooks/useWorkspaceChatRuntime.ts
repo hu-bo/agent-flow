@@ -75,7 +75,6 @@ export function useWorkspaceChatRuntime({
     messages,
     sessionRecord,
     sendMessage,
-    approvePendingRequest,
     dismissPendingApproval,
     pendingApproval,
     refreshSessionMessages,
@@ -270,8 +269,10 @@ export function useWorkspaceChatRuntime({
         session_id: pendingApproval.approval.session_id,
         cmd: pendingApproval.approval.cmd,
         workdir: pendingApproval.approval.workdir,
+        request_id: pendingApproval.approval.request_id,
       });
-      await approvePendingRequest(ticket.approval_ticket);
+      void ticket;
+      dismissPendingApproval();
     } catch (error: unknown) {
       dismissPendingApproval();
       setNotice({
@@ -282,7 +283,7 @@ export function useWorkspaceChatRuntime({
     } finally {
       setIsApprovingPendingApproval(false);
     }
-  }, [approvePendingRequest, dismissPendingApproval, pendingApproval]);
+  }, [dismissPendingApproval, pendingApproval]);
 
   const cancelPendingApproval = useCallback(() => {
     dismissPendingApproval();

@@ -23,10 +23,23 @@ export const runnerApprovalTicketBodySchema = z.object({
   session_id: sessionIdSchema,
   cmd: z.string().trim().min(1).max(128),
   workdir: z.string().trim().min(1).max(1024).optional(),
+  request_id: z.string().trim().min(1).max(128).optional(),
   ttl_sec: z.number().int().min(30).max(600).optional(),
 });
 
 export const runnerFsListBodySchema = z.object({
   path: z.string().trim().min(1).max(2048),
   includeHidden: z.boolean().optional().default(false),
+});
+
+export const runnerDownloadPlatformParamsSchema = z.object({
+  platform: z.enum([
+    'windows-amd64',
+    'windows-arm64',
+    'darwin-arm64',
+    'darwin-amd64',
+    'macos-arm64',
+    'macos-amd64',
+    'linux-amd64',
+  ]),
 });

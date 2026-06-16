@@ -77,6 +77,14 @@ export class RunnerRegistrationService {
     return buildDownloadUrls(this.options.runnerDownloadBaseUrl);
   }
 
+  getServerAddr(): string {
+    return this.options.runnerServerAddr;
+  }
+
+  getGrpcServerAddr(): string {
+    return this.options.runnerGrpcServerAddr ?? this.options.runnerServerAddr;
+  }
+
   private async revokeAllActiveTokens(ownerUserId: string): Promise<void> {
     const now = new Date();
     await this.runnerTokenRepository.update(

@@ -145,6 +145,13 @@ message ConnectRegister {
   repeated string capabilities = 6;
   string host_name = 7;
   string host_ip = 8;
+  string os = 9;
+  string arch = 10;
+  string default_shell = 11;
+  string path_separator = 12;
+  string line_ending = 13;
+  repeated string workspace_roots = 14;
+  repeated string available_commands = 15;
 }
 
 message ConnectRegisterAck {

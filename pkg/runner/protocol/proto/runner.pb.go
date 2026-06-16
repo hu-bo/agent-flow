@@ -1304,17 +1304,24 @@ func (*TaskEvent_Completed) isTaskEvent_Payload() {}
 func (*TaskEvent_Heartbeat) isTaskEvent_Payload() {}
 
 type ConnectRegister struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunnerToken   string                 `protobuf:"bytes,1,opt,name=runner_token,json=runnerToken,proto3" json:"runner_token,omitempty"`
-	RunnerId      string                 `protobuf:"bytes,2,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
-	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Host          string                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
-	Version       string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
-	Capabilities  []string               `protobuf:"bytes,6,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	HostName      string                 `protobuf:"bytes,7,opt,name=host_name,json=hostName,proto3" json:"host_name,omitempty"`
-	HostIp        string                 `protobuf:"bytes,8,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RunnerToken       string                 `protobuf:"bytes,1,opt,name=runner_token,json=runnerToken,proto3" json:"runner_token,omitempty"`
+	RunnerId          string                 `protobuf:"bytes,2,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	Kind              string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Host              string                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	Version           string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	Capabilities      []string               `protobuf:"bytes,6,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	HostName          string                 `protobuf:"bytes,7,opt,name=host_name,json=hostName,proto3" json:"host_name,omitempty"`
+	HostIp            string                 `protobuf:"bytes,8,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`
+	Os                string                 `protobuf:"bytes,9,opt,name=os,proto3" json:"os,omitempty"`
+	Arch              string                 `protobuf:"bytes,10,opt,name=arch,proto3" json:"arch,omitempty"`
+	DefaultShell      string                 `protobuf:"bytes,11,opt,name=default_shell,json=defaultShell,proto3" json:"default_shell,omitempty"`
+	PathSeparator     string                 `protobuf:"bytes,12,opt,name=path_separator,json=pathSeparator,proto3" json:"path_separator,omitempty"`
+	LineEnding        string                 `protobuf:"bytes,13,opt,name=line_ending,json=lineEnding,proto3" json:"line_ending,omitempty"`
+	WorkspaceRoots    []string               `protobuf:"bytes,14,rep,name=workspace_roots,json=workspaceRoots,proto3" json:"workspace_roots,omitempty"`
+	AvailableCommands []string               `protobuf:"bytes,15,rep,name=available_commands,json=availableCommands,proto3" json:"available_commands,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ConnectRegister) Reset() {
@@ -1401,6 +1408,55 @@ func (x *ConnectRegister) GetHostIp() string {
 		return x.HostIp
 	}
 	return ""
+}
+
+func (x *ConnectRegister) GetOs() string {
+	if x != nil {
+		return x.Os
+	}
+	return ""
+}
+
+func (x *ConnectRegister) GetArch() string {
+	if x != nil {
+		return x.Arch
+	}
+	return ""
+}
+
+func (x *ConnectRegister) GetDefaultShell() string {
+	if x != nil {
+		return x.DefaultShell
+	}
+	return ""
+}
+
+func (x *ConnectRegister) GetPathSeparator() string {
+	if x != nil {
+		return x.PathSeparator
+	}
+	return ""
+}
+
+func (x *ConnectRegister) GetLineEnding() string {
+	if x != nil {
+		return x.LineEnding
+	}
+	return ""
+}
+
+func (x *ConnectRegister) GetWorkspaceRoots() []string {
+	if x != nil {
+		return x.WorkspaceRoots
+	}
+	return nil
+}
+
+func (x *ConnectRegister) GetAvailableCommands() []string {
+	if x != nil {
+		return x.AvailableCommands
+	}
+	return nil
 }
 
 type ConnectRegisterAck struct {
@@ -1885,7 +1941,7 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\x05error\x18\x19 \x01(\v2!.agentflow.runner.v1.ErrorPayloadH\x00R\x05error\x12E\n" +
 	"\tcompleted\x18\x1a \x01(\v2%.agentflow.runner.v1.CompletedPayloadH\x00R\tcompleted\x12E\n" +
 	"\theartbeat\x18\x1b \x01(\v2%.agentflow.runner.v1.HeartbeatPayloadH\x00R\theartbeatB\t\n" +
-	"\apayload\"\xed\x01\n" +
+	"\apayload\"\xd6\x03\n" +
 	"\x0fConnectRegister\x12!\n" +
 	"\frunner_token\x18\x01 \x01(\tR\vrunnerToken\x12\x1b\n" +
 	"\trunner_id\x18\x02 \x01(\tR\brunnerId\x12\x12\n" +
@@ -1894,7 +1950,16 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\aversion\x18\x05 \x01(\tR\aversion\x12\"\n" +
 	"\fcapabilities\x18\x06 \x03(\tR\fcapabilities\x12\x1b\n" +
 	"\thost_name\x18\a \x01(\tR\bhostName\x12\x17\n" +
-	"\ahost_ip\x18\b \x01(\tR\x06hostIp\"\x9e\x01\n" +
+	"\ahost_ip\x18\b \x01(\tR\x06hostIp\x12\x0e\n" +
+	"\x02os\x18\t \x01(\tR\x02os\x12\x12\n" +
+	"\x04arch\x18\n" +
+	" \x01(\tR\x04arch\x12#\n" +
+	"\rdefault_shell\x18\v \x01(\tR\fdefaultShell\x12%\n" +
+	"\x0epath_separator\x18\f \x01(\tR\rpathSeparator\x12\x1f\n" +
+	"\vline_ending\x18\r \x01(\tR\n" +
+	"lineEnding\x12'\n" +
+	"\x0fworkspace_roots\x18\x0e \x03(\tR\x0eworkspaceRoots\x12-\n" +
+	"\x12available_commands\x18\x0f \x03(\tR\x11availableCommands\"\x9e\x01\n" +
 	"\x12ConnectRegisterAck\x12\x1b\n" +
 	"\trunner_id\x18\x01 \x01(\tR\brunnerId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x122\n" +

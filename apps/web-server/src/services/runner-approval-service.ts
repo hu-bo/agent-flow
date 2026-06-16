@@ -11,6 +11,18 @@ interface ApprovalTicketRecord {
   consumedAtMs?: number;
 }
 
+interface PendingApprovalRecord {
+  requestId: string;
+  ownerUserId: string;
+  sessionId: string;
+  command: string;
+  workingDir: string;
+  risk: 'low' | 'medium' | 'high';
+  reason?: string;
+  expiresAtMs: number;
+  resolve: (result: ApprovalWaitResult) => void;
+}
+
 export interface IssueApprovalTicketInput {
   ownerUserId: string;
   sessionId: string;
@@ -30,6 +42,7 @@ export interface ApprovalTicketIssueResult {
   ticket_id: string;
   expires_at: string;
   scope: ApprovalTicketScope;
+  approved_request_id?: string;
 }
 
 export interface ApprovalTicketValidationInput {
@@ -46,8 +59,37 @@ interface ApprovalTicketValidationResult {
   ticketId?: string;
 }
 
+export interface ApprovalWaitInput {
+  ownerUserId: string;
+  sessionId: string;
+  command: string;
+  workingDir: string;
+  risk: 'low' | 'medium' | 'high';
+  reason?: string;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface ApprovalWaitRequest {
+  requestId: string;
+  session_id: string;
+  cmd: string;
+  workdir: string;
+  risk: 'low' | 'medium' | 'high';
+  reason?: string;
+}
+
+export interface ApprovalWaitResult {
+  approved: boolean;
+  requestId: string;
+  ticket?: string;
+  ticketId?: string;
+  reason?: string;
+}
+
 export class RunnerApprovalService {
   private readonly tickets = new Map<string, ApprovalTicketRecord>();
+  private readonly pending = new Map<string, PendingApprovalRecord>();
 
   issue(input: IssueApprovalTicketInput): ApprovalTicketIssueResult {
     this.pruneExpired();
@@ -76,6 +118,92 @@ export class RunnerApprovalService {
         workdir: record.workingDir,
       },
     };
+  }
+
+  waitForApproval(input: ApprovalWaitInput): {
+    request: ApprovalWaitRequest;
+    response: Promise<ApprovalWaitResult>;
+  } {
+    this.pruneExpired();
+    const requestId = `appr_${randomUUID()}`;
+    const timeoutMs = clampApprovalWaitMs(input.timeoutMs);
+    const expiresAtMs = Date.now() + timeoutMs;
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    let abortListener: (() => void) | undefined;
+
+    const response = new Promise<ApprovalWaitResult>((resolve) => {
+      const record: PendingApprovalRecord = {
+        requestId,
+        ownerUserId: input.ownerUserId,
+        sessionId: input.sessionId,
+        command: input.command,
+        workingDir: input.workingDir,
+        risk: input.risk,
+        reason: input.reason,
+        expiresAtMs,
+        resolve: (result) => {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+          }
+          if (abortListener) {
+            input.signal?.removeEventListener('abort', abortListener);
+          }
+          this.pending.delete(requestId);
+          resolve(result);
+        },
+      };
+      this.pending.set(requestId, record);
+      abortListener = () => {
+        record.resolve({
+          approved: false,
+          requestId,
+          reason: 'approval request aborted',
+        });
+      };
+      if (input.signal?.aborted) {
+        abortListener();
+        return;
+      }
+      input.signal?.addEventListener('abort', abortListener, { once: true });
+      timeoutHandle = setTimeout(() => {
+        record.resolve({
+          approved: false,
+          requestId,
+          reason: 'approval request timed out',
+        });
+      }, timeoutMs);
+      timeoutHandle.unref?.();
+    });
+
+    return {
+      request: {
+        requestId,
+        session_id: input.sessionId,
+        cmd: input.command,
+        workdir: input.workingDir,
+        risk: input.risk,
+        ...(input.reason ? { reason: input.reason } : {}),
+      },
+      response,
+    };
+  }
+
+  approvePending(input: IssueApprovalTicketInput & { requestId?: string }): ApprovalTicketIssueResult {
+    this.pruneExpired();
+    const pending = this.findPendingApproval(input);
+    const issued = this.issue(input);
+    pending?.resolve({
+      approved: true,
+      requestId: pending.requestId,
+      ticket: issued.approval_ticket,
+      ticketId: issued.ticket_id,
+    });
+    return pending
+      ? {
+          ...issued,
+          approved_request_id: pending.requestId,
+        }
+      : issued;
   }
 
   consumeAndValidate(input: ApprovalTicketValidationInput): ApprovalTicketValidationResult {
@@ -114,7 +242,46 @@ export class RunnerApprovalService {
         this.tickets.delete(ticket);
       }
     }
+    for (const [requestId, record] of this.pending.entries()) {
+      if (record.expiresAtMs <= now) {
+        this.pending.delete(requestId);
+        record.resolve({
+          approved: false,
+          requestId,
+          reason: 'approval request expired',
+        });
+      }
+    }
   }
+
+  private findPendingApproval(input: IssueApprovalTicketInput & { requestId?: string }): PendingApprovalRecord | undefined {
+    if (input.requestId) {
+      const exact = this.pending.get(input.requestId);
+      if (exact && matchesPendingApproval(exact, input)) {
+        return exact;
+      }
+      return undefined;
+    }
+
+    for (const record of this.pending.values()) {
+      if (matchesPendingApproval(record, input)) {
+        return record;
+      }
+    }
+    return undefined;
+  }
+}
+
+function matchesPendingApproval(
+  record: PendingApprovalRecord,
+  input: IssueApprovalTicketInput,
+): boolean {
+  return (
+    record.ownerUserId === input.ownerUserId &&
+    record.sessionId === input.sessionId &&
+    record.command === input.command &&
+    record.workingDir === input.workingDir
+  );
 }
 
 function buildOpaqueTicket(): string {
@@ -127,4 +294,11 @@ function clampTtlSec(ttlSec: number | undefined): number {
     return 120;
   }
   return Math.max(30, Math.min(600, Math.floor(ttlSec)));
+}
+
+function clampApprovalWaitMs(timeoutMs: number | undefined): number {
+  if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs)) {
+    return 5 * 60 * 1000;
+  }
+  return Math.max(30_000, Math.min(10 * 60 * 1000, Math.floor(timeoutMs)));
 }

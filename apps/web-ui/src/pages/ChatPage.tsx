@@ -214,7 +214,7 @@ export function ChatPage() {
   const approvalPrompt = pendingApproval ? (
     <PendingApprovalPrompt
       pendingApproval={pendingApproval}
-      disabled={isApprovingPendingApproval || isStreaming || isConnecting}
+      disabled={isApprovingPendingApproval || isConnecting}
       onApprove={approvePendingApproval}
       onCancel={cancelPendingApproval}
     />

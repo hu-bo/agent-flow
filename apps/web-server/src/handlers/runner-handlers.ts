@@ -8,6 +8,7 @@ import {
   runnerBindingParamsSchema,
   runnerFsListBodySchema,
   runnerFsParamsSchema,
+  runnerDownloadPlatformParamsSchema,
   runnerParamsSchema,
   runnerApprovalTicketBodySchema,
 } from '../schemas/runner.js';
@@ -126,17 +127,44 @@ export async function getRunnerDownloadsHandler(request: FastifyRequest, reply: 
   });
 }
 
+export async function downloadRunnerPackageHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(runnerDownloadPlatformParamsSchema, request.params, 'params');
+  const result = await request.server.services.runnerPackageService.buildDownload(
+    params.platform,
+    request.auth.userId,
+  );
+
+  reply
+    .header('Content-Type', 'application/zip')
+    .header('Content-Disposition', `attachment; filename="${result.fileName}"`)
+    .header('Cache-Control', 'no-store')
+    .header('Content-Length', String(result.buffer.byteLength));
+  return reply.send(result.buffer);
+}
+
 export async function issueRunnerApprovalTicketHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(runnerApprovalTicketBodySchema, request.body, 'body');
-  const session = await request.server.services.sessionService.getSession(body.session_id, request.auth.userId);
-  const issued = request.server.services.runnerApprovalService.issue({
+  const workingDir = body.workdir ?? await resolveApprovalWorkingDir(request, body.session_id);
+  const issued = request.server.services.runnerApprovalService.approvePending({
     ownerUserId: request.auth.userId,
     sessionId: body.session_id,
     command: body.cmd,
-    workingDir: body.workdir ?? session.cwd,
+    workingDir,
+    requestId: body.request_id,
     ttlSec: body.ttl_sec,
   });
+  if (body.request_id && issued.approved_request_id !== body.request_id) {
+    throw new AppError(404, 'APPROVAL_REQUEST_NOT_FOUND', `Approval request not found or expired: ${body.request_id}`);
+  }
   return sendSuccess(reply, issued, { statusCode: 201, message: 'Created' });
+}
+
+async function resolveApprovalWorkingDir(request: FastifyRequest, sessionId: string): Promise<string> {
+  if (!isUuid(sessionId)) {
+    throw new AppError(400, 'APPROVAL_WORKDIR_REQUIRED', 'workdir is required for runtime approval sessions');
+  }
+  const session = await request.server.services.sessionService.getSession(sessionId, request.auth.userId);
+  return session.cwd;
 }
 
 export async function listRunnerRootsHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -171,6 +199,13 @@ function toRunnerView(runner: {
   hostIp: string | null;
   version: string | null;
   capabilities: string[];
+  os: string | null;
+  arch: string | null;
+  defaultShell: string | null;
+  pathSeparator: string | null;
+  lineEnding: string | null;
+  workspaceRoots: string[];
+  availableCommands: string[];
   lastSeenAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -186,8 +221,21 @@ function toRunnerView(runner: {
     hostIp: runner.hostIp,
     version: runner.version,
     capabilities: runner.capabilities,
+    platform: {
+      os: runner.os ?? undefined,
+      arch: runner.arch ?? undefined,
+      defaultShell: runner.defaultShell ?? undefined,
+      pathSeparator: runner.pathSeparator ?? undefined,
+      lineEnding: runner.lineEnding ?? undefined,
+      workspaceRoots: runner.workspaceRoots ?? [],
+      availableCommands: runner.availableCommands ?? [],
+    },
     lastSeenAt: runner.lastSeenAt?.toISOString() ?? null,
     createdAt: runner.createdAt.toISOString(),
     updatedAt: runner.updatedAt.toISOString(),
   };
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }

@@ -10,8 +10,10 @@ import (
 	"math"
 	"net"
 	"os"
+	osexec "os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -33,12 +35,21 @@ import (
 
 const (
 	defaultAddr       = ":8091"
-	defaultVersion    = "0.1.0"
 	defaultRunnerKind = "local"
 	defaultGRPCServer = "127.0.0.1:9201"
-	defaultCaps       = "shell.exec,fs.roots,fs.read,fs.write,fs.patch,fs.list,fs.search"
+	defaultCaps       = "shell.exec,fs.roots,fs.read,fs.write,fs.patch,fs.multiPatch,fs.list,fs.search"
 	reconnectBaseWait = time.Second
 	reconnectMaxWait  = 30 * time.Second
+)
+
+var (
+	defaultVersion         = "0.1.0"
+	buildTargetOS          = ""
+	buildTargetArch        = ""
+	buildDefaultShell      = ""
+	buildPathSeparator     = ""
+	buildLineEnding        = ""
+	buildAvailableCommands = ""
 )
 
 func main() {
@@ -121,7 +132,7 @@ func runStart(args []string) error {
 		return err
 	}
 	defaultToken := strings.TrimSpace(cfg.RunnerToken)
-	defaultHost := strings.TrimSpace(cfg.ServerAddr)
+	defaultHost := strings.TrimSpace(firstNonEmpty(cfg.GRPCServerAddr, cfg.ServerAddr))
 	if defaultHost == "" {
 		defaultHost = defaultGRPCServer
 	}
@@ -159,6 +170,7 @@ func runStart(args []string) error {
 	runnerTokenValue := strings.TrimSpace(*rpcToken)
 	rpcHostValue := strings.TrimSpace(*rpcHost)
 	resolvedRunnerID := resolveRunnerID(strings.TrimSpace(*runnerID), strings.TrimSpace(*hostName))
+	platform := detectPlatformProfile(cfg.Platform)
 	var registeredRunnerID string
 	persistRegistration := func(result grpcclient.StartLoopResult) {
 		resultRunnerID := strings.TrimSpace(result.RunnerID)
@@ -179,16 +191,23 @@ func runStart(args []string) error {
 	}
 
 	connectOptions := grpcclient.StartLoopOptions{
-		RunnerID:     resolvedRunnerID,
-		RunnerToken:  runnerTokenValue,
-		ServerAddr:   rpcHostValue,
-		Kind:         strings.TrimSpace(*kind),
-		Host:         strings.TrimSpace(*hostLabel),
-		HostName:     strings.TrimSpace(*hostName),
-		HostIP:       strings.TrimSpace(*hostIP),
-		Version:      strings.TrimSpace(*version),
-		Capabilities: normalizeCapabilities(parseCSV(*capabilities)),
-		OnRegistered: persistRegistration,
+		RunnerID:          resolvedRunnerID,
+		RunnerToken:       runnerTokenValue,
+		ServerAddr:        rpcHostValue,
+		Kind:              strings.TrimSpace(*kind),
+		Host:              strings.TrimSpace(*hostLabel),
+		HostName:          strings.TrimSpace(*hostName),
+		HostIP:            strings.TrimSpace(*hostIP),
+		Version:           strings.TrimSpace(*version),
+		Capabilities:      normalizeCapabilities(parseCSV(*capabilities)),
+		OS:                platform.OS,
+		Arch:              platform.Arch,
+		DefaultShell:      platform.DefaultShell,
+		PathSeparator:     platform.PathSeparator,
+		LineEnding:        platform.LineEnding,
+		WorkspaceRoots:    platform.WorkspaceRoots,
+		AvailableCommands: platform.AvailableCommands,
+		OnRegistered:      persistRegistration,
 	}
 
 	reconnectAttempt := 0
@@ -401,7 +420,7 @@ func parseStartOptions(args []string) (startOptions, error) {
 		return startOptions{}, err
 	}
 	defaultToken := strings.TrimSpace(cfg.RunnerToken)
-	defaultHost := strings.TrimSpace(cfg.ServerAddr)
+	defaultHost := strings.TrimSpace(firstNonEmpty(cfg.GRPCServerAddr, cfg.ServerAddr))
 	if defaultHost == "" {
 		defaultHost = defaultGRPCServer
 	}
@@ -453,6 +472,165 @@ func toAutostartOptions(opts startOptions) autostart.Options {
 		Capabilities: opts.Capabilities,
 		DockerBinary: opts.DockerBinary,
 	}
+}
+
+type platformProfile struct {
+	OS                string
+	Arch              string
+	DefaultShell      string
+	PathSeparator     string
+	LineEnding        string
+	WorkspaceRoots    []string
+	AvailableCommands []string
+}
+
+func detectPlatformProfile(configProfile *model.PlatformProfile) platformProfile {
+	targetOS := firstNonEmpty(configString(configProfile, func(profile *model.PlatformProfile) string {
+		return profile.OS
+	}), buildTargetOS, runtime.GOOS)
+	targetArch := firstNonEmpty(configString(configProfile, func(profile *model.PlatformProfile) string {
+		return profile.Arch
+	}), buildTargetArch, runtime.GOARCH)
+	return platformProfile{
+		OS:                targetOS,
+		Arch:              targetArch,
+		DefaultShell: firstNonEmpty(configString(configProfile, func(profile *model.PlatformProfile) string {
+			return profile.DefaultShell
+		}), buildDefaultShell, detectDefaultShell(targetOS)),
+		PathSeparator: firstNonEmpty(configString(configProfile, func(profile *model.PlatformProfile) string {
+			return profile.PathSeparator
+		}), buildPathSeparator, detectPathSeparator(targetOS)),
+		LineEnding: decodeLineEnding(firstNonEmpty(configString(configProfile, func(profile *model.PlatformProfile) string {
+			return profile.LineEnding
+		}), buildLineEnding, detectLineEnding(targetOS))),
+		WorkspaceRoots: uniqueNonEmpty(append(configStringSlice(configProfile, func(profile *model.PlatformProfile) []string {
+			return profile.WorkspaceRoots
+		}), detectWorkspaceRoots()...)),
+		AvailableCommands: uniqueNonEmpty(append(append(configStringSlice(configProfile, func(profile *model.PlatformProfile) []string {
+			return profile.AvailableCommands
+		}), parseCSV(buildAvailableCommands)...), detectAvailableCommands(targetOS)...)),
+	}
+}
+
+func configString(profile *model.PlatformProfile, selectValue func(*model.PlatformProfile) string) string {
+	if profile == nil {
+		return ""
+	}
+	return selectValue(profile)
+}
+
+func configStringSlice(profile *model.PlatformProfile, selectValue func(*model.PlatformProfile) []string) []string {
+	if profile == nil {
+		return nil
+	}
+	return selectValue(profile)
+}
+
+func detectDefaultShell(targetOS string) string {
+	if targetOS == "windows" {
+		for _, candidate := range []string{os.Getenv("ComSpec"), "pwsh.exe", "powershell.exe", "cmd.exe"} {
+			if commandAvailable(candidate) {
+				return filepath.Base(candidate)
+			}
+		}
+		return "cmd.exe"
+	}
+	for _, candidate := range []string{os.Getenv("SHELL"), "bash", "zsh", "sh"} {
+		if commandAvailable(candidate) {
+			return filepath.Base(candidate)
+		}
+	}
+	return "sh"
+}
+
+func detectPathSeparator(targetOS string) string {
+	if targetOS == "windows" {
+		return "\\"
+	}
+	return "/"
+}
+
+func detectLineEnding(targetOS string) string {
+	if targetOS == "windows" {
+		return "CRLF"
+	}
+	return "LF"
+}
+
+func decodeLineEnding(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "CRLF", "\\R\\N", "\\r\\n":
+		return "\r\n"
+	case "LF", "\\N", "\\n":
+		return "\n"
+	default:
+		return value
+	}
+}
+
+func detectWorkspaceRoots() []string {
+	roots := []string{}
+	if cwd, err := os.Getwd(); err == nil {
+		roots = append(roots, cwd)
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		roots = append(roots, home)
+	}
+	return uniqueNonEmpty(roots)
+}
+
+func detectAvailableCommands(targetOS string) []string {
+	candidates := []string{"git", "node", "npm", "pnpm", "go", "python", "python3"}
+	if targetOS == "windows" {
+		candidates = append(candidates, "cmd.exe", "powershell.exe", "pwsh.exe", "where.exe")
+	} else {
+		candidates = append(candidates, "sh", "bash", "zsh", "grep", "find", "rg", "which")
+	}
+
+	available := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if commandAvailable(candidate) {
+			available = append(available, filepath.Base(candidate))
+		}
+	}
+	return uniqueNonEmpty(available)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func commandAvailable(command string) bool {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return false
+	}
+	if filepath.IsAbs(command) {
+		info, err := os.Stat(command)
+		return err == nil && !info.IsDir()
+	}
+	_, err := osexec.LookPath(command)
+	return err == nil
+}
+
+func uniqueNonEmpty(values []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
 }
 
 func localHostname() string {

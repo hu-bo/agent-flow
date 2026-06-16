@@ -15,10 +15,10 @@ $cmdPath = Join-Path $projectRoot "cmd"
 $distRoot = Join-Path $projectRoot $OutputDir
 
 $targets = @(
-  @{ GOOS = "windows"; GOARCH = "amd64"; BinaryName = "agent-flow-runner.exe"; PackageName = "agent-flow-runner-windows-amd64" },
-  @{ GOOS = "windows"; GOARCH = "arm64"; BinaryName = "agent-flow-runner.exe"; PackageName = "agent-flow-runner-windows-arm64" },
-  @{ GOOS = "darwin"; GOARCH = "arm64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-arm64" },
-  @{ GOOS = "darwin"; GOARCH = "amd64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-amd64" }
+  @{ GOOS = "windows"; GOARCH = "amd64"; BinaryName = "agent-flow-runner.exe"; PackageName = "agent-flow-runner-windows-amd64"; DefaultShell = "powershell.exe"; PathSeparator = "\"; LineEnding = "CRLF"; AvailableCommands = "cmd.exe,powershell.exe,pwsh.exe,where.exe,git,pnpm,npm,node" },
+  @{ GOOS = "windows"; GOARCH = "arm64"; BinaryName = "agent-flow-runner.exe"; PackageName = "agent-flow-runner-windows-arm64"; DefaultShell = "powershell.exe"; PathSeparator = "\"; LineEnding = "CRLF"; AvailableCommands = "cmd.exe,powershell.exe,pwsh.exe,where.exe,git,pnpm,npm,node" },
+  @{ GOOS = "darwin"; GOARCH = "arm64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-arm64"; DefaultShell = "zsh"; PathSeparator = "/"; LineEnding = "LF"; AvailableCommands = "sh,bash,zsh,git,pnpm,npm,node,grep,find,rg,which" },
+  @{ GOOS = "darwin"; GOARCH = "amd64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-amd64"; DefaultShell = "zsh"; PathSeparator = "/"; LineEnding = "LF"; AvailableCommands = "sh,bash,zsh,git,pnpm,npm,node,grep,find,rg,which" }
 )
 
 function New-RunnerConfigJson {
@@ -117,7 +117,17 @@ foreach ($target in $targets) {
   $env:GOARCH = $target.GOARCH
   $env:CGO_ENABLED = "0"
 
-  go build -ldflags "-X main.defaultVersion=$Version" -o $binaryPath $cmdPath
+  $ldflags = @(
+    "-X main.defaultVersion=$Version",
+    "-X main.buildTargetOS=$($target.GOOS)",
+    "-X main.buildTargetArch=$($target.GOARCH)",
+    "-X main.buildDefaultShell=$($target.DefaultShell)",
+    "-X main.buildPathSeparator=$($target.PathSeparator)",
+    "-X main.buildLineEnding=$($target.LineEnding)",
+    "-X main.buildAvailableCommands=$($target.AvailableCommands)"
+  ) -join " "
+
+  go build -ldflags $ldflags -o $binaryPath $cmdPath
   if ($LASTEXITCODE -ne 0) {
     throw "go build failed for $($target.PackageName)"
   }

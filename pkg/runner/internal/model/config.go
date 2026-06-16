@@ -14,9 +14,22 @@ const (
 )
 
 type LocalConfig struct {
-	RunnerID    string `json:"runnerId"`
-	RunnerToken string `json:"runnerToken"`
-	ServerAddr  string `json:"serverAddr"`
+	RunnerID       string           `json:"runnerId"`
+	RunnerToken    string           `json:"runnerToken"`
+	ServerAddr     string           `json:"serverAddr"`
+	GRPCServerAddr string           `json:"grpcServerAddr"`
+	HTTPServerAddr string           `json:"httpServerAddr"`
+	Platform       *PlatformProfile `json:"platform,omitempty"`
+}
+
+type PlatformProfile struct {
+	OS                string   `json:"os"`
+	Arch              string   `json:"arch"`
+	DefaultShell      string   `json:"defaultShell"`
+	PathSeparator     string   `json:"pathSeparator"`
+	LineEnding        string   `json:"lineEnding"`
+	WorkspaceRoots    []string `json:"workspaceRoots"`
+	AvailableCommands []string `json:"availableCommands"`
 }
 
 func LoadLocalConfig() (LocalConfig, error) {

@@ -5,7 +5,6 @@ import type { AdapterTokenUsage, FinishReason, MessagePart } from '@agent-flow/m
 import type { ChatStreamEvent, RuntimeChatInput } from '../contracts/api.js';
 import { createTextMessage } from '../lib/messages.js';
 import type { ModelAdapterService } from '../services/model-adapter-service.js';
-import { ApprovalRequiredError } from './approval-error.js';
 import {
   createAdapterAssistantMessage,
   createAdapterToolMessage,
@@ -226,9 +225,6 @@ export class ModelChatDriver {
         hasStreamed = true;
       }
     } catch (error) {
-      if (error instanceof ApprovalRequiredError) {
-        throw error;
-      }
       if (!hasStreamed) {
         return null;
       }

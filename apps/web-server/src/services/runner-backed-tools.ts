@@ -6,14 +6,13 @@ import type {
   ToolSchema,
 } from '@agent-flow/core';
 import { z } from 'zod';
-import { AppError } from '../lib/errors.js';
-import { encodeApprovalRequiredError, extractApprovalRequiredFromError } from '../lib/approval.js';
 import type { RunnerDispatchService } from './runner-dispatch-service.js';
 
 type RunnerBackedToolName =
   | 'fs.read'
   | 'fs.write'
   | 'fs.patch'
+  | 'fs.multiPatch'
   | 'fs.list'
   | 'fs.search'
   | 'shell.exec';
@@ -23,6 +22,9 @@ interface RunnerBackedToolOptions {
   name: RunnerBackedToolName;
   description: string;
   input: ToolSchema['input'];
+  risk: NonNullable<ToolSchema['risk']>;
+  access: NonNullable<ToolSchema['access']>;
+  approval: NonNullable<ToolSchema['approval']>;
   zodInput: z.ZodType<Record<string, unknown>>;
 }
 
@@ -34,53 +36,67 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
       name: options.name,
       description: options.description,
       input: options.input,
+      risk: options.risk,
+      access: options.access,
+      approval: options.approval,
     };
   }
 
   async execute(input: Record<string, unknown>, context: ToolContext): Promise<unknown> {
     const parsedInput = parseRunnerBackedToolInput(this.options.name, this.options.zodInput, input);
+    const runnerInput = this.options.name === 'shell.exec'
+      ? normalizeShellExecInput(parsedInput)
+      : parsedInput;
     const task: RunnerTask = {
       taskId: `${context.taskId}:${context.stepId}`,
       sessionId: context.sessionId,
       stepId: context.stepId,
       command: this.options.name,
-      args: parseRunnerArgs(parsedInput),
+      args: parseRunnerArgs(runnerInput),
       stream: true,
-      input: parsedInput,
-      metadata: context.metadata,
+      input: runnerInput,
+      metadata: {
+        ...(context.metadata ?? {}),
+        risk: this.options.risk,
+        approvalPolicy: this.options.approval,
+        toolFamily: this.options.access === 'execute' ? 'bash' : 'fs',
+      },
     };
 
     let latestResult: unknown;
     let completed = false;
-    try {
-      for await (const event of this.options.dispatchService.execute(task, context.signal)) {
-        if (event.type === 'result') {
-          latestResult = event.result;
-        } else if (event.type === 'completed') {
-          completed = true;
-        } else if (event.type === 'error') {
-          throw new Error(event.error);
-        }
+    for await (const event of this.options.dispatchService.execute(task, context.signal)) {
+      await context.onEvent?.('runner.event', {
+        runnerEvent: event,
+      });
+      if (event.type === 'approval_request') {
+        await context.onEvent?.('approval_request', {
+          requestId: event.requestId,
+          session_id: event.sessionId,
+          cmd: event.command,
+          workdir: event.workingDir,
+          risk: event.risk,
+          reason: event.reason,
+          runnerId: event.runnerId,
+        });
+      } else if (event.type === 'approval_response') {
+        await context.onEvent?.('approval_response', {
+          requestId: event.requestId,
+          session_id: event.sessionId,
+          cmd: event.command,
+          workdir: event.workingDir,
+          approved: event.approved,
+          ticketId: event.ticketId,
+          reason: event.reason,
+          runnerId: event.runnerId,
+        });
+      } else if (event.type === 'result') {
+        latestResult = event.result;
+      } else if (event.type === 'completed') {
+        completed = true;
+      } else if (event.type === 'error') {
+        throw new Error(event.error);
       }
-    } catch (error) {
-      const approval =
-        extractApprovalRequiredFromError(error) ??
-        (error instanceof AppError && error.code === 'APPROVAL_REQUIRED'
-          ? {
-              session_id: context.sessionId,
-              cmd: this.options.name,
-              workdir: resolveWorkingDir(context.metadata),
-              risk: 'high' as const,
-              reason: error.message,
-            }
-          : null);
-      if (approval) {
-        throw new Error(encodeApprovalRequiredError(approval));
-      }
-      if (error instanceof AppError) {
-        throw new Error(error.message);
-      }
-      throw error;
     }
 
     if (!completed) {
@@ -120,6 +136,14 @@ const runnerBackedInputSchemas = {
     search: z.string().min(1),
     replace: z.string(),
     replaceAll: z.boolean().optional(),
+  }),
+  fsMultiPatch: z.object({
+    path: z.string().trim().min(1),
+    edits: z.array(z.object({
+      search: z.string().min(1),
+      replace: z.string(),
+      replaceAll: z.boolean().optional(),
+    })).min(1).max(100),
   }),
   fsList: z.object({
     path: z.string().trim().min(1).optional(),
@@ -169,6 +193,9 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
       name: 'fs.read',
       description: 'Read a UTF-8 file from the bound runner workspace.',
       zodInput: runnerBackedInputSchemas.fsRead,
+      risk: 'low',
+      access: 'read',
+      approval: 'never',
       input: {
         type: 'object',
         required: ['path'],
@@ -185,6 +212,9 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
       name: 'fs.write',
       description: 'Write a UTF-8 file inside the bound runner workspace.',
       zodInput: runnerBackedInputSchemas.fsWrite,
+      risk: 'high',
+      access: 'write',
+      approval: 'on_write',
       input: {
         type: 'object',
         required: ['path', 'content'],
@@ -200,6 +230,9 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
       name: 'fs.patch',
       description: 'Patch a UTF-8 file inside the bound runner workspace by replacing text.',
       zodInput: runnerBackedInputSchemas.fsPatch,
+      risk: 'high',
+      access: 'write',
+      approval: 'on_write',
       input: {
         type: 'object',
         required: ['path', 'search', 'replace'],
@@ -213,9 +246,41 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
     }),
     new RunnerBackedTool({
       dispatchService,
+      name: 'fs.multiPatch',
+      description: 'Apply multiple text replacements to one UTF-8 file inside the bound runner workspace.',
+      zodInput: runnerBackedInputSchemas.fsMultiPatch,
+      risk: 'high',
+      access: 'write',
+      approval: 'on_write',
+      input: {
+        type: 'object',
+        required: ['path', 'edits'],
+        properties: {
+          path: { type: 'string', description: 'Workspace-relative file path.' },
+          edits: {
+            type: 'array',
+            description: 'Ordered text replacements to apply atomically.',
+            items: {
+              type: 'object',
+              required: ['search', 'replace'],
+              properties: {
+                search: { type: 'string', description: 'Text to search for.' },
+                replace: { type: 'string', description: 'Replacement text.' },
+                replaceAll: { type: 'boolean', description: 'Replace all matches instead of the first match.' },
+              },
+            },
+          },
+        },
+      },
+    }),
+    new RunnerBackedTool({
+      dispatchService,
       name: 'fs.list',
       description: 'List files under a directory in the bound runner workspace.',
       zodInput: runnerBackedInputSchemas.fsList,
+      risk: 'low',
+      access: 'read',
+      approval: 'never',
       input: {
         type: 'object',
         properties: {
@@ -231,6 +296,9 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
       name: 'fs.search',
       description: 'Search files under a directory in the bound runner workspace.',
       zodInput: runnerBackedInputSchemas.fsSearch,
+      risk: 'low',
+      access: 'read',
+      approval: 'never',
       input: {
         type: 'object',
         required: ['pattern'],
@@ -248,6 +316,9 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
       name: 'shell.exec',
       description: 'Execute a shell command through the bound runner.',
       zodInput: runnerBackedInputSchemas.shellExec,
+      risk: 'high',
+      access: 'execute',
+      approval: 'always',
       input: {
         type: 'object',
         required: ['command'],
@@ -284,4 +355,67 @@ function parseRunnerArgs(input: Record<string, unknown>): string[] {
     return [];
   }
   return input.args.map((value) => String(value));
+}
+
+function normalizeShellExecInput(input: Record<string, unknown>): Record<string, unknown> {
+  if (Array.isArray(input.args) && input.args.length > 0) {
+    return input;
+  }
+  if (typeof input.command !== 'string') {
+    return input;
+  }
+
+  const parts = splitCommandLine(input.command);
+  if (parts.length <= 1) {
+    return input;
+  }
+
+  return {
+    ...input,
+    command: parts[0],
+    args: parts.slice(1),
+  };
+}
+
+function splitCommandLine(commandLine: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let escaping = false;
+
+  for (const char of commandLine.trim()) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      continue;
+    }
+
+    if (char === '\\' && quote === '"') {
+      escaping = true;
+      continue;
+    }
+
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? null : char;
+      continue;
+    }
+
+    if (!quote && /\s/.test(char)) {
+      if (current.length > 0) {
+        parts.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (escaping) {
+    current += '\\';
+  }
+  if (current.length > 0) {
+    parts.push(current);
+  }
+  return parts;
 }

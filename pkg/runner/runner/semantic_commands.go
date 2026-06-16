@@ -47,6 +47,17 @@ type fsPatchInput struct {
 	ReplaceAll bool   `json:"replaceAll"`
 }
 
+type fsMultiPatchInput struct {
+	Path  string        `json:"path"`
+	Edits []fsPatchEdit `json:"edits"`
+}
+
+type fsPatchEdit struct {
+	Search     string `json:"search"`
+	Replace    string `json:"replace"`
+	ReplaceAll bool   `json:"replaceAll"`
+}
+
 type fsListInput struct {
 	Path          string `json:"path"`
 	Recursive     bool   `json:"recursive"`
@@ -66,7 +77,7 @@ func (r *ControllerImpl) runSemanticCommand(ctx context.Context, req types.TaskR
 	switch strings.TrimSpace(req.Command) {
 	case "shell.exec":
 		return true, r.runShellExec(ctx, req, sink)
-	case "fs.roots", "fs.read", "fs.write", "fs.patch", "fs.list", "fs.search":
+	case "fs.roots", "fs.read", "fs.write", "fs.patch", "fs.multiPatch", "fs.list", "fs.search":
 		return true, r.runSemanticFS(ctx, req, sink)
 	default:
 		return false, nil
@@ -112,7 +123,7 @@ func (r *ControllerImpl) runSemanticFS(_ context.Context, req types.TaskRequest,
 		if err := r.guard.Validate(req, req.Sandbox); err != nil {
 			return err
 		}
-		if req.Sandbox.ReadOnly && (req.Command == "fs.write" || req.Command == "fs.patch") {
+		if req.Sandbox.ReadOnly && (req.Command == "fs.write" || req.Command == "fs.patch" || req.Command == "fs.multiPatch") {
 			return fmt.Errorf("%s is not allowed in read-only sandbox", req.Command)
 		}
 	}
@@ -183,6 +194,8 @@ func runFSOp(req types.TaskRequest) (map[string]any, error) {
 		return fsWrite(req)
 	case "fs.patch":
 		return fsPatch(req)
+	case "fs.multiPatch":
+		return fsMultiPatch(req)
 	case "fs.list":
 		return fsList(req)
 	case "fs.search":
@@ -345,6 +358,58 @@ func fsPatch(req types.TaskRequest) (map[string]any, error) {
 		"replaced":     effectiveReplaced,
 		"previousSize": len(original),
 		"newSize":      len(updated),
+	}, nil
+}
+
+func fsMultiPatch(req types.TaskRequest) (map[string]any, error) {
+	var input fsMultiPatchInput
+	_ = decodeInput(req.InputJSON, &input)
+	path := coalescePath(input.Path, req.Args)
+	if path == "" {
+		return nil, fmt.Errorf("fs.multiPatch requires path")
+	}
+	if len(input.Edits) == 0 {
+		return nil, fmt.Errorf("fs.multiPatch requires at least one edit")
+	}
+
+	absPath, err := resolveWriteScopedPath(req, path)
+	if err != nil {
+		return nil, err
+	}
+	original, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+
+	text := string(original)
+	totalReplaced := 0
+	for idx, edit := range input.Edits {
+		if strings.TrimSpace(edit.Search) == "" {
+			return nil, fmt.Errorf("fs.multiPatch edit %d requires non-empty search", idx)
+		}
+		replacedCount := strings.Count(text, edit.Search)
+		if replacedCount == 0 {
+			return nil, fmt.Errorf("fs.multiPatch edit %d found no matches", idx)
+		}
+		limit := 1
+		if edit.ReplaceAll {
+			limit = -1
+			totalReplaced += replacedCount
+		} else {
+			totalReplaced++
+		}
+		text = strings.Replace(text, edit.Search, edit.Replace, limit)
+	}
+
+	if err := os.WriteFile(absPath, []byte(text), 0o644); err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"path":         absPath,
+		"edits":        len(input.Edits),
+		"replaced":     totalReplaced,
+		"previousSize": len(original),
+		"newSize":      len(text),
 	}, nil
 }
 

@@ -530,6 +530,15 @@ export class DefaultPlanExecutor {
                         step
                     });
                     let output;
+                    const emitStepEvent = async (type, payload) => {
+                        await emit(createEvent(session.taskId, session.id, type, {
+                            stepId: step.id,
+                            title: step.title,
+                            kind: step.kind,
+                            round,
+                            ...payload,
+                        }));
+                    };
                     if (step.kind === 'llm') {
                         if (this.options.llmExecutor) {
                             output = await this.options.llmExecutor.execute({
@@ -539,7 +548,8 @@ export class DefaultPlanExecutor {
                                 input: resolvedInput,
                                 context,
                                 outputs: { ...outputs },
-                                signal: executeOptions.signal
+                                signal: executeOptions.signal,
+                                onEvent: emitStepEvent
                             });
                         }
                         else {
@@ -571,7 +581,8 @@ export class DefaultPlanExecutor {
                             sessionId: session.id,
                             stepId: step.id,
                             signal: executeOptions.signal,
-                            metadata: request.metadata
+                            metadata: request.metadata,
+                            onEvent: emitStepEvent
                         }, {
                             retries: 1
                         });

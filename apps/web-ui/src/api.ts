@@ -419,12 +419,56 @@ export async function fetchRunnerDownloads(): Promise<{
   return requestJson({ url: '/api/runners/downloads', method: 'GET' });
 }
 
+export type RunnerDownloadPlatform =
+  | 'windows-amd64'
+  | 'windows-arm64'
+  | 'darwin-arm64'
+  | 'darwin-amd64'
+  | 'macos-arm64'
+  | 'macos-amd64'
+  | 'linux-amd64';
+
+export async function downloadRunnerPackage(platform: RunnerDownloadPlatform): Promise<void> {
+  const response = await apiClient.request<Blob>({
+    url: `/api/runners/downloads/${platform}`,
+    method: 'GET',
+    responseType: 'blob',
+  });
+  const disposition = response.headers['content-disposition'];
+  const fallbackName = `agent-flow-runner-${platform}.zip`;
+  const fileName = parseContentDispositionFilename(disposition) ?? fallbackName;
+  const blob = response.data;
+  const url = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function issueRunnerToken(): Promise<RunnerTokenIssueResult> {
   return requestJson({
     url: '/api/runners/token',
     method: 'POST',
     data: {},
   });
+}
+
+function parseContentDispositionFilename(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+  const asciiMatch = value.match(/filename="([^"]+)"/i) ?? value.match(/filename=([^;]+)/i);
+  return asciiMatch?.[1]?.trim();
 }
 
 export async function rotateRunnerToken(): Promise<RunnerTokenIssueResult> {
@@ -439,6 +483,7 @@ export async function issueRunnerApprovalTicket(input: {
   session_id: string;
   cmd: string;
   workdir?: string;
+  request_id?: string;
   ttl_sec?: number;
 }): Promise<RunnerApprovalTicketResult> {
   return requestJson({
@@ -500,6 +545,7 @@ interface StreamChatOptions {
 export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
 
 export interface ApprovalReqPayload {
+  request_id?: string;
   session_id: string;
   cmd: string;
   workdir: string;
@@ -682,6 +728,42 @@ export async function streamChat({
         usage_by_msg: { ...doc.usage_by_msg, ...(usage.usage_by_msg ?? {}) },
       };
       onUsage?.(usage, doc);
+      onDeltaApplied(doc);
+      return;
+    }
+
+    if (frame.event === 'approval_request') {
+      const event = JSON.parse(frame.data) as {
+        payload?: {
+          requestId?: string;
+          session_id?: string;
+          cmd?: string;
+          workdir?: string;
+          risk?: ApprovalRiskLevel;
+          reason?: string;
+        };
+      };
+      const payload = event.payload ?? {};
+      doc = {
+        ...doc,
+        approval: {
+          request_id: payload.requestId,
+          session_id: payload.session_id ?? '',
+          cmd: payload.cmd ?? '',
+          workdir: payload.workdir ?? '',
+          risk: payload.risk === 'low' || payload.risk === 'medium' ? payload.risk : 'high',
+          reason: payload.reason,
+        },
+      };
+      onDeltaApplied(doc);
+      return;
+    }
+
+    if (frame.event === 'approval_response') {
+      doc = {
+        ...doc,
+        approval: null,
+      };
       onDeltaApplied(doc);
       return;
     }

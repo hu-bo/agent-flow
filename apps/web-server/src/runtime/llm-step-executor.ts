@@ -121,6 +121,7 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
               stepId: stepRequest.step.id,
               signal: stepRequest.signal,
               metadata: stepRequest.request.metadata,
+              onEvent: stepRequest.onEvent,
             },
           }),
         ),

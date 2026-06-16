@@ -288,21 +288,25 @@ export function useChat(): UseChatReturn {
           onDeltaApplied: (doc) => {
             if (activeSessionRef.current !== sessionId) return;
 
-            if (doc.approval && !pendingApprovalRef.current) {
-              commitPendingApproval({
-                approval: doc.approval,
-                pendingInput: {
-                  text: userInput,
-                  sessionId,
-                  projectId,
-                  mode,
-                  model,
-                  reasoningEffort,
-                  attachments,
-                  onSpecDocUpdate,
-                },
-              });
+            if (doc.approval) {
+              if (!pendingApprovalRef.current) {
+                commitPendingApproval({
+                  approval: doc.approval,
+                  pendingInput: {
+                    text: userInput,
+                    sessionId,
+                    projectId,
+                    mode,
+                    model,
+                    reasoningEffort,
+                    attachments,
+                    onSpecDocUpdate,
+                  },
+                });
+              }
               setTypingMessageId(null);
+            } else if (pendingApprovalRef.current) {
+              commitPendingApproval(null);
             }
 
             if (onSpecDocUpdate) {

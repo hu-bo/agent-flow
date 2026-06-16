@@ -17,16 +17,23 @@ import (
 )
 
 type StartLoopOptions struct {
-	RunnerID     string
-	RunnerToken  string
-	ServerAddr   string
-	Kind         string
-	Host         string
-	HostName     string
-	HostIP       string
-	Version      string
-	Capabilities []string
-	OnRegistered func(result StartLoopResult)
+	RunnerID          string
+	RunnerToken       string
+	ServerAddr        string
+	Kind              string
+	Host              string
+	HostName          string
+	HostIP            string
+	Version           string
+	Capabilities      []string
+	OS                string
+	Arch              string
+	DefaultShell      string
+	PathSeparator     string
+	LineEnding        string
+	WorkspaceRoots    []string
+	AvailableCommands []string
+	OnRegistered      func(result StartLoopResult)
 }
 
 type StartLoopResult struct {
@@ -62,14 +69,21 @@ func StartLoop(ctx context.Context, controller runnercore.Controller, opts Start
 	register := &runnerpb.RunnerEnvelope{
 		Payload: &runnerpb.RunnerEnvelope_Register{
 			Register: &runnerpb.ConnectRegister{
-				RunnerToken:  opts.RunnerToken,
-				RunnerId:     strings.TrimSpace(opts.RunnerID),
-				Kind:         strings.TrimSpace(opts.Kind),
-				Host:         strings.TrimSpace(opts.Host),
-				HostName:     strings.TrimSpace(opts.HostName),
-				HostIp:       strings.TrimSpace(opts.HostIP),
-				Version:      strings.TrimSpace(opts.Version),
-				Capabilities: append([]string{}, opts.Capabilities...),
+				RunnerToken:       opts.RunnerToken,
+				RunnerId:          strings.TrimSpace(opts.RunnerID),
+				Kind:              strings.TrimSpace(opts.Kind),
+				Host:              strings.TrimSpace(opts.Host),
+				HostName:          strings.TrimSpace(opts.HostName),
+				HostIp:            strings.TrimSpace(opts.HostIP),
+				Version:           strings.TrimSpace(opts.Version),
+				Capabilities:      append([]string{}, opts.Capabilities...),
+				Os:                strings.TrimSpace(opts.OS),
+				Arch:              strings.TrimSpace(opts.Arch),
+				DefaultShell:      strings.TrimSpace(opts.DefaultShell),
+				PathSeparator:     strings.TrimSpace(opts.PathSeparator),
+				LineEnding:        strings.TrimSpace(opts.LineEnding),
+				WorkspaceRoots:    append([]string{}, opts.WorkspaceRoots...),
+				AvailableCommands: append([]string{}, opts.AvailableCommands...),
 			},
 		},
 	}

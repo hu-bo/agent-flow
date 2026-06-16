@@ -1,9 +1,7 @@
 import type { ToolContext, ToolExecutorLike, ToolRegistryLike } from '@agent-flow/core';
 import type { ToolSpec } from '@agent-flow/model-adapters/types';
 import type { RuntimeChatInput } from '../contracts/api.js';
-import { parseApprovalRequiredErrorMessage } from '../lib/approval.js';
 import { createToolResultOutputEnhancer } from '../tools/result-output-enhancer.js';
-import { ApprovalRequiredError } from './approval-error.js';
 import {
   INTERNAL_TOOL_NAME_BY_MODEL,
   MODEL_TOOL_NAME_BY_INTERNAL,
@@ -89,6 +87,11 @@ export class ModelToolRunner {
       },
     });
 
+    await input.context.onEvent?.('tool.called', {
+      tool: internalToolName,
+      input: toolInput,
+    });
+
     const result = await this.toolExecutor.execute(
       {
         name: internalToolName,
@@ -102,12 +105,12 @@ export class ModelToolRunner {
         retries: 0,
       },
     );
-    if (!result.ok) {
-      const approval = parseApprovalRequiredErrorMessage(result.error ?? '');
-      if (approval) {
-        throw new ApprovalRequiredError(approval);
-      }
-    }
+    await input.context.onEvent?.('tool.result', {
+      tool: internalToolName,
+      ok: result.ok,
+      error: result.error,
+      output: result.output,
+    });
 
     let output: unknown = result.ok ? result.output : { error: result.error ?? 'Tool execution failed.' };
     if (result.ok && outputEnhancer) {

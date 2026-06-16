@@ -136,6 +136,7 @@ export interface LlmStepRequest {
     context: ContextEnvelope;
     outputs: Record<string, unknown>;
     signal?: AbortSignal;
+    onEvent?: ToolContext['onEvent'];
 }
 export type LlmStepOutputPhase = 'analysis' | 'implementation' | 'verification';
 export interface LlmStepStructuredSections {
@@ -195,12 +196,31 @@ export interface RunnerErrorEvent extends RunnerEventBase {
     error: string;
     retryable: boolean;
 }
+export interface RunnerApprovalRequestEvent extends RunnerEventBase {
+    type: 'approval_request';
+    requestId: string;
+    sessionId: string;
+    command: string;
+    workingDir: string;
+    risk: 'low' | 'medium' | 'high';
+    reason?: string;
+}
+export interface RunnerApprovalResponseEvent extends RunnerEventBase {
+    type: 'approval_response';
+    requestId: string;
+    sessionId: string;
+    command: string;
+    workingDir: string;
+    approved: boolean;
+    ticketId?: string;
+    reason?: string;
+}
 export interface RunnerCompletedEvent extends RunnerEventBase {
     type: 'completed';
     exitCode: number;
     durationMs: number;
 }
-export type RunnerEvent = RunnerStartedEvent | RunnerStdoutEvent | RunnerStderrEvent | RunnerProgressEvent | RunnerResultEvent | RunnerErrorEvent | RunnerCompletedEvent;
+export type RunnerEvent = RunnerStartedEvent | RunnerStdoutEvent | RunnerStderrEvent | RunnerProgressEvent | RunnerResultEvent | RunnerErrorEvent | RunnerApprovalRequestEvent | RunnerApprovalResponseEvent | RunnerCompletedEvent;
 export interface Runner {
     readonly id: string;
     readonly kind: RunnerKind;
@@ -237,6 +257,9 @@ export interface ToolSchema {
     description: string;
     input: JsonSchema;
     output?: JsonSchema;
+    risk?: 'low' | 'medium' | 'high';
+    access?: 'read' | 'write' | 'execute' | 'network' | 'git';
+    approval?: 'never' | 'on_write' | 'always';
 }
 export interface ToolContext {
     taskId: string;
@@ -244,6 +267,7 @@ export interface ToolContext {
     stepId: string;
     signal?: AbortSignal;
     metadata?: Record<string, unknown>;
+    onEvent?: (type: AgentEvent['type'], payload: Record<string, unknown>) => void | Promise<void>;
 }
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
     schema: ToolSchema;
@@ -374,7 +398,7 @@ export interface AgentEvent {
     id: string;
     taskId: string;
     sessionId: string;
-    type: 'session.started' | 'session.verification' | 'session.completed' | 'session.replanned' | 'session.blocked' | 'session.failed' | 'step.started' | 'step.completed' | 'step.failed' | 'tool.called' | 'tool.result' | 'runner.event' | 'checkpoint.created';
+    type: 'session.started' | 'session.verification' | 'session.completed' | 'session.replanned' | 'session.blocked' | 'session.failed' | 'step.started' | 'step.completed' | 'step.failed' | 'tool.called' | 'tool.result' | 'approval_request' | 'approval_response' | 'runner.event' | 'checkpoint.created';
     timestamp: string;
     payload: Record<string, unknown>;
 }

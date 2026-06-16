@@ -41,6 +41,13 @@ interface ConnectRegisterMessage {
   hostIp?: string;
   version?: string;
   capabilities?: string[];
+  os?: string;
+  arch?: string;
+  defaultShell?: string;
+  pathSeparator?: string;
+  lineEnding?: string;
+  workspaceRoots?: string[];
+  availableCommands?: string[];
 }
 
 interface ConnectHeartbeatMessage {
@@ -255,6 +262,13 @@ async function handleConnectStream(
             hostIp: message.register.hostIp,
             version: message.register.version,
             capabilities: message.register.capabilities,
+            os: message.register.os,
+            arch: message.register.arch,
+            defaultShell: message.register.defaultShell,
+            pathSeparator: message.register.pathSeparator,
+            lineEnding: message.register.lineEnding,
+            workspaceRoots: message.register.workspaceRoots,
+            availableCommands: message.register.availableCommands,
           });
 
           runnerId = registered.runnerId;
@@ -276,6 +290,9 @@ async function handleConnectStream(
               hostName: registered.hostName ?? undefined,
               hostIp: registered.hostIp ?? undefined,
               version: registered.version ?? undefined,
+              os: registered.os ?? undefined,
+              arch: registered.arch ?? undefined,
+              defaultShell: registered.defaultShell ?? undefined,
             },
           });
 

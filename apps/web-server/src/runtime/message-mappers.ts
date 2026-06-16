@@ -11,7 +11,7 @@ import type {
   ChatStreamMessageDeltaEvent,
   RuntimeChatInput,
 } from '../contracts/api.js';
-import type { parseApprovalRequiredErrorMessage } from '../lib/approval.js';
+import type { ApprovalRequiredPayload } from '../lib/approval.js';
 import { createUnifiedMessage } from '../lib/messages.js';
 import { isRuntimeDiagnosticMessage } from './runtime-diagnostics.js';
 
@@ -19,6 +19,7 @@ export const MODEL_TOOL_NAME_BY_INTERNAL = new Map<string, string>([
   ['fs.read', 'fs_read'],
   ['fs.write', 'fs_write'],
   ['fs.patch', 'fs_patch'],
+  ['fs.multiPatch', 'fs_multi_patch'],
   ['fs.list', 'fs_list'],
   ['fs.search', 'fs_search'],
   ['shell.exec', 'shell_exec'],
@@ -179,11 +180,24 @@ export function toThinkingEvent(message: UnifiedMessage): ChatStreamEvent {
 }
 
 export function toApprovalRequiredEvent(
-  approval: NonNullable<ReturnType<typeof parseApprovalRequiredErrorMessage>>,
+  approval: ApprovalRequiredPayload,
 ): ChatStreamEvent {
   return {
     type: 'approval_req',
     approval,
+  };
+}
+
+export function toRuntimeEvent(event: AgentEvent): ChatStreamEvent | undefined {
+  if (event.type !== 'approval_request' && event.type !== 'approval_response') {
+    return undefined;
+  }
+  return {
+    type: 'runtime_event',
+    event: {
+      ...event,
+      payload: { ...event.payload },
+    },
   };
 }
 
@@ -405,6 +419,52 @@ export function toProgressMessage(
         error: readString(payload.error),
       },
       isError,
+      {
+        streamEvent: event.type,
+        payload: event.payload,
+      },
+    );
+  }
+
+  if (event.type === 'approval_request') {
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      readString(payload.requestId) ?? event.id,
+      'runner.approval',
+      {
+        status: 'pending',
+        requestId: readString(payload.requestId),
+        session_id: readString(payload.session_id),
+        cmd: readString(payload.cmd),
+        workdir: readString(payload.workdir),
+        risk: readString(payload.risk) ?? 'high',
+        reason: readString(payload.reason),
+      },
+      false,
+      {
+        streamEvent: event.type,
+        payload: event.payload,
+      },
+    );
+  }
+
+  if (event.type === 'approval_response') {
+    return createProgressToolResultMessage(
+      input,
+      parentUuid,
+      readString(payload.requestId) ?? event.id,
+      'runner.approval',
+      {
+        status: payload.approved === true ? 'approved' : 'denied',
+        requestId: readString(payload.requestId),
+        session_id: readString(payload.session_id),
+        cmd: readString(payload.cmd),
+        workdir: readString(payload.workdir),
+        ticketId: readString(payload.ticketId),
+        reason: readString(payload.reason),
+      },
+      payload.approved !== true,
       {
         streamEvent: event.type,
         payload: event.payload,

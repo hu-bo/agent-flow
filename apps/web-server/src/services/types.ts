@@ -6,6 +6,7 @@ import type { ModelAdapterService } from './model-adapter-service.js';
 import type { ModelService } from './model-service.js';
 import type { ProjectService } from './project-service.js';
 import type { RunnerDirectoryService } from './runner-directory-service.js';
+import type { RunnerPackageService } from './runner-package-service.js';
 import type { RunnerRegistrationService } from './runner-registration-service.js';
 import type { RunnerRegistryService } from './runner-registry-service.js';
 import type { RunnerDispatchService } from './runner-dispatch-service.js';
@@ -24,6 +25,7 @@ export interface AppServices {
   runnerRegistryService: RunnerRegistryService;
   runnerApprovalService: RunnerApprovalService;
   runnerDirectoryService: RunnerDirectoryService;
+  runnerPackageService: RunnerPackageService;
   runnerDispatchService: RunnerDispatchService;
   taskService: TaskService;
   compactService: CompactService;

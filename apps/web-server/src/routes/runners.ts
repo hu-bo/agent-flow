@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   bindSessionRunnerHandler,
   deleteRunnerHandler,
+  downloadRunnerPackageHandler,
   getRunnerDownloadsHandler,
   issueRunnerApprovalTicketHandler,
   issueRunnerTokenHandler,
@@ -18,6 +19,7 @@ export async function registerRunnerRoutes(app: FastifyInstance) {
   app.delete('/runners/:runner_id', deleteRunnerHandler);
   app.get('/runners/events', streamRunnersHandler);
   app.get('/runners/downloads', getRunnerDownloadsHandler);
+  app.get('/runners/downloads/:platform', downloadRunnerPackageHandler);
   app.post('/runners/approval-ticket', { preHandler: requireJsonBody }, issueRunnerApprovalTicketHandler);
   app.post('/runners/token', issueRunnerTokenHandler);
   app.post('/runners/token/rotate', rotateRunnerTokenHandler);

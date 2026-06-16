@@ -357,6 +357,9 @@ function buildToolInputPreview(toolName: string, input: unknown): Record<string,
   if (toolName === 'fs.search') {
     return pick(['path', 'pattern']);
   }
+  if (toolName === 'fs.patch' || toolName === 'fs.multiPatch') {
+    return pick(['path', 'edits']);
+  }
   if (toolName === 'shell.exec') {
     return pick(['command', 'args']);
   }
@@ -395,10 +398,67 @@ export function renderEnvironmentContext(input: RuntimeChatInput, runtimeMode: R
     `model=${input.model}`,
     `reasoningEffort=${input.reasoningEffort ?? 'medium'}`,
     `attachments=${input.attachments.length}`,
+    renderRunnerPlatformContext(input),
     input.session.specWorkflow
       ? `specWorkflow=phase:${input.session.specWorkflow.phase},awaitingConfirm:${input.session.specWorkflow.awaitingConfirm}`
       : 'specWorkflow=none',
   ].join('\n');
+}
+
+function renderRunnerPlatformContext(input: RuntimeChatInput): string {
+  const platform = input.runnerPlatform;
+  if (!platform) {
+    return [
+      'Runner Platform Context:',
+      '- boundRunner=none-or-unknown',
+      '- platform=unknown',
+      '- Prefer semantic tools such as fs.read, fs.list, fs.search, fs.patch, and git.exec.',
+      '- Before shell.exec, bind or query a runner so shell commands can match the actual OS.',
+    ].join('\n');
+  }
+
+  const os = platform.os ?? 'unknown';
+  const shell = platform.defaultShell ?? 'unknown';
+  const commandStyle = renderCommandStyle(os, shell);
+  return [
+    'Runner Platform Context:',
+    `- boundRunner=${input.preferredRunnerId}`,
+    `- os=${os}`,
+    `- arch=${platform.arch ?? 'unknown'}`,
+    `- defaultShell=${shell}`,
+    `- pathSeparator=${platform.pathSeparator ?? 'unknown'}`,
+    `- lineEnding=${formatLineEnding(platform.lineEnding)}`,
+    `- workspaceRoots=${platform.workspaceRoots.length > 0 ? platform.workspaceRoots.join(', ') : 'unknown'}`,
+    `- availableCommands=${platform.availableCommands.length > 0 ? platform.availableCommands.join(', ') : 'unknown'}`,
+    `- shellCommandGuidance=${commandStyle}`,
+    '- Use read-only semantic tools without approval for inspection.',
+    '- Use shell.exec only for real environment execution, and ensure command syntax matches this runner platform.',
+  ].join('\n');
+}
+
+function renderCommandStyle(os: string, shell: string): string {
+  const normalizedOs = os.toLowerCase();
+  const normalizedShell = shell.toLowerCase();
+  if (normalizedOs === 'windows') {
+    if (normalizedShell.includes('powershell') || normalizedShell.includes('pwsh')) {
+      return 'Windows runner: prefer PowerShell syntax and Windows paths; avoid Linux-only commands like grep/find/sed unless available.';
+    }
+    return 'Windows runner: prefer cmd.exe syntax and Windows paths; avoid Linux-only commands like grep/find/sed unless available.';
+  }
+  if (normalizedOs === 'linux' || normalizedOs === 'darwin') {
+    return 'POSIX runner: prefer sh/bash-compatible commands and POSIX paths.';
+  }
+  return 'Unknown runner OS: prefer semantic tools and avoid shell-specific syntax unless necessary.';
+}
+
+function formatLineEnding(value: string | undefined): string {
+  if (value === '\r\n') {
+    return 'CRLF';
+  }
+  if (value === '\n') {
+    return 'LF';
+  }
+  return value ?? 'unknown';
 }
 
 export function renderLlmStepPrompt(stepRequest: LlmStepRequest): string {

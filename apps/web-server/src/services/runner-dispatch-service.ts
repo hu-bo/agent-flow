@@ -153,35 +153,82 @@ export class RunnerDispatchService {
       throw new AppError(409, 'RUNNER_NOT_AVAILABLE', 'No online runner is available for this task');
     }
 
-    const execution = this.createExecution(task.taskId, runner.runnerId, task.timeoutMs, task);
-    const abortListener = () => {
-      this.requestCancellation(task.taskId, 'Runner task aborted by signal');
-      this.failExecution(task.taskId, 'Runner task aborted by signal');
-    };
-    signal?.addEventListener('abort', abortListener, { once: true });
+    let execution: RunnerExecution | undefined;
+    let abortListener: (() => void) | undefined;
 
     try {
       const workingDir = resolveTaskWorkingDir(task.metadata);
       const sandboxPolicy = deriveSandboxPolicy(task.command, workingDir, task.input);
       const engine = resolveEngine(task.metadata);
       const riskLevel = classifyRiskLevel(task.command, task.input);
-      const approval = validateApprovalForTask(this.runnerApprovalService, task, workingDir, riskLevel);
+      let approval = validateApprovalForTask(this.runnerApprovalService, task, workingDir, riskLevel);
       if (riskLevel === 'high' && !approval.ok) {
-        throw new AppError(
-          403,
-          'APPROVAL_REQUIRED',
-          `Approval required before running high-risk command "${task.command}". Request an approval ticket and retry.`,
-          {
-            required_approval: {
-              session_id: task.sessionId,
-              cmd: task.command,
-              workdir: workingDir,
-              risk: riskLevel,
-            },
-            reason: approval.reason ?? 'approval is missing',
-          },
-        );
+        const pending = this.runnerApprovalService.waitForApproval({
+          ownerUserId: userId,
+          sessionId: task.sessionId,
+          command: task.command,
+          workingDir,
+          risk: riskLevel,
+          reason: approval.reason ?? 'approval is missing',
+          signal,
+        });
+        yield {
+          type: 'approval_request',
+          timestamp: new Date().toISOString(),
+          runnerId: runner.runnerId,
+          requestId: pending.request.requestId,
+          sessionId: pending.request.session_id,
+          command: pending.request.cmd,
+          workingDir: pending.request.workdir,
+          risk: pending.request.risk,
+          reason: pending.request.reason,
+        };
+
+        const response = await pending.response;
+        yield {
+          type: 'approval_response',
+          timestamp: new Date().toISOString(),
+          runnerId: runner.runnerId,
+          requestId: response.requestId,
+          sessionId: task.sessionId,
+          command: task.command,
+          workingDir,
+          approved: response.approved,
+          ticketId: response.ticketId,
+          reason: response.reason,
+        };
+
+        if (!response.approved || !response.ticket) {
+          throw new AppError(
+            403,
+            'APPROVAL_DENIED',
+            response.reason ?? `Approval denied before running high-risk command "${task.command}".`,
+          );
+        }
+
+        approval = this.runnerApprovalService.consumeAndValidate({
+          ticket: response.ticket,
+          ownerUserId: userId,
+          sessionId: task.sessionId,
+          command: task.command,
+          workingDir,
+        });
+        if (!approval.ok) {
+          throw new AppError(
+            403,
+            'APPROVAL_INVALID',
+            approval.reason ?? `Approval ticket was not valid for high-risk command "${task.command}".`,
+          );
+        }
       }
+
+      execution = this.createExecution(task.taskId, runner.runnerId, task.timeoutMs, task);
+      abortListener = () => {
+        this.requestCancellation(task.taskId, 'Runner task aborted by signal');
+        this.failExecution(task.taskId, 'Runner task aborted by signal');
+      };
+      signal?.addEventListener('abort', abortListener, { once: true });
+
       this.enqueueForRunner(runner.runnerId, {
         type: 'run_task',
         task: {
@@ -222,14 +269,18 @@ export class RunnerDispatchService {
         yield event;
       }
     } finally {
-      signal?.removeEventListener('abort', abortListener);
+      if (abortListener) {
+        signal?.removeEventListener('abort', abortListener);
+      }
       const latest = this.executions.get(task.taskId);
       if (latest?.failedReason) {
         const failedReason = latest.failedReason;
         this.cleanupExecution(task.taskId);
         throw new Error(failedReason);
       }
-      this.cleanupExecution(task.taskId);
+      if (execution) {
+        this.cleanupExecution(task.taskId);
+      }
     }
   }
 
@@ -431,7 +482,7 @@ function deriveSandboxPolicy(
 ): PendingSandboxPolicy {
   const semanticFsReadOnly =
     command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots';
-  const semanticFsWrite = command === 'fs.write' || command === 'fs.patch';
+  const semanticFsWrite = command === 'fs.write' || command === 'fs.patch' || command === 'fs.multiPatch';
   const shellExec = command === 'shell.exec';
   const shellReadOnly = shellExec && isReadOnlyShellExec(input);
   const enabled = semanticFsReadOnly || semanticFsWrite || shellExec || !isKnownSafeCommand(command);
@@ -473,20 +524,30 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function classifyRiskLevel(command: string, input?: Record<string, unknown>): 'low' | 'medium' | 'high' {
-  if (command === 'fs.write' || command === 'fs.patch') {
+  if (command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots') {
+    return 'low';
+  }
+  if (command === 'git.status' || command === 'git.diff') {
+    return 'low';
+  }
+  if (command === 'fs.write' || command === 'fs.patch' || command === 'fs.multiPatch') {
     return 'high';
   }
   if (command === 'shell.exec') {
     return isReadOnlyShellExec(input) ? 'medium' : 'high';
   }
-  if (command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots') {
-    return 'medium';
-  }
   return 'high';
 }
 
 function isKnownSafeCommand(command: string): boolean {
-  return command === 'fs.read' || command === 'fs.list' || command === 'fs.search' || command === 'fs.roots';
+  return (
+    command === 'fs.read' ||
+    command === 'fs.list' ||
+    command === 'fs.search' ||
+    command === 'fs.roots' ||
+    command === 'git.status' ||
+    command === 'git.diff'
+  );
 }
 
 function isReadOnlyShellExec(input: Record<string, unknown> | undefined): boolean {

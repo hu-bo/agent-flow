@@ -12,6 +12,7 @@ import { ModelAdapterService } from './model-adapter-service.js';
 import { ModelService } from './model-service.js';
 import { ProjectService } from './project-service.js';
 import { RunnerDirectoryService } from './runner-directory-service.js';
+import { RunnerPackageService } from './runner-package-service.js';
 import { RunnerRegistrationService } from './runner-registration-service.js';
 import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
@@ -67,6 +68,10 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   const runnerRegistryService = new RunnerRegistryService(db, runnerRegistrationService);
   const runnerApprovalService = new RunnerApprovalService();
   const runnerDispatchService = new RunnerDispatchService(runnerRegistryService, runnerApprovalService, logger);
+  const runnerPackageService = new RunnerPackageService(runnerRegistrationService, {
+    templateBaseUrl: env.runnerPackageTemplateBaseUrl,
+    templateDir: env.runnerPackageTemplateDir,
+  });
   const projectService = new ProjectService(db, runnerRegistryService);
   const sessionService = new SessionService(db, process.cwd());
   const runnerDirectoryService = new RunnerDirectoryService(runnerDispatchService, runnerRegistryService);
@@ -106,6 +111,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     modelService,
     runtimeTurnEngine,
     specWorkflowService,
+    runnerRegistryService,
     memoryService,
   );
   const authService = new AuthService(db, {
@@ -123,6 +129,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     runnerRegistryService,
     runnerApprovalService,
     runnerDirectoryService,
+    runnerPackageService,
     runnerDispatchService,
     taskService,
     compactService,

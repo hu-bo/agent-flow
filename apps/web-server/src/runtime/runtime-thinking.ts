@@ -316,7 +316,12 @@ function extractToolEvidence(events: AgentEvent[]): string[] {
     const stepId = readString(event.payload.stepId) ?? event.id;
     const tool = readString(event.payload.tool) ?? 'tool';
     const ok = event.payload.ok === true;
-    const summary = summarizeToolOutput(tool, event.payload.output);
+    const error = readString(event.payload.error);
+    const summary = ok
+      ? summarizeToolOutput(tool, event.payload.output)
+      : error
+        ? truncateText(error, 240)
+        : summarizeToolOutput(tool, event.payload.output);
     lines.push(`- ${tool} (${stepId}) ${ok ? 'completed' : 'failed'}${summary ? `: ${summary}` : ''}`);
   }
   return lines.slice(-12);

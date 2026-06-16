@@ -17,6 +17,8 @@ const envSchema = z.object({
   RUNNER_GRPC_PORT: z.coerce.number().int().min(0).default(9201),
   RUNNER_GRPC_SERVER_ADDR: z.string().min(1).default('127.0.0.1:9201'),
   RUNNER_DOWNLOAD_BASE_URL: z.string().url().default('https://downloads.8and1.cn/agent-flow'),
+  RUNNER_PACKAGE_TEMPLATE_BASE_URL: z.string().url().optional(),
+  RUNNER_PACKAGE_TEMPLATE_DIR: z.string().trim().min(1).optional(),
 });
 
 export interface AppEnv {
@@ -33,6 +35,8 @@ export interface AppEnv {
   runnerGrpcPort: number;
   runnerGrpcServerAddr: string;
   runnerDownloadBaseUrl: string;
+  runnerPackageTemplateBaseUrl?: string;
+  runnerPackageTemplateDir?: string;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -52,6 +56,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     runnerGrpcPort: parsed.RUNNER_GRPC_PORT,
     runnerGrpcServerAddr: parsed.RUNNER_GRPC_SERVER_ADDR,
     runnerDownloadBaseUrl: parsed.RUNNER_DOWNLOAD_BASE_URL,
+    runnerPackageTemplateBaseUrl: parsed.RUNNER_PACKAGE_TEMPLATE_BASE_URL,
+    runnerPackageTemplateDir: parsed.RUNNER_PACKAGE_TEMPLATE_DIR,
   };
 }
 

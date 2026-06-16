@@ -1,4 +1,5 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
+import type { AgentEvent } from '@agent-flow/core';
 import type { ApprovalRequiredPayload } from '../lib/approval.js';
 
 export type ReasoningEffort = 'low' | 'medium' | 'high';
@@ -66,6 +67,16 @@ export interface RunnerDirectoryListResult {
   total: number;
 }
 
+export interface RunnerPlatformProfile {
+  os?: string;
+  arch?: string;
+  defaultShell?: string;
+  pathSeparator?: string;
+  lineEnding?: string;
+  workspaceRoots: string[];
+  availableCommands: string[];
+}
+
 export interface SpecWorkflowState {
   phase: SpecWorkflowPhase;
   awaitingConfirm: boolean;
@@ -127,6 +138,7 @@ export interface RuntimeChatInput {
   reasoningEffort?: ReasoningEffort;
   attachments: FilePart[];
   preferredRunnerId?: string;
+  runnerPlatform?: RunnerPlatformProfile;
   approveRiskyOps?: boolean;
   approvalTicket?: string;
 }
@@ -164,6 +176,11 @@ export interface ChatStreamApprovalRequiredEvent {
   approval: ChatStreamApprovalPayload;
 }
 
+export interface ChatStreamRuntimeEvent {
+  type: 'runtime_event';
+  event: AgentEvent;
+}
+
 export interface ChatStreamErrorEvent {
   type: 'error';
   err: {
@@ -179,6 +196,7 @@ export type ChatStreamEvent =
   | ChatStreamSpecDocUpdateEvent
   | ChatStreamThinkingEvent
   | ChatStreamApprovalRequiredEvent
+  | ChatStreamRuntimeEvent
   | ChatStreamErrorEvent;
 
 export interface RequestContext {

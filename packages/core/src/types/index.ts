@@ -156,6 +156,7 @@ export interface LlmStepRequest {
   context: ContextEnvelope;
   outputs: Record<string, unknown>;
   signal?: AbortSignal;
+  onEvent?: ToolContext['onEvent'];
 }
 
 export type LlmStepOutputPhase = 'analysis' | 'implementation' | 'verification';
@@ -228,6 +229,27 @@ export interface RunnerErrorEvent extends RunnerEventBase {
   retryable: boolean;
 }
 
+export interface RunnerApprovalRequestEvent extends RunnerEventBase {
+  type: 'approval_request';
+  requestId: string;
+  sessionId: string;
+  command: string;
+  workingDir: string;
+  risk: 'low' | 'medium' | 'high';
+  reason?: string;
+}
+
+export interface RunnerApprovalResponseEvent extends RunnerEventBase {
+  type: 'approval_response';
+  requestId: string;
+  sessionId: string;
+  command: string;
+  workingDir: string;
+  approved: boolean;
+  ticketId?: string;
+  reason?: string;
+}
+
 export interface RunnerCompletedEvent extends RunnerEventBase {
   type: 'completed';
   exitCode: number;
@@ -241,6 +263,8 @@ export type RunnerEvent =
   | RunnerProgressEvent
   | RunnerResultEvent
   | RunnerErrorEvent
+  | RunnerApprovalRequestEvent
+  | RunnerApprovalResponseEvent
   | RunnerCompletedEvent;
 
 export interface Runner {
@@ -285,6 +309,9 @@ export interface ToolSchema {
   description: string;
   input: JsonSchema;
   output?: JsonSchema;
+  risk?: 'low' | 'medium' | 'high';
+  access?: 'read' | 'write' | 'execute' | 'network' | 'git';
+  approval?: 'never' | 'on_write' | 'always';
 }
 
 export interface ToolContext {
@@ -293,6 +320,7 @@ export interface ToolContext {
   stepId: string;
   signal?: AbortSignal;
   metadata?: Record<string, unknown>;
+  onEvent?: (type: AgentEvent['type'], payload: Record<string, unknown>) => void | Promise<void>;
 }
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
@@ -461,6 +489,8 @@ export interface AgentEvent {
     | 'step.failed'
     | 'tool.called'
     | 'tool.result'
+    | 'approval_request'
+    | 'approval_response'
     | 'runner.event'
     | 'checkpoint.created';
   timestamp: string;
