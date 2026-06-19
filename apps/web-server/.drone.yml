@@ -64,6 +64,8 @@ steps:
       # - pnpm deploy --filter aflow-server --node-linker=hoisted aflow-server-deploy
       - pnpm deploy --filter "$APP_NAME" --node-linker=hoisted "$APP_DEPLOY_DIR" --legacy
       - cp -r dist $APP_DEPLOY_DIR/
+      - cp docker-compose.yml $APP_DEPLOY_DIR/
+      - cp .env $APP_DEPLOY_DIR/
       # 校验产物
       - ls -al $APP_DEPLOY_DIR
       # 打包
