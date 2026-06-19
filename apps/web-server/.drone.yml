@@ -9,7 +9,7 @@ trigger:
 volumes:
   - name: pnpm-cache
     host:
-      path: /var/lib/drone-cache/pnpm/aflow-server
+      path: /var/lib/drone-cache/pnpm/node-20
   # - name: app-temp
   #   host:
   #     path: /temp/app
