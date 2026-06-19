@@ -67,9 +67,7 @@ steps:
       # 校验产物
       - ls -al $APP_DEPLOY_DIR
       # 打包
-      - tar -czf /drone/src/$APP_NAME.tar.gz -C $APP_DEPLOY_DIR .
-      - echo "=== 最终压缩包大小 ==="
-      -  ls -lh /drone/src/$APP_NAME.tar.gz
+      - tar -czf /drone/src/aflow-server.tar.gz -C $APP_DEPLOY_DIR .
   # 3. 保存 pnpm store 缓存
   - name: rebuild-pnpm-cache
     image: drillster/drone-volume-cache
