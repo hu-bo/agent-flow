@@ -38,6 +38,9 @@ steps:
     environment:
       API_CONFIG_TOKEN_SECRET:
         from_secret: API_CONFIG_TOKEN_SECRET
+      NODE_CACHE_DIR: /cache/node-cache
+      PNPM_HOME: /cache/pnpm-store               # ← pnpm store
+      COREPACK_HOME: /cache/corepack              # ← corepack 缓存（关键）
     commands:
       # 基础环境
       - APP_NAME=web-server
