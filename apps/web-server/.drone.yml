@@ -40,13 +40,14 @@ steps:
         from_secret: API_CONFIG_TOKEN_SECRET
       NODE_CACHE_DIR: /cache/node-cache
       PNPM_HOME: /cache/pnpm-store               # ← pnpm store
-      COREPACK_HOME: /cache/corepack              # ← corepack 缓存（关键）
+      COREPACK_CACHE_DIR: /tmp/corepack-cache 
     commands:
       # 基础环境
       - APP_NAME=web-server
       - APP_DIR=apps/$APP_NAME
       - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
-
+      - df -h
+      - du -sh /cache/* || true
       # 使用 corepack，避免 npm / yarn 污染
       - corepack enable
       - corepack prepare pnpm@9 --activate
