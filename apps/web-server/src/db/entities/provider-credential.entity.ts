@@ -8,6 +8,7 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { ProviderEntity } from './provider.entity.js';
 
 export type ProviderCredentialStatus = 'active' | 'disabled';
@@ -21,9 +22,12 @@ export class ProviderCredentialEntity {
   @Column({ name: 'provider_id', type: 'integer' })
   providerId!: number;
 
-  @ManyToOne(() => ProviderEntity, (provider) => provider.credentials, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ProviderEntity, (provider) => provider.credentials, {
+    createForeignKeyConstraints: false,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'provider_id', referencedColumnName: 'providerId' })
-  provider!: ProviderEntity;
+  provider!: Relation<ProviderEntity>;
 
   @Column({ name: 'secret_ref', type: 'varchar', length: 255 })
   secretRef!: string;

@@ -8,6 +8,7 @@ import {
   PrimaryColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { ModelProfileEntity } from './model-profile.entity.js';
 import { ProviderModelEntity } from './provider-model.entity.js';
 
@@ -22,16 +23,22 @@ export class RoutingPolicyEntity {
   @Column({ name: 'profile_id', type: 'varchar', length: 64 })
   profileId!: string;
 
-  @ManyToOne(() => ModelProfileEntity, (profile) => profile.policies, { onDelete: 'CASCADE' })
+  @ManyToOne(() => ModelProfileEntity, (profile) => profile.policies, {
+    createForeignKeyConstraints: false,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'profile_id', referencedColumnName: 'profileId' })
-  profile!: ModelProfileEntity;
+  profile!: Relation<ModelProfileEntity>;
 
   @Column({ name: 'primary_model_id', type: 'integer' })
   primaryModelId!: number;
 
-  @ManyToOne(() => ProviderModelEntity, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => ProviderModelEntity, {
+    createForeignKeyConstraints: false,
+    onDelete: 'RESTRICT',
+  })
   @JoinColumn({ name: 'primary_model_id', referencedColumnName: 'modelId' })
-  primaryModel!: ProviderModelEntity;
+  primaryModel!: Relation<ProviderModelEntity>;
 
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   fallbacks!: number[];
