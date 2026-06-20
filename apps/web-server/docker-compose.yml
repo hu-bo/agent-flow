@@ -6,7 +6,8 @@ services:
     environment:
       - NODE_ENV=production
     ports:
-      - "9003:9003"
+      - "9200:9200"
+      - "9201:9201"
     volumes:
       - ./:/data/app/aflow-server
     command: ["/bin/sh", "-c", "ls && npm run start"]
