@@ -37,6 +37,7 @@
     "@types/adm-zip": "^0.5.8",
     "adm-zip": "^0.5.17",
     "axios": "^1.15.2",
+    "dotenv": "^16.6.1",
     "fastify": "^5.6.1",
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",

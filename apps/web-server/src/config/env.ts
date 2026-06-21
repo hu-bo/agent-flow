@@ -1,3 +1,7 @@
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadDotEnvFile } from 'dotenv';
 import { z } from 'zod';
 
 const envSchema = z.object({
@@ -39,7 +43,7 @@ export interface AppEnv {
   runnerPackageTemplateDir?: string;
 }
 
-export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
+export function loadEnv(source: NodeJS.ProcessEnv = loadProcessEnv()): AppEnv {
   const parsed = envSchema.parse(source);
 
   return {
@@ -59,6 +63,27 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     runnerPackageTemplateBaseUrl: parsed.RUNNER_PACKAGE_TEMPLATE_BASE_URL,
     runnerPackageTemplateDir: parsed.RUNNER_PACKAGE_TEMPLATE_DIR,
   };
+}
+
+function loadProcessEnv(): NodeJS.ProcessEnv {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const appRoot = resolve(here, '../..');
+  const repoRoot = resolve(appRoot, '../..');
+  const candidates = [resolve(process.cwd(), '.env'), resolve(appRoot, '.env'), resolve(repoRoot, '.env')];
+  const seen = new Set<string>();
+
+  for (const path of candidates) {
+    if (seen.has(path)) {
+      continue;
+    }
+    seen.add(path);
+
+    if (existsSync(path)) {
+      loadDotEnvFile({ path, override: false });
+    }
+  }
+
+  return process.env;
 }
 
 function parseCorsOrigin(
