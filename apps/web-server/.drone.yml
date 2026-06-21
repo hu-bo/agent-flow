@@ -46,6 +46,7 @@ steps:
       - APP_NAME=web-server
       - APP_DIR=apps/$APP_NAME
       - APP_DEPLOY_DIR=/drone/src/$APP_NAME-deploy
+      - rm -rf /var/lib/drone-cache
       - df -h
       - du -sh /cache/* || true
       # 使用 corepack，避免 npm / yarn 污染
