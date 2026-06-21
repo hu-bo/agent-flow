@@ -529,7 +529,10 @@ function resolveRunnerServiceDefinition(
 
 function resolveRunnerProtoPath(): string {
   const here = fileURLToPath(new URL('.', import.meta.url));
+  const configuredPath = process.env.RUNNER_PROTO_PATH?.trim();
   const candidates = [
+    ...(configuredPath ? [resolve(configuredPath)] : []),
+    resolve(here, '..', 'protocol', 'proto', 'runner.proto'),
     resolve(process.cwd(), 'protocol', 'proto', 'runner.proto'),
     resolve(process.cwd(), '..', '..', 'protocol', 'proto', 'runner.proto'),
     resolve(here, '..', '..', '..', '..', 'protocol', 'proto', 'runner.proto'),
