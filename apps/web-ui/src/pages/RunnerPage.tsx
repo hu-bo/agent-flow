@@ -8,6 +8,7 @@ import {
   rotateRunnerToken,
   streamRunners,
   type RunnerRecord,
+  type RunnerDownloadPlatform,
   type RunnerTokenIssueResult,
 } from '../api';
 import './pages.less';
@@ -52,6 +53,37 @@ function loadStoredTokenIssue(): RunnerTokenIssueResult | null {
 function persistTokenIssue(tokenIssue: RunnerTokenIssueResult): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(RUNNER_TOKEN_STORAGE_KEY, JSON.stringify(tokenIssue));
+}
+
+function detectRunnerDownloadPlatform(): RunnerDownloadPlatform {
+  if (typeof navigator === 'undefined') {
+    return 'linux-amd64';
+  }
+
+  const navigatorWithPlatformData = navigator as Navigator & {
+    userAgentData?: { platform?: string };
+  };
+  const platform = [
+    navigatorWithPlatformData.userAgentData?.platform,
+    navigator.platform,
+    navigator.userAgent,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (platform.includes('win')) {
+    return 'windows-amd64';
+  }
+  if (
+    platform.includes('mac')
+    || platform.includes('darwin')
+    || platform.includes('iphone')
+    || platform.includes('ipad')
+  ) {
+    return 'darwin-amd64';
+  }
+  return 'linux-amd64';
 }
 
 function buildStartCommands(token: RunnerTokenIssueResult | null): {
@@ -196,7 +228,7 @@ export function RunnerPage() {
   const handleDownloadRunner = useCallback(async () => {
     setIsDownloading(true);
     try {
-      await downloadRunnerPackage('windows-amd64');
+      await downloadRunnerPackage(detectRunnerDownloadPlatform());
       setNotice({
         kind: 'success',
         message: 'Runner package download started.',

@@ -1,6 +1,5 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import AdmZipType from 'adm-zip';
 import axios from 'axios';
@@ -20,8 +19,8 @@ export type RunnerPackagePlatformKey =
   | 'linux-amd64';
 
 export interface RunnerPackageServiceOptions {
-  templateBaseUrl?: string;
   templateDir?: string;
+  tempDir: string;
 }
 
 export interface RunnerPackageResult {
@@ -35,15 +34,22 @@ interface NormalizedPlatform {
   arch: 'amd64' | 'arm64';
 }
 
-interface RunnerPackagePlatformProfile {
-  os: NormalizedPlatform['os'];
-  arch: NormalizedPlatform['arch'];
-  defaultShell: string;
-  pathSeparator: string;
-  lineEnding: 'CRLF' | 'LF';
-  workspaceRoots: string[];
-  availableCommands: string[];
+interface RunnerPackageTemplate {
+  fileName: string;
+  url: string;
 }
+
+const RUNNER_GRPC_SERVER_ADDR = 'aflow-grpc.8and1.cn';
+const RUNNER_PACKAGE_TEMPLATES = {
+  windows: {
+    fileName: 'agent-flow-runner-windows-amd64.zip',
+    url: 'http://minio.8and1.cn/static/aflow/agent-flow-runner-windows-amd64.zip',
+  },
+  darwin: {
+    fileName: 'agent-flow-runner-darwin-amd64.zip',
+    url: 'http://minio.8and1.cn/static/aflow/agent-flow-runner-darwin-amd64.zip',
+  },
+} as const satisfies Record<'windows' | 'darwin', RunnerPackageTemplate>;
 
 export class RunnerPackageService {
   constructor(
@@ -53,26 +59,17 @@ export class RunnerPackageService {
 
   async buildDownload(platformKey: string, ownerUserId: string): Promise<RunnerPackageResult> {
     const platform = normalizePlatform(platformKey);
-    const issued = await this.registrationService.issueToken(ownerUserId);
-    const tempDir = await mkdtemp(join(tmpdir(), 'aflow-runner-package-'));
+    const packageTemplate = resolvePackageTemplate(platform);
+    const tempRoot = resolve(this.options.tempDir);
+    await mkdir(tempRoot, { recursive: true });
+    const tempDir = await mkdtemp(join(tempRoot, 'request-'));
 
     try {
-      const template = await this.resolveTemplate(platform, tempDir);
+      const template = await this.resolveTemplate(platform, packageTemplate, tempDir);
       const extractDir = join(tempDir, 'extract');
       await materializeTemplate(template, extractDir);
-
-      await writeFile(
-        join(extractDir, 'config.json'),
-        `${JSON.stringify({
-          runnerId: '',
-          runnerToken: issued.runnerToken,
-          serverAddr: issued.grpcServerAddr,
-          grpcServerAddr: issued.grpcServerAddr,
-          httpServerAddr: issued.serverAddr,
-          platform: buildPlatformProfile(platform),
-        }, null, 2)}\n`,
-        'utf8',
-      );
+      const issued = await this.registrationService.issueToken(ownerUserId);
+      await updateRunnerConfig(extractDir, issued.runnerToken);
 
       const zip = new AdmZip();
       const files = await collectFiles(extractDir, extractDir);
@@ -81,7 +78,7 @@ export class RunnerPackageService {
       }
 
       return {
-        fileName: `agent-flow-runner-${platform.os}-${platform.arch}.zip`,
+        fileName: packageTemplate.fileName,
         buffer: zip.toBuffer(),
       };
     } finally {
@@ -89,10 +86,16 @@ export class RunnerPackageService {
     }
   }
 
-  private async resolveTemplate(platform: NormalizedPlatform, tempDir: string): Promise<string> {
+  private async resolveTemplate(
+    platform: NormalizedPlatform,
+    packageTemplate: RunnerPackageTemplate,
+    tempDir: string,
+  ): Promise<string> {
     if (this.options.templateDir) {
       const root = resolve(this.options.templateDir);
       const candidates = [
+        join(root, packageTemplate.fileName),
+        join(root, packageTemplate.fileName.replace(/\.zip$/i, '')),
         join(root, platform.key),
         join(root, `agent-flow-runner-${platform.os}-${platform.arch}`),
       ];
@@ -106,20 +109,60 @@ export class RunnerPackageService {
       throw new AppError(404, 'RUNNER_TEMPLATE_NOT_FOUND', `Runner template not found for ${platform.key}`);
     }
 
-    if (!this.options.templateBaseUrl) {
-      throw new AppError(500, 'RUNNER_TEMPLATE_UNCONFIGURED', 'Runner package template source is not configured');
-    }
-
-    const fileName = `agent-flow-runner-${platform.os}-${platform.arch}.zip`;
-    const url = `${this.options.templateBaseUrl.replace(/\/+$/, '')}/${fileName}`;
-    const response = await axios.get<ArrayBuffer>(url, {
+    const response = await axios.get<ArrayBuffer>(packageTemplate.url, {
       responseType: 'arraybuffer',
       timeout: 60_000,
     });
-    const templatePath = join(tempDir, fileName);
+    const templatePath = join(tempDir, packageTemplate.fileName);
     await writeFile(templatePath, Buffer.from(response.data));
     return templatePath;
   }
+}
+
+async function updateRunnerConfig(extractDir: string, runnerToken: string): Promise<void> {
+  const configPath = await findConfigFile(extractDir);
+  if (!configPath) {
+    throw new AppError(400, 'RUNNER_TEMPLATE_INVALID', 'Runner template does not contain config.json');
+  }
+
+  let config: unknown;
+  try {
+    config = JSON.parse(await readFile(configPath, 'utf8'));
+  } catch {
+    throw new AppError(400, 'RUNNER_TEMPLATE_INVALID', 'Runner template config.json is not valid JSON');
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new AppError(400, 'RUNNER_TEMPLATE_INVALID', 'Runner template config.json must contain an object');
+  }
+
+  await writeFile(
+    configPath,
+    `${JSON.stringify({
+      ...config,
+      runnerToken,
+      serverAddr: RUNNER_GRPC_SERVER_ADDR,
+    }, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+async function findConfigFile(dir: string): Promise<string | undefined> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const directConfig = entries.find((entry) => entry.isFile() && entry.name === 'config.json');
+  if (directConfig) {
+    return join(dir, directConfig.name);
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const nestedConfig = await findConfigFile(join(dir, entry.name));
+    if (nestedConfig) {
+      return nestedConfig;
+    }
+  }
+  return undefined;
 }
 
 async function materializeTemplate(templatePath: string, extractDir: string): Promise<void> {
@@ -199,33 +242,13 @@ function normalizePlatform(raw: string): NormalizedPlatform {
   };
 }
 
-function buildPlatformProfile(platform: NormalizedPlatform): RunnerPackagePlatformProfile {
-  return {
-    os: platform.os,
-    arch: platform.arch,
-    defaultShell: defaultShellFor(platform.os),
-    pathSeparator: platform.os === 'windows' ? '\\' : '/',
-    lineEnding: platform.os === 'windows' ? 'CRLF' : 'LF',
-    workspaceRoots: [],
-    availableCommands: availableCommandsFor(platform.os),
-  };
-}
-
-function defaultShellFor(os: NormalizedPlatform['os']): string {
-  if (os === 'windows') {
-    return 'powershell.exe';
+function resolvePackageTemplate(platform: NormalizedPlatform): RunnerPackageTemplate {
+  if (platform.arch !== 'amd64') {
+    throw new AppError(400, 'RUNNER_PLATFORM_UNSUPPORTED', `Unsupported runner platform: ${platform.key}`);
   }
-  if (os === 'darwin') {
-    return 'zsh';
-  }
-  return 'sh';
-}
-
-function availableCommandsFor(os: NormalizedPlatform['os']): string[] {
-  if (os === 'windows') {
-    return ['cmd.exe', 'powershell.exe', 'pwsh.exe', 'where.exe', 'git', 'pnpm', 'npm', 'node'];
-  }
-  return ['sh', 'bash', 'zsh', 'git', 'pnpm', 'npm', 'node', 'grep', 'find', 'rg', 'which'];
+  return platform.os === 'windows'
+    ? RUNNER_PACKAGE_TEMPLATES.windows
+    : RUNNER_PACKAGE_TEMPLATES.darwin;
 }
 
 function isSupportedOs(value: string | undefined): value is NormalizedPlatform['os'] {
