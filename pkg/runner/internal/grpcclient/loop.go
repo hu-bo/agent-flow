@@ -186,6 +186,16 @@ func StartLoop(ctx context.Context, controller runnercore.Controller, opts Start
 		}
 
 		req := toTaskRequest(runTask)
+		slog.Info(
+			"grpc run_task received",
+			"runnerId", runnerID,
+			"taskId", req.TaskID,
+			"sessionId", req.SessionID,
+			"stepId", req.StepID,
+			"command", req.Command,
+			"workingDir", req.WorkingDir,
+			"engine", req.Engine,
+		)
 		taskCtx, cancelTask := context.WithCancel(ctx)
 		runningMu.Lock()
 		runningTasks[req.TaskID] = cancelTask

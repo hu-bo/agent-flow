@@ -161,8 +161,23 @@ export class RunnerDispatchService {
       const sandboxPolicy = deriveSandboxPolicy(task.command, workingDir, task.input);
       const engine = resolveEngine(task.metadata);
       const riskLevel = classifyRiskLevel(task.command, task.input);
+      const requestId = readRequestId(task.metadata);
+      this.logger?.info('runner.dispatch.selected', 'runner selected for task dispatch', {
+        attributes: {
+          taskId: task.taskId,
+          sessionId: task.sessionId,
+          stepId: task.stepId,
+          requestId,
+          runnerId: runner.runnerId,
+          userId,
+          command: task.command,
+          workingDir,
+          riskLevel,
+        },
+      });
       let approval = validateApprovalForTask(this.runnerApprovalService, task, workingDir, riskLevel);
       if (riskLevel === 'high' && !approval.ok) {
+        const approvalStartedAtMs = Date.now();
         const pending = this.runnerApprovalService.waitForApproval({
           ownerUserId: userId,
           sessionId: task.sessionId,
@@ -171,6 +186,22 @@ export class RunnerDispatchService {
           risk: riskLevel,
           reason: approval.reason ?? 'approval is missing',
           signal,
+        });
+        this.logger?.info('runner.approval.requested', 'runner task is waiting for approval', {
+          attributes: {
+            taskId: task.taskId,
+            sessionId: task.sessionId,
+            stepId: task.stepId,
+            requestId,
+            runnerId: runner.runnerId,
+            userId,
+            approvalRequestId: pending.request.requestId,
+            command: task.command,
+            workingDir,
+            riskLevel,
+            reason: pending.request.reason,
+            timeoutMs: APPROVAL_WAIT_TIMEOUT_MS,
+          },
         });
         yield {
           type: 'approval_request',
@@ -185,6 +216,21 @@ export class RunnerDispatchService {
         };
 
         const response = await pending.response;
+        this.logger?.info('runner.approval.resolved', 'runner task approval completed', {
+          attributes: {
+            taskId: task.taskId,
+            sessionId: task.sessionId,
+            stepId: task.stepId,
+            requestId,
+            runnerId: runner.runnerId,
+            userId,
+            approvalRequestId: response.requestId,
+            approved: response.approved,
+            ticketId: response.ticketId,
+            reason: response.reason,
+            waitDurationMs: Date.now() - approvalStartedAtMs,
+          },
+        });
         yield {
           type: 'approval_response',
           timestamp: new Date().toISOString(),
@@ -252,6 +298,7 @@ export class RunnerDispatchService {
           taskId: task.taskId,
           sessionId: task.sessionId,
           stepId: task.stepId,
+          requestId,
           runnerId: runner.runnerId,
           userId,
           command: task.command,
@@ -557,20 +604,17 @@ function isReadOnlyShellExec(input: Record<string, unknown> | undefined): boolea
   }
 
   const executable = normalizeExecutable(command);
-  if (!READ_ONLY_SHELL_COMMANDS.has(executable)) {
-    return false;
-  }
-
   const line = normalizeCommandLine(command, input);
-  if (SHELL_MUTATION_PATTERN.test(line)) {
+  if (READ_ONLY_SHELL_COMMANDS.has(executable)) {
+    return isReadOnlyShellScript(line);
+  }
+
+  if (!READ_ONLY_SHELL_WRAPPERS.has(executable)) {
     return false;
   }
 
-  if (SHELL_REDIRECT_PATTERN.test(line)) {
-    return false;
-  }
-
-  return true;
+  const script = extractShellWrapperScript(input);
+  return script !== undefined && isReadOnlyShellScript(script);
 }
 
 function readShellCommand(input: Record<string, unknown> | undefined): string | undefined {
@@ -601,16 +645,26 @@ function normalizeCommandLine(command: string, input: Record<string, unknown> | 
 }
 
 const READ_ONLY_SHELL_COMMANDS = new Set([
+  'basename',
   'cat',
   'cmd',
+  'cut',
+  'date',
   'dir',
+  'dirname',
+  'du',
+  'echo',
+  'env',
   'find',
   'findstr',
   'git',
   'grep',
   'head',
   'ls',
+  'printf',
   'pwd',
+  'readlink',
+  'realpath',
   'rg',
   'sed',
   'tail',
@@ -629,12 +683,51 @@ const READ_ONLY_SHELL_COMMANDS = new Set([
   'test-path',
 ]);
 
-const SHELL_REDIRECT_PATTERN = /\s(?:>|>>|2>|2>>|&>|<)\s/;
+const READ_ONLY_SHELL_WRAPPERS = new Set(['bash', 'dash', 'sh', 'zsh']);
+const SHELL_REDIRECT_PATTERN = /(?:^|\s)(?:\d?>|\d?>>|&>|<)/;
 const SHELL_MUTATION_PATTERN =
   /\s(?:rm|rmdir|del|erase|move|mv|copy|cp|new-item|remove-item|set-content|add-content|out-file|rename-item|move-item|copy-item|mkdir|ni|sc|ac|write-output|tee|git\s+(?:add|commit|push|pull|checkout|switch|reset|merge|rebase|clean|apply)|npm\s+(?:install|i)|pnpm\s+(?:install|i)|yarn\s+(?:install|add)|pip\s+install|go\s+(?:get|install)|curl|wget|invoke-webrequest|iwr|format|shutdown|reboot)\b/;
 
+function extractShellWrapperScript(input: Record<string, unknown> | undefined): string | undefined {
+  const args = Array.isArray(input?.args) ? input.args.map((value) => String(value)) : [];
+  const commandIndex = args.findIndex((arg) => arg === '-c' || arg === '-lc' || arg === '-cl');
+  if (commandIndex < 0) {
+    return undefined;
+  }
+  const script = args[commandIndex + 1]?.trim();
+  return script || undefined;
+}
+
+function isReadOnlyShellScript(script: string): boolean {
+  const normalized = ` ${script.trim().toLowerCase()} `;
+  if (!normalized.trim() || SHELL_MUTATION_PATTERN.test(normalized)) {
+    return false;
+  }
+  if (SHELL_REDIRECT_PATTERN.test(normalized.replaceAll('2>/dev/null', ''))) {
+    return false;
+  }
+  if (normalized.includes('$(') || normalized.includes(String.fromCharCode(96)) || normalized.includes('${')) {
+    return false;
+  }
+
+  const commands = normalized
+    .split(/(?:&&|\|\||\||;)/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (commands.length === 0) {
+    return false;
+  }
+
+  return commands.every((segment) => READ_ONLY_SHELL_COMMANDS.has(normalizeExecutable(segment)));
+}
+
 function isRiskyApprovalGranted(metadata: Record<string, unknown> | undefined): boolean {
   return metadata?.approveRiskyOps === true;
+}
+
+function readRequestId(metadata: Record<string, unknown> | undefined): string | undefined {
+  const requestId = metadata?.requestId;
+  return typeof requestId === 'string' && requestId.trim().length > 0 ? requestId : undefined;
 }
 
 function validateApprovalForTask(
@@ -682,6 +775,8 @@ function clampWaitMs(waitMs: number | undefined): number {
   }
   return Math.min(25_000, Math.max(1_000, Math.floor(waitMs)));
 }
+
+const APPROVAL_WAIT_TIMEOUT_MS = 5 * 60 * 1000;
 
 function normalizeRunnerEvent(input: RunnerInboundEvent, task: RunnerTask, runnerId: string): RunnerEvent {
   const timestamp = input.timestamp || new Date().toISOString();

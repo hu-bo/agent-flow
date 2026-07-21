@@ -18,7 +18,8 @@ $targets = @(
   @{ GOOS = "windows"; GOARCH = "amd64"; BinaryName = "agent-flow-runner.exe"; PackageName = "agent-flow-runner-windows-amd64"; DefaultShell = "powershell.exe"; PathSeparator = "\"; LineEnding = "CRLF"; AvailableCommands = "cmd.exe,powershell.exe,pwsh.exe,where.exe,git,pnpm,npm,node" },
   @{ GOOS = "windows"; GOARCH = "arm64"; BinaryName = "agent-flow-runner.exe"; PackageName = "agent-flow-runner-windows-arm64"; DefaultShell = "powershell.exe"; PathSeparator = "\"; LineEnding = "CRLF"; AvailableCommands = "cmd.exe,powershell.exe,pwsh.exe,where.exe,git,pnpm,npm,node" },
   @{ GOOS = "darwin"; GOARCH = "arm64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-arm64"; DefaultShell = "zsh"; PathSeparator = "/"; LineEnding = "LF"; AvailableCommands = "sh,bash,zsh,git,pnpm,npm,node,grep,find,rg,which" },
-  @{ GOOS = "darwin"; GOARCH = "amd64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-amd64"; DefaultShell = "zsh"; PathSeparator = "/"; LineEnding = "LF"; AvailableCommands = "sh,bash,zsh,git,pnpm,npm,node,grep,find,rg,which" }
+  @{ GOOS = "darwin"; GOARCH = "amd64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-darwin-amd64"; DefaultShell = "zsh"; PathSeparator = "/"; LineEnding = "LF"; AvailableCommands = "sh,bash,zsh,git,pnpm,npm,node,grep,find,rg,which" },
+  @{ GOOS = "linux"; GOARCH = "amd64"; BinaryName = "agent-flow-runner"; PackageName = "agent-flow-runner-linux-amd64"; DefaultShell = "bash"; PathSeparator = "/"; LineEnding = "LF"; AvailableCommands = "sh,bash,git,pnpm,npm,node,grep,find,rg,which,sed,awk" }
 )
 
 function New-RunnerConfigJson {
@@ -75,11 +76,42 @@ cp "$(dirname "$0")/config.json" "$HOME/.aflow-runner/config.json"
 '@
 }
 
+function New-LinuxStartScript {
+  return @'
+#!/bin/bash
+set -euo pipefail
+package_dir="$(cd "$(dirname "$0")" && pwd)"
+mkdir -p "$HOME/.aflow-runner"
+cp "$package_dir/config.json" "$HOME/.aflow-runner/config.json"
+chmod 600 "$HOME/.aflow-runner/config.json"
+exec "$package_dir/agent-flow-runner" start
+'@
+}
+
 function New-ReadmeText {
   param(
     [string]$PackageName,
-    [string]$BinaryName
+    [string]$BinaryName,
+    [string]$TargetOS
   )
+
+  if ($TargetOS -eq "linux") {
+    return @"
+agent-flow runner package: $PackageName
+
+1. Make the runner and start script executable after extracting the zip:
+   chmod +x ./agent-flow-runner ./start.sh
+
+2. Start the runner (config.json will be copied to ~/.aflow-runner/config.json):
+   ./start.sh
+
+3. For server startup, configure a systemd service that runs:
+   /absolute/path/to/agent-flow-runner start
+
+This package already includes a pre-filled config.json.
+Linux autostart is managed by systemd; the install-autostart command is only available on Windows and macOS.
+"@
+  }
 
   $startCommand = if ($BinaryName -like "*.exe") { ".\$BinaryName start" } else { "./$BinaryName start" }
   $autostartCommand = if ($BinaryName -like "*.exe") { ".\$BinaryName install-autostart" } else { "./$BinaryName install-autostart" }
@@ -134,11 +166,13 @@ foreach ($target in $targets) {
 
   $configJson = New-RunnerConfigJson -ConfigRunnerId $RunnerId -ConfigRunnerToken $RunnerToken -ConfigServerAddr $ServerAddr
   Set-Content -Path (Join-Path $packageDir "config.json") -Value $configJson -Encoding utf8
-  Set-Content -Path (Join-Path $packageDir "README.txt") -Value (New-ReadmeText -PackageName $target.PackageName -BinaryName $target.BinaryName) -Encoding utf8
+  Set-Content -Path (Join-Path $packageDir "README.txt") -Value (New-ReadmeText -PackageName $target.PackageName -BinaryName $target.BinaryName -TargetOS $target.GOOS) -Encoding utf8
 
   if ($target.GOOS -eq "windows") {
     Set-Content -Path (Join-Path $packageDir "start.cmd") -Value (New-WindowsStartScript) -Encoding ascii
     Set-Content -Path (Join-Path $packageDir "install-autostart.cmd") -Value (New-WindowsAutostartScript) -Encoding ascii
+  } elseif ($target.GOOS -eq "linux") {
+    Set-Content -Path (Join-Path $packageDir "start.sh") -Value (New-LinuxStartScript) -Encoding ascii
   } else {
     $startScript = Join-Path $packageDir "start.command"
     $autostartScript = Join-Path $packageDir "install-autostart.command"
