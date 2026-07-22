@@ -8,6 +8,7 @@ import {
   GitMerge,
   HardDrive,
   MessageSquare,
+  Menu,
   NotebookPen,
   ShieldCheck,
   Terminal,
@@ -144,6 +145,7 @@ export function DesktopPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isLoading, user, login, logout } = useCasdoor();
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const authLabel = useMemo(() => {
     if (isLoading) return 'Checking workspace session';
@@ -223,15 +225,40 @@ export function DesktopPage() {
             <ButtonPrimary className="h-9 px-5" onClick={handleOpenWorkspace}>
               Go to Console
             </ButtonPrimary>
+            <button
+              type="button"
+              className="desktop-mobile-nav-toggle md:hidden"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              aria-label="Toggle workspace navigation"
+              aria-expanded={mobileNavOpen}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
           </div>
         </div>
+        {mobileNavOpen && (
+          <div className="desktop-mobile-nav md:hidden">
+            {WORKSPACE_LINKS.map((item) => (
+              <button
+                key={item.route}
+                type="button"
+                onClick={() => {
+                  setMobileNavOpen(false);
+                  navigate(item.route);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
 
       <main className="flex-1 pt-16">
         <section className="relative overflow-hidden pb-24 pt-32">
           <div className="desktop-grid-pattern absolute inset-0 pointer-events-none opacity-[0.2]" />
 
-          <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-6 text-center">
+          <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-5 text-center sm:px-6">
             <Badge>{authLabel}</Badge>
 
             <h1 className="mb-8 text-5xl font-semibold leading-[1.1] tracking-tighter text-slate-900 md:text-7xl">

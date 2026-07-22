@@ -591,6 +591,10 @@
   gap: 0.76rem;
 }
 
+.spec-mobile-view-toggle {
+  display: none;
+}
+
 .spec-doc-pane,
 .spec-chat-pane {
   min-height: 0;
@@ -715,6 +719,56 @@
     padding-right: 0.65rem;
   }
 
+  .workspace-header {
+    display: none;
+  }
+
+  .workspace-canvas {
+    padding-top: 0.65rem;
+    padding-bottom: calc(0.65rem + env(safe-area-inset-bottom));
+  }
+
+  .workspace-footer {
+    height: auto;
+    min-height: 2rem;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .workspace-header-right {
+    min-width: 0;
+  }
+
+  .workspace-runner-select {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .spec-mobile-view-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.25rem;
+    margin-bottom: 0.58rem;
+    padding: 0.25rem;
+    border-radius: 0.78rem;
+    background: #f4f7ff;
+  }
+
+  .spec-mobile-view-toggle button {
+    border: 0;
+    border-radius: 0.58rem;
+    background: transparent;
+    color: var(--pg-text-subtle);
+    padding: 0.48rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 650;
+  }
+
+  .spec-mobile-view-toggle button.is-active {
+    background: #ffffff;
+    color: var(--pg-brand-600);
+    box-shadow: var(--pg-shadow-1);
+  }
+
   .workspace-title {
     font-size: 0.8rem;
   }
@@ -741,5 +795,55 @@
 
   .mode-gate-hero h2 {
     font-size: 1.54rem;
+  }
+
+  .spec-layout {
+    display: block;
+  }
+
+  .spec-layout .spec-doc-pane,
+  .spec-layout .spec-chat-pane {
+    height: 100%;
+  }
+
+  .spec-layout-mobile-chat .spec-doc-pane,
+  .spec-layout-mobile-document .spec-chat-pane {
+    display: none;
+  }
+
+  .spec-doc-pane,
+  .spec-chat-pane,
+  .playground-chat-panel {
+    border-radius: 0.8rem;
+  }
+
+  .spec-doc-editor .w-md-editor {
+    min-height: 0;
+  }
+
+  .runner-item-main {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .runner-item-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .runner-id,
+  .runner-item-meta,
+  .runner-command-block pre {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .playground-chat-panel .chat-ui-bubble,
+  .playground-chat-panel pre {
+    max-width: 100%;
+  }
+
+  .playground-chat-panel pre {
+    overflow-x: auto;
   }
 }

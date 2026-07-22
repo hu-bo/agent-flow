@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   ArrowUp,
@@ -53,6 +53,8 @@ interface SidebarProps {
     mode?: 'vibe' | 'spec',
     options?: { openChatWhenEmpty?: boolean },
   ) => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
 }
 
 interface ProjectCreateDialogProps {
@@ -61,7 +63,7 @@ interface ProjectCreateDialogProps {
   onCreated: (project: ProjectRecord) => void;
 }
 
-export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
+export function Sidebar({ activeSessionId, onSelectSession, mobileOpen, onMobileClose }: SidebarProps) {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [projectSessionsById, setProjectSessionsById] = useState<Record<string, SessionRecord[]>>({});
@@ -74,6 +76,7 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
   const setPendingNewChatProject = useChatStore((state) => state.setPendingNewChatProject);
   const setPendingNewChatPlacement = useChatStore((state) => state.setPendingNewChatPlacement);
   const [manualOverrideCollapsed, setManualOverrideCollapsed] = useState<boolean | null>(null);
+  const mobileCloseButtonRef = useRef<HTMLButtonElement>(null);
   const [isAutoCollapsed, setIsAutoCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth <= AUTO_COLLAPSE_MAX_WIDTH;
@@ -160,6 +163,12 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
     }
   }, [isAutoCollapsed, manualOverrideCollapsed]);
 
+  useEffect(() => {
+    if (mobileOpen) {
+      mobileCloseButtonRef.current?.focus();
+    }
+  }, [mobileOpen]);
+
   const handleNew = () => {
     setPendingNewChatProject(null);
     setPendingNewChatPlacement('normal');
@@ -245,7 +254,14 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
   };
 
   return (
-    <aside className={`sidebar${isCollapsed ? ' sidebar-collapsed' : ''}`}>
+    <aside
+      id="workspace-sidebar"
+      className={`sidebar${isCollapsed ? ' sidebar-collapsed' : ''}${mobileOpen ? ' sidebar-mobile-open' : ''}`}
+      role={mobileOpen ? 'dialog' : undefined}
+      aria-modal={mobileOpen || undefined}
+      aria-label={mobileOpen ? 'Workspace menu' : undefined}
+      tabIndex={mobileOpen ? -1 : undefined}
+    >
       <div className="sidebar-rail">
         <div className="sidebar-rail-top">
           <div className="sidebar-logo" aria-hidden>
@@ -266,6 +282,9 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
           >
             {isCollapsed ? <ChevronsRight size={14} aria-hidden /> : <ChevronsLeft size={14} aria-hidden />}
           </button>
+          <button ref={mobileCloseButtonRef} type="button" className="sidebar-mobile-close" onClick={onMobileClose} aria-label="Close workspace menu">
+            <X size={16} aria-hidden />
+          </button>
         </div>
 
         <nav className="sidebar-rail-items" aria-label="Workspace navigation">
@@ -275,6 +294,7 @@ export function Sidebar({ activeSessionId, onSelectSession }: SidebarProps) {
               to={item.to}
               className={({ isActive }) => `sidebar-rail-btn${isActive ? ' is-active' : ''}`}
               aria-label={item.ariaLabel}
+              onClick={onMobileClose}
             >
               <item.icon className="sidebar-rail-btn-icon" size={14} strokeWidth={2} aria-hidden />
               <span className="sidebar-rail-btn-label">{item.label}</span>

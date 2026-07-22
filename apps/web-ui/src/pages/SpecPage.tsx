@@ -251,6 +251,7 @@ export function SpecPage() {
   const [isConfirmingSpec, setIsConfirmingSpec] = useState(false);
   const [specState, setSpecState] = useState<SpecWorkflowState | null>(null);
   const [draftMarkdown, setDraftMarkdown] = useState('');
+  const [mobileView, setMobileView] = useState<'chat' | 'document'>('chat');
   const [submittedActionKey, setSubmittedActionKey] = useState('');
   const [optimisticActionMessage, setOptimisticActionMessage] = useState<ChatMessage | null>(null);
   const initialPromptSentRef = useRef(false);
@@ -611,8 +612,29 @@ export function SpecPage() {
           </div>
         )}
 
-        <div className="spec-layout">
-          <section className="spec-doc-pane">
+        <div className="spec-mobile-view-toggle" role="tablist" aria-label="Spec mobile view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileView === 'chat'}
+            className={mobileView === 'chat' ? 'is-active' : ''}
+            onClick={() => setMobileView('chat')}
+          >
+            Agent chat
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mobileView === 'document'}
+            className={mobileView === 'document' ? 'is-active' : ''}
+            onClick={() => setMobileView('document')}
+          >
+            Spec document
+          </button>
+        </div>
+
+        <div className={`spec-layout spec-layout-mobile-${mobileView}`}>
+          <section className="spec-doc-pane" aria-hidden={mobileView !== 'document'}>
             <header className="spec-doc-header">
               <h3>Spec Markdown</h3>
               <span>{specState ? phaseLabel(specState.phase) : 'Requirements'}</span>
@@ -631,7 +653,7 @@ export function SpecPage() {
             </div>
           </section>
 
-          <section className="spec-chat-pane">
+          <section className="spec-chat-pane" aria-hidden={mobileView !== 'chat'}>
             <ChatPanel
               className="playground-chat-panel"
               messages={chatMessages}
