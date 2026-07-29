@@ -88,7 +88,7 @@ export class SessionService {
       projectId: project?.projectId ?? null,
       modelId: input.modelId,
       mode: input.mode ?? 'vibe',
-      cwd: input.cwd ?? project?.rootPath ?? this.defaultCwd,
+      cwd: project?.rootPath ?? input.cwd ?? this.defaultCwd,
       messageCount: 0,
       title: normalizeSessionTitle(input.title) ?? null,
       systemPrompt: input.systemPrompt ?? null,
@@ -143,6 +143,38 @@ export class SessionService {
     session.modelId = modelId;
     session.updatedAt = new Date();
     return toSessionRecord(await this.sessionRepository.save(session));
+  }
+
+  async refreshProjectCwd(sessionId: string, ownerUserId?: string): Promise<SessionRecord> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
+    if (!session.projectId) {
+      return toSessionRecord(session);
+    }
+
+    const project = await this.projectRepository.findOne({
+      where: {
+        projectId: session.projectId,
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
+    });
+    if (!project) {
+      throw new NotFoundError(`Project not found: ${session.projectId}`);
+    }
+
+    if (session.cwd !== project.rootPath) {
+      session.cwd = project.rootPath;
+      session.boundRunnerId = project.defaultRunnerId ?? session.boundRunnerId;
+      session.updatedAt = new Date();
+      return toSessionRecord(await this.sessionRepository.save(session));
+    }
+
+    if (!session.boundRunnerId && project.defaultRunnerId) {
+      session.boundRunnerId = project.defaultRunnerId;
+      session.updatedAt = new Date();
+      return toSessionRecord(await this.sessionRepository.save(session));
+    }
+
+    return toSessionRecord(session);
   }
 
   async listMessages(sessionId: string): Promise<UnifiedMessage[]> {

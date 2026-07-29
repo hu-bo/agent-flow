@@ -12,6 +12,8 @@ import { AddCoreRuntimePersistence20260602000100 } from './20260602000100-add-co
 import { AddRunnerPlatformProfile20260616000100 } from './20260616000100-add-runner-platform-profile.js';
 import { AddRunnerApprovalGrants20260729000100 } from './20260729000100-add-runner-approval-grants.js';
 import { AddDefaultChatProfile20260729000200 } from './20260729000200-add-default-chat-profile.js';
+import { AddRunnerExecutionJournal20260729000300 } from './20260729000300-add-runner-execution-journal.js';
+import { AddRunnerCapacityProfile20260729000400 } from './20260729000400-add-runner-capacity-profile.js';
 
 export const migrations = [
   InitModelConfig20260426000100,
@@ -28,4 +30,6 @@ export const migrations = [
   AddRunnerPlatformProfile20260616000100,
   AddRunnerApprovalGrants20260729000100,
   AddDefaultChatProfile20260729000200,
+  AddRunnerExecutionJournal20260729000300,
+  AddRunnerCapacityProfile20260729000400,
 ];

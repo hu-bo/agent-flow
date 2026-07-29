@@ -407,7 +407,7 @@ export class ChatService {
   private async prepareTurn(input: ChatTurnInput): Promise<PreparedTurn> {
     const modelId = input.modelId ?? this.modelService.resolveModelIdForProfile(input.profileId);
     const model = this.modelService.getModel(modelId);
-    const session = input.sessionId
+    let session = input.sessionId
       ? await this.sessionService.updateSessionModel(input.sessionId, modelId, input.userId)
       : await this.sessionService.createSession({
           ownerUserId: input.userId,
@@ -416,6 +416,9 @@ export class ChatService {
           mode: input.mode ?? 'vibe',
           cwd: input.projectId ? undefined : process.cwd(),
         });
+    if (session.projectId) {
+      session = await this.sessionService.refreshProjectCwd(session.sessionId, input.userId);
+    }
 
     const history = await this.sessionService.listMessages(session.sessionId);
     const baseUserMessage = createUnifiedMessage({

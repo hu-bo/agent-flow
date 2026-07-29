@@ -25,6 +25,39 @@ const (
 	EventHeartbeat EventType = "heartbeat"
 )
 
+type ExecutionState string
+
+const (
+	ExecutionAccepted ExecutionState = "accepted"
+	ExecutionRunning  ExecutionState = "running"
+	ExecutionTerminal ExecutionState = "terminal"
+)
+
+type TerminalStatus string
+
+const (
+	TerminalSucceeded TerminalStatus = "succeeded"
+	TerminalFailed    TerminalStatus = "failed"
+	TerminalCancelled TerminalStatus = "cancelled"
+	TerminalTimedOut  TerminalStatus = "timed_out"
+	TerminalRejected  TerminalStatus = "rejected"
+)
+
+type FailureType string
+
+const (
+	FailureNone              FailureType = ""
+	FailureValidation        FailureType = "validation"
+	FailurePolicy            FailureType = "policy"
+	FailureProcessStart      FailureType = "process_start"
+	FailureProcessExit       FailureType = "process_exit"
+	FailureTimeout           FailureType = "timeout"
+	FailureCancelled         FailureType = "cancelled"
+	FailureOutputLimit       FailureType = "output_limit"
+	FailureResourceExhausted FailureType = "resource_exhausted"
+	FailureInternal          FailureType = "internal"
+)
+
 type Mount struct {
 	Source   string `json:"source"`
 	Target   string `json:"target"`
@@ -38,6 +71,10 @@ type DockerSpec struct {
 	NetworkDisabled bool    `json:"networkDisabled"`
 	ReadOnlyRootFS  bool    `json:"readOnlyRootFs"`
 	Mounts          []Mount `json:"mounts"`
+	CPULimitMillis  uint64  `json:"cpuLimitMillis"`
+	MemoryLimit     uint64  `json:"memoryLimitBytes"`
+	PIDsLimit       uint32  `json:"pidsLimit"`
+	DiskLimit       uint64  `json:"diskLimitBytes"`
 }
 
 type SandboxPolicy struct {
@@ -53,16 +90,21 @@ type SandboxPolicy struct {
 }
 
 type TaskRequest struct {
-	TaskID     string
-	SessionID  string
-	StepID     string
-	Command    string
-	Args       []string
-	Env        map[string]string
-	WorkingDir string
-	Timeout    time.Duration
-	Stream     bool
-	InputJSON  []byte
+	TaskID                  string
+	SessionID               string
+	StepID                  string
+	Command                 string
+	Args                    []string
+	Env                     map[string]string
+	WorkingDir              string
+	Timeout                 time.Duration
+	Stream                  bool
+	InputJSON               []byte
+	ExecutionID             string
+	Attempt                 uint32
+	Deadline                time.Time
+	MaxOutputBytes          uint64
+	ResumeFromEventSequence uint64
 
 	Engine  Engine
 	Sandbox SandboxPolicy
@@ -70,26 +112,69 @@ type TaskRequest struct {
 }
 
 type TaskResult struct {
-	ExitCode int32
-	Output   []byte
-	Duration time.Duration
+	ExitCode        int32
+	Output          []byte
+	Duration        time.Duration
+	StdoutBytes     uint64
+	StderrBytes     uint64
+	OutputTruncated bool
 }
 
 type TaskEvent struct {
-	TaskID    string
-	SessionID string
-	StepID    string
-	Type      EventType
-	Timestamp time.Time
-	RunnerID  string
+	TaskID      string
+	SessionID   string
+	StepID      string
+	Type        EventType
+	Timestamp   time.Time
+	RunnerID    string
+	ExecutionID string
+	Attempt     uint32
+	Sequence    uint64
 
+	Message         string
+	Chunk           string
+	Percent         uint32
+	ExitCode        int32
+	Output          []byte
+	Retryable       bool
+	Duration        time.Duration
+	ChunkSequence   uint64
+	ByteOffset      uint64
+	Truncated       bool
+	FailureType     FailureType
+	Code            string
+	TerminalStatus  TerminalStatus
+	StdoutBytes     uint64
+	StderrBytes     uint64
+	OutputTruncated bool
+}
+
+type ExecutionError struct {
+	Type      FailureType
+	Code      string
 	Message   string
-	Chunk     string
-	Percent   uint32
-	ExitCode  int32
-	Output    []byte
 	Retryable bool
-	Duration  time.Duration
+	Cause     error
+}
+
+func (e *ExecutionError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.Cause != nil {
+		return e.Cause.Error()
+	}
+	return string(e.Type)
+}
+
+func (e *ExecutionError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
 }
 
 type EventSink interface {

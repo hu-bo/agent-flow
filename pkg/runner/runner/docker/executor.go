@@ -1,17 +1,15 @@
 package docker
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	runnerexec "github.com/agent-flow/runner/runner/exec"
 	"github.com/agent-flow/runner/runner/types"
 )
 
@@ -39,7 +37,6 @@ func (e *Executor) Engine() types.Engine {
 }
 
 func (e *Executor) Run(ctx context.Context, req types.TaskRequest, sink types.EventSink) (types.TaskResult, error) {
-	start := time.Now()
 	spec := req.Docker
 	if strings.TrimSpace(spec.Image) == "" {
 		return types.TaskResult{}, errors.New("docker image is required when engine=docker")
@@ -75,127 +72,13 @@ func (e *Executor) Run(ctx context.Context, req types.TaskRequest, sink types.Ev
 		return types.TaskResult{}, err
 	}
 
-	cmd := exec.CommandContext(ctx, e.binary, dockerArgs...)
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return types.TaskResult{}, fmt.Errorf("create docker stdout pipe: %w", err)
-	}
-	stderrPipe, err := cmd.StderrPipe()
-	if err != nil {
-		return types.TaskResult{}, fmt.Errorf("create docker stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return types.TaskResult{}, fmt.Errorf("start docker command: %w", err)
-	}
-
-	var stdoutChunks []string
-	var stderrChunks []string
-	var wg sync.WaitGroup
-	wg.Add(2)
-	readStream := func(scanner *bufio.Scanner, eventType types.EventType, acc *[]string) {
-		defer wg.Done()
-		buf := make([]byte, 0, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
-		for scanner.Scan() {
-			chunk := scanner.Text()
-			*acc = append(*acc, chunk)
-			if !req.Stream {
-				continue
-			}
-			_ = sink.Emit(types.TaskEvent{
-				TaskID:    req.TaskID,
-				SessionID: req.SessionID,
-				StepID:    req.StepID,
-				Type:      eventType,
-				Timestamp: time.Now(),
-				RunnerID:  e.id,
-				Chunk:     chunk,
-			})
-		}
-	}
-
-	go readStream(bufio.NewScanner(stdoutPipe), types.EventStdout, &stdoutChunks)
-	go readStream(bufio.NewScanner(stderrPipe), types.EventStderr, &stderrChunks)
-
-	waitErr := cmd.Wait()
-	wg.Wait()
-
-	exitCode := int32(0)
-	if waitErr != nil {
-		var exitErr *exec.ExitError
-		if errors.As(waitErr, &exitErr) {
-			exitCode = int32(exitErr.ExitCode())
-		} else {
-			exitCode = -1
-		}
-	}
-
-	resultPayload, marshalErr := json.Marshal(map[string]any{
-		"engine":     types.EngineDocker,
-		"image":      spec.Image,
-		"dockerArgs": dockerArgs,
-		"command":    req.Command,
-		"args":       req.Args,
-		"stdout":     stdoutChunks,
-		"stderr":     stderrChunks,
-		"success":    waitErr == nil,
+	processReq := req
+	processReq.WorkingDir = ""
+	processReq.Env = nil
+	return runnerexec.RunProcess(ctx, processReq, sink, e.id, e.binary, dockerArgs, runnerexec.ProcessMetadata{
+		"engine": types.EngineDocker, "image": spec.Image, "dockerArgs": dockerArgs,
+		"requestedCommand": req.Command, "requestedArgs": req.Args,
 	})
-	if marshalErr != nil {
-		return types.TaskResult{}, fmt.Errorf("marshal docker result: %w", marshalErr)
-	}
-
-	result := types.TaskResult{
-		ExitCode: exitCode,
-		Output:   resultPayload,
-		Duration: time.Since(start),
-	}
-
-	if err := sink.Emit(types.TaskEvent{
-		TaskID:    req.TaskID,
-		SessionID: req.SessionID,
-		StepID:    req.StepID,
-		Type:      types.EventResult,
-		Timestamp: time.Now(),
-		RunnerID:  e.id,
-		ExitCode:  result.ExitCode,
-		Output:    result.Output,
-	}); err != nil {
-		return types.TaskResult{}, err
-	}
-
-	if waitErr != nil {
-		if emitErr := sink.Emit(types.TaskEvent{
-			TaskID:    req.TaskID,
-			SessionID: req.SessionID,
-			StepID:    req.StepID,
-			Type:      types.EventError,
-			Timestamp: time.Now(),
-			RunnerID:  e.id,
-			Message:   waitErr.Error(),
-			Retryable: false,
-		}); emitErr != nil {
-			return types.TaskResult{}, emitErr
-		}
-	}
-
-	if err := sink.Emit(types.TaskEvent{
-		TaskID:    req.TaskID,
-		SessionID: req.SessionID,
-		StepID:    req.StepID,
-		Type:      types.EventCompleted,
-		Timestamp: time.Now(),
-		RunnerID:  e.id,
-		ExitCode:  result.ExitCode,
-		Duration:  result.Duration,
-	}); err != nil {
-		return types.TaskResult{}, err
-	}
-
-	if waitErr != nil {
-		return result, waitErr
-	}
-	return result, nil
 }
 
 func buildDockerArgs(req types.TaskRequest) ([]string, error) {
@@ -234,6 +117,25 @@ func buildDockerArgs(req types.TaskRequest) ([]string, error) {
 	}
 	if readOnlyRootFS {
 		args = append(args, "--read-only")
+	}
+
+	cpuLimit := spec.CPULimitMillis
+	if cpuLimit == 0 {
+		cpuLimit = 2_000
+	}
+	args = append(args, "--cpus", strconv.FormatFloat(float64(cpuLimit)/1000, 'f', 3, 64))
+	memoryLimit := spec.MemoryLimit
+	if memoryLimit == 0 {
+		memoryLimit = 2 * 1024 * 1024 * 1024
+	}
+	args = append(args, "--memory", strconv.FormatUint(memoryLimit, 10))
+	pidsLimit := spec.PIDsLimit
+	if pidsLimit == 0 {
+		pidsLimit = 256
+	}
+	args = append(args, "--pids-limit", strconv.FormatUint(uint64(pidsLimit), 10))
+	if spec.DiskLimit > 0 {
+		args = append(args, "--storage-opt", "size="+strconv.FormatUint(spec.DiskLimit, 10))
 	}
 
 	for _, mount := range spec.Mounts {

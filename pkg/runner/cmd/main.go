@@ -37,7 +37,7 @@ const (
 	defaultAddr       = ":8091"
 	defaultRunnerKind = "local"
 	defaultGRPCServer = "127.0.0.1:9201"
-	defaultCaps       = "shell.exec,fs.roots,fs.read,fs.write,fs.patch,fs.multiPatch,fs.list,fs.search"
+	defaultCaps       = "shell.exec,fs.roots,fs.read,fs.stat,fs.write,fs.patch,fs.multiPatch,fs.applyPatch,fs.list,fs.glob,fs.search,git.status,git.diff,git.show,git.apply"
 	reconnectBaseWait = time.Second
 	reconnectMaxWait  = 30 * time.Second
 )
@@ -261,7 +261,6 @@ func runStart(args []string) error {
 		}
 	}
 
-	return nil
 }
 
 func runServe(args []string) error {
@@ -492,8 +491,8 @@ func detectPlatformProfile(configProfile *model.PlatformProfile) platformProfile
 		return profile.Arch
 	}), buildTargetArch, runtime.GOARCH)
 	return platformProfile{
-		OS:                targetOS,
-		Arch:              targetArch,
+		OS:   targetOS,
+		Arch: targetArch,
 		DefaultShell: firstNonEmpty(configString(configProfile, func(profile *model.PlatformProfile) string {
 			return profile.DefaultShell
 		}), buildDefaultShell, detectDefaultShell(targetOS)),

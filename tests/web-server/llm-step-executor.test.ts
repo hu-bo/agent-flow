@@ -72,10 +72,72 @@ function createStepRequest(): LlmStepRequest {
 }
 
 describe('ModelBackedLlmStepExecutor', () => {
-  it('allows autonomous internal steps to call shell.exec through model tools', async () => {
+  it('allows autonomous internal steps to call semantic fs tools before shell.exec', async () => {
     const generateRequests: GenerationRequest[] = [];
-    const shellCalls: Array<{ input: unknown; context: ToolContext }> = [];
+    const fsSearchCalls: Array<{ input: unknown; context: ToolContext }> = [];
     const registry = new ToolRegistry();
+    const fsListTool: ToolDefinition<Record<string, unknown>, unknown> = {
+      schema: {
+        name: 'fs.list',
+        description: 'List workspace files.',
+        input: {
+          type: 'object',
+          properties: {
+            path: { type: 'string' },
+          },
+        },
+      },
+      async execute(input: Record<string, unknown>): Promise<unknown> {
+        return {
+          path: input.path ?? '.',
+          entries: [],
+          total: 0,
+        };
+      },
+    };
+    const fsReadTool: ToolDefinition<Record<string, unknown>, unknown> = {
+      schema: {
+        name: 'fs.read',
+        description: 'Read a workspace file.',
+        input: {
+          type: 'object',
+          required: ['path'],
+          properties: {
+            path: { type: 'string' },
+          },
+        },
+      },
+      async execute(input: Record<string, unknown>): Promise<unknown> {
+        return {
+          path: input.path,
+          content: '',
+          size: 0,
+        };
+      },
+    };
+    const fsSearchTool: ToolDefinition<Record<string, unknown>, unknown> = {
+      schema: {
+        name: 'fs.search',
+        description: 'Search workspace files.',
+        input: {
+          type: 'object',
+          required: ['pattern'],
+          properties: {
+            path: { type: 'string' },
+            pattern: { type: 'string' },
+          },
+        },
+      },
+      async execute(input: Record<string, unknown>, context: ToolContext): Promise<unknown> {
+        fsSearchCalls.push({ input, context });
+        return {
+          path: input.path ?? '.',
+          pattern: input.pattern,
+          matches: [{ path: 'README.md', line: 1, content: 'agent-flow' }],
+          total: 1,
+        };
+      },
+    };
     const shellTool: ToolDefinition<Record<string, unknown>, unknown> = {
       schema: {
         name: 'shell.exec',
@@ -92,8 +154,7 @@ describe('ModelBackedLlmStepExecutor', () => {
           },
         },
       },
-      async execute(input: Record<string, unknown>, context: ToolContext): Promise<unknown> {
-        shellCalls.push({ input, context });
+      async execute(input: Record<string, unknown>): Promise<unknown> {
         return {
           command: input.command,
           stdout: ['README.md', 'packages'],
@@ -101,6 +162,9 @@ describe('ModelBackedLlmStepExecutor', () => {
         };
       },
     };
+    registry.register(fsListTool);
+    registry.register(fsReadTool);
+    registry.register(fsSearchTool);
     registry.register(shellTool);
     const toolExecutor = new ToolExecutor(registry);
 
@@ -120,10 +184,10 @@ describe('ModelBackedLlmStepExecutor', () => {
                 {
                   type: 'tool-call',
                   callId: 'call_1',
-                  toolName: 'shell_exec',
+                  toolName: 'fs_search',
                   args: {
-                    command: 'Get-ChildItem',
-                    args: ['packages'],
+                    path: '.',
+                    pattern: 'agent-flow',
                   },
                 },
               ],
@@ -143,7 +207,7 @@ describe('ModelBackedLlmStepExecutor', () => {
             parts: [
               {
                 type: 'text',
-                text: '{"analysis":"Saw README.md and packages via shell.","evidence":["shell.exec:Get-ChildItem packages"],"completionSignal":"COMPLETE"}',
+                text: '{"analysis":"Found README.md through fs.search.","evidence":["fs.search:agent-flow"],"completionSignal":"COMPLETE"}',
               },
             ],
           },
@@ -178,16 +242,21 @@ describe('ModelBackedLlmStepExecutor', () => {
     const result = await executor.execute(createStepRequest());
 
     expect(generateRequests).toHaveLength(2);
-    expect(generateRequests[0]?.tools?.map((tool) => tool.name)).toEqual(['shell_exec']);
-    expect(shellCalls).toHaveLength(1);
-    expect(shellCalls[0]?.input).toEqual({
-      command: 'Get-ChildItem',
-      args: ['packages'],
+    expect(generateRequests[0]?.tools?.map((tool) => tool.name)).toEqual([
+      'fs_list',
+      'fs_read',
+      'fs_search',
+      'shell_exec',
+    ]);
+    expect(fsSearchCalls).toHaveLength(1);
+    expect(fsSearchCalls[0]?.input).toEqual({
+      path: '.',
+      pattern: 'agent-flow',
     });
-    expect(shellCalls[0]?.context.stepId).toBe('step_1_tool_1_1');
+    expect(fsSearchCalls[0]?.context.stepId).toBe('step_1_tool_1_1');
     expect(result).toMatchObject({
       mode: 'llm-step',
-      evidence: ['shell.exec:Get-ChildItem packages'],
+      evidence: ['fs.search:agent-flow'],
       completionSignal: 'COMPLETE',
     });
   });

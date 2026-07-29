@@ -215,11 +215,15 @@ export interface LlmStepExecutorLike {
 export interface RunnerCapabilities {
     streaming: boolean;
     sandboxed: boolean;
+    isolationLevel?: 'guarded-host' | 'container' | 'os-sandbox';
 }
 export interface RunnerEventBase {
     type: string;
     timestamp: string;
     runnerId: string;
+    executionId?: string;
+    attempt?: number;
+    sequence?: number;
 }
 export interface RunnerStartedEvent extends RunnerEventBase {
     type: 'started';
@@ -228,10 +232,16 @@ export interface RunnerStartedEvent extends RunnerEventBase {
 export interface RunnerStdoutEvent extends RunnerEventBase {
     type: 'stdout';
     chunk: string;
+    chunkSequence?: number;
+    byteOffset?: number;
+    truncated?: boolean;
 }
 export interface RunnerStderrEvent extends RunnerEventBase {
     type: 'stderr';
     chunk: string;
+    chunkSequence?: number;
+    byteOffset?: number;
+    truncated?: boolean;
 }
 export interface RunnerProgressEvent extends RunnerEventBase {
     type: 'progress';
@@ -241,11 +251,16 @@ export interface RunnerProgressEvent extends RunnerEventBase {
 export interface RunnerResultEvent extends RunnerEventBase {
     type: 'result';
     result: unknown;
+    stdoutBytes?: number;
+    stderrBytes?: number;
+    outputTruncated?: boolean;
 }
 export interface RunnerErrorEvent extends RunnerEventBase {
     type: 'error';
     error: string;
     retryable: boolean;
+    failureType?: string;
+    code?: string;
 }
 export interface RunnerApprovalRequestEvent extends RunnerEventBase {
     type: 'approval_request';
@@ -275,6 +290,12 @@ export interface RunnerCompletedEvent extends RunnerEventBase {
     type: 'completed';
     exitCode: number;
     durationMs: number;
+    status?: 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'rejected';
+    failureType?: string;
+    message?: string;
+    stdoutBytes?: number;
+    stderrBytes?: number;
+    outputTruncated?: boolean;
 }
 export type RunnerEvent = RunnerStartedEvent | RunnerStdoutEvent | RunnerStderrEvent | RunnerProgressEvent | RunnerResultEvent | RunnerErrorEvent | RunnerApprovalRequestEvent | RunnerApprovalResponseEvent | RunnerCompletedEvent;
 export interface Runner {

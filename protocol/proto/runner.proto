@@ -22,6 +22,42 @@ enum TaskEventType {
   TASK_EVENT_TYPE_HEARTBEAT = 8;
 }
 
+enum ExecutionState {
+  EXECUTION_STATE_UNSPECIFIED = 0;
+  EXECUTION_STATE_ACCEPTED = 1;
+  EXECUTION_STATE_RUNNING = 2;
+  EXECUTION_STATE_TERMINAL = 3;
+}
+
+enum TerminalStatus {
+  TERMINAL_STATUS_UNSPECIFIED = 0;
+  TERMINAL_STATUS_SUCCEEDED = 1;
+  TERMINAL_STATUS_FAILED = 2;
+  TERMINAL_STATUS_CANCELLED = 3;
+  TERMINAL_STATUS_TIMED_OUT = 4;
+  TERMINAL_STATUS_REJECTED = 5;
+}
+
+enum FailureType {
+  FAILURE_TYPE_UNSPECIFIED = 0;
+  FAILURE_TYPE_VALIDATION = 1;
+  FAILURE_TYPE_POLICY = 2;
+  FAILURE_TYPE_PROCESS_START = 3;
+  FAILURE_TYPE_PROCESS_EXIT = 4;
+  FAILURE_TYPE_TIMEOUT = 5;
+  FAILURE_TYPE_CANCELLED = 6;
+  FAILURE_TYPE_OUTPUT_LIMIT = 7;
+  FAILURE_TYPE_RESOURCE_EXHAUSTED = 8;
+  FAILURE_TYPE_INTERNAL = 9;
+}
+
+enum IsolationLevel {
+  ISOLATION_LEVEL_UNSPECIFIED = 0;
+  ISOLATION_LEVEL_GUARDED_HOST = 1;
+  ISOLATION_LEVEL_CONTAINER = 2;
+  ISOLATION_LEVEL_OS_SANDBOX = 3;
+}
+
 message TaskRequest {
   string task_id = 1;
   string session_id = 2;
@@ -37,6 +73,11 @@ message TaskRequest {
   Engine engine = 12;
   SandboxPolicy sandbox_policy = 13;
   DockerSpec docker = 14;
+  string execution_id = 15;
+  uint32 attempt = 16;
+  string deadline = 17;
+  uint64 max_output_bytes = 18;
+  uint64 resume_from_event_sequence = 19;
 }
 
 message SandboxPolicy {
@@ -64,16 +105,48 @@ message DockerSpec {
   bool network_disabled = 4;
   bool read_only_root_fs = 5;
   repeated DockerMount mounts = 6;
+  uint64 cpu_limit_millis = 7;
+  uint64 memory_limit_bytes = 8;
+  uint32 pids_limit = 9;
+  uint64 disk_limit_bytes = 10;
 }
 
 message CancelTaskRequest {
   string task_id = 1;
   string reason = 2;
+  string execution_id = 3;
+  uint32 attempt = 4;
 }
 
 message CancelTaskResponse {
   bool accepted = 1;
   string message = 2;
+  ExecutionState state = 3;
+}
+
+message DispatchAck {
+  string task_id = 1;
+  string execution_id = 2;
+  uint32 attempt = 3;
+  bool accepted = 4;
+  ExecutionState state = 5;
+  string message = 6;
+  uint64 last_event_sequence = 7;
+}
+
+message CancelAck {
+  string task_id = 1;
+  string execution_id = 2;
+  uint32 attempt = 3;
+  bool accepted = 4;
+  ExecutionState state = 5;
+  string message = 6;
+}
+
+message EventAck {
+  string execution_id = 1;
+  uint32 attempt = 2;
+  uint64 event_sequence = 3;
 }
 
 message HealthCheckRequest {}
@@ -90,6 +163,9 @@ message StartedPayload {
 
 message StreamPayload {
   string chunk = 1;
+  uint64 chunk_sequence = 2;
+  uint64 byte_offset = 3;
+  bool truncated = 4;
 }
 
 message ProgressPayload {
@@ -100,16 +176,27 @@ message ProgressPayload {
 message ResultPayload {
   int32 exit_code = 1;
   bytes output_json = 2;
+  uint64 stdout_bytes = 3;
+  uint64 stderr_bytes = 4;
+  bool output_truncated = 5;
 }
 
 message ErrorPayload {
   string message = 1;
   bool retryable = 2;
+  FailureType failure_type = 3;
+  string code = 4;
 }
 
 message CompletedPayload {
   int32 exit_code = 1;
   uint64 duration_ms = 2;
+  TerminalStatus status = 3;
+  FailureType failure_type = 4;
+  string message = 5;
+  uint64 stdout_bytes = 6;
+  uint64 stderr_bytes = 7;
+  bool output_truncated = 8;
 }
 
 message HeartbeatPayload {
@@ -123,6 +210,9 @@ message TaskEvent {
   TaskEventType type = 4;
   string timestamp = 5;
   string runner_id = 6;
+  string execution_id = 7;
+  uint32 attempt = 8;
+  uint64 event_sequence = 9;
 
   oneof payload {
     StartedPayload started = 20;
@@ -152,6 +242,13 @@ message ConnectRegister {
   string line_ending = 13;
   repeated string workspace_roots = 14;
   repeated string available_commands = 15;
+  uint32 capability_schema_version = 16;
+  IsolationLevel isolation_level = 17;
+  repeated Engine available_engines = 18;
+  uint32 logical_cpu_count = 19;
+  uint64 memory_bytes = 20;
+  uint32 max_concurrent_tasks = 21;
+  uint32 active_tasks = 22;
 }
 
 message ConnectRegisterAck {
@@ -165,6 +262,8 @@ message ConnectHeartbeat {
   string runner_id = 1;
   string runner_token = 2;
   string timestamp = 3;
+  uint32 active_tasks = 4;
+  uint32 max_concurrent_tasks = 5;
 }
 
 message ServerPing {
@@ -176,6 +275,8 @@ message RunnerEnvelope {
     ConnectRegister register = 1;
     ConnectHeartbeat heartbeat = 2;
     TaskEvent task_event = 3;
+    DispatchAck dispatch_ack = 4;
+    CancelAck cancel_ack = 5;
   }
 }
 
@@ -185,6 +286,7 @@ message ServerEnvelope {
     TaskRequest run_task = 2;
     CancelTaskRequest cancel_task = 3;
     ServerPing ping = 4;
+    EventAck event_ack = 5;
   }
 }
 

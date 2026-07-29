@@ -168,7 +168,7 @@ export function DesktopPage() {
   }, []);
 
   const handleOpenWorkspace = () => {
-    navigate('/chat');
+    window.open('http://aflow-console.8and1.cn', '_blank', 'noopener,noreferrer');
   };
 
   const handleSignIn = async () => {

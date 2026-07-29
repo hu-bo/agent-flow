@@ -8,7 +8,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(0).default(9200),
   HOST: z.string().min(1).default('0.0.0.0'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  AGENT_FLOW_MODEL: z.string().min(1).default('gpt-4o'),
+  AGENT_FLOW_MODEL: z.string().min(1).default('gpt5.4-Mini'),
   AGENT_FLOW_CORS_ORIGIN: z.string().optional(),
   DATABASE_URL: z
     .string()

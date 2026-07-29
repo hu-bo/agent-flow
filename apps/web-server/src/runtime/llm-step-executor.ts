@@ -17,7 +17,7 @@ import { ModelToolRunner } from './model-tool-runner.js';
 import { renderLlmStepPrompt } from './runtime-renderers.js';
 import { resolveMaxOutputTokens, type ModelToolCall } from './runtime-types.js';
 
-const DEFAULT_LLM_STEP_TOOL_NAMES = ['shell.exec'] as const;
+const DEFAULT_LLM_STEP_TOOL_NAMES = ['fs.list', 'fs.read', 'fs.search', 'shell.exec'] as const;
 const DEFAULT_LLM_STEP_MAX_TOOL_ROUNDS = 4;
 
 export interface ModelBackedLlmStepExecutorOptions {
