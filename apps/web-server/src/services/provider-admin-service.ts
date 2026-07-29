@@ -64,16 +64,6 @@ export class ProviderAdminService {
         }),
       );
 
-      if (created.status === 'active') {
-        await providerRepository
-          .createQueryBuilder()
-          .update(ProviderEntity)
-          .set({ status: 'disabled' })
-          .where('provider_id <> :providerId', { providerId: created.providerId })
-          .andWhere('status = :status', { status: 'active' })
-          .execute();
-      }
-
       await this.auditService.writeAuditLog(manager, options, {
         action: 'provider.create',
         resource: 'provider',
@@ -113,16 +103,6 @@ export class ProviderAdminService {
       }
 
       const before = this.toProviderRecord(provider);
-
-      if (input.status === 'active') {
-        await providerRepository
-          .createQueryBuilder()
-          .update(ProviderEntity)
-          .set({ status: 'disabled' })
-          .where('provider_id <> :providerId', { providerId })
-          .andWhere('status = :status', { status: 'active' })
-          .execute();
-      }
 
       provider.status = input.status;
       await providerRepository.save(provider);

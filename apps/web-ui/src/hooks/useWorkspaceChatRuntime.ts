@@ -32,6 +32,8 @@ interface UseWorkspaceChatRuntimeOptions {
   routeSessionId?: string;
 }
 
+const SELECTED_MODEL_STORAGE_KEY = 'agent-flow:selected-model-id';
+
 interface UseWorkspaceChatRuntimeResult {
   messages: ChatMessage[];
   sessionRecord: SessionRecord | null;
@@ -134,7 +136,7 @@ export function useWorkspaceChatRuntime({
         const payload = await fetchModels();
         const options = payload.models.map((model) => ({
           value: String(model.modelId),
-          label: model.displayName,
+          label: `${model.provider}-${model.displayName}`,
           maxInputTokens: model.maxInputTokens,
         }));
         setModelOptions(options);
@@ -142,7 +144,14 @@ export function useWorkspaceChatRuntime({
           if (current !== null && options.some((option) => Number(option.value) === current)) {
             return current;
           }
-          return payload.currentModel;
+          const cachedModelId = readSelectedModelId();
+          if (cachedModelId !== null && options.some((option) => Number(option.value) === cachedModelId)) {
+            return cachedModelId;
+          }
+          if (options.some((option) => Number(option.value) === payload.currentModel)) {
+            return payload.currentModel;
+          }
+          return options[0] ? Number(options[0].value) : null;
         });
       } catch (error: unknown) {
         setNotice({
@@ -301,6 +310,7 @@ export function useWorkspaceChatRuntime({
       const modelId = Number(value);
       await switchModel(modelId);
       setSelectedModelId(modelId);
+      writeSelectedModelId(modelId);
     } catch (error: unknown) {
       setNotice({
         kind: 'error',
@@ -367,4 +377,25 @@ export function useWorkspaceChatRuntime({
     tokenUsage,
     rendererContext,
   };
+}
+
+function readSelectedModelId(): number | null {
+  try {
+    const rawValue = window.localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
+    if (rawValue === null) {
+      return null;
+    }
+    const modelId = Number(rawValue);
+    return Number.isInteger(modelId) && modelId > 0 ? modelId : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSelectedModelId(modelId: number): void {
+  try {
+    window.localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, String(modelId));
+  } catch {
+    // Model selection still works when browser storage is unavailable.
+  }
 }

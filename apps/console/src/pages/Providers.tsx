@@ -179,16 +179,14 @@ export function Providers() {
     }
   };
 
-  const handleEnableProvider = async (provider: ProviderRecord) => {
-    if (provider.status === 'active') {
-      return;
-    }
+  const handleToggleProvider = async (provider: ProviderRecord) => {
+    const nextStatus = provider.status === 'active' ? 'disabled' : 'active';
     setUpdatingProviderId(provider.providerId);
     try {
       await updateAdminProvider(provider.providerId, {
-        status: 'active',
+        status: nextStatus,
       });
-      setSuccess(`Provider ${provider.name} enabled. Other providers were set to disabled.`);
+      setSuccess(`Provider ${provider.name} ${nextStatus === 'active' ? 'enabled' : 'disabled'}.`);
       setError(null);
       await loadProviders();
     } catch (err) {
@@ -359,13 +357,13 @@ export function Providers() {
                     <div className="table-actions">
                       <button
                         className="btn btn-sm btn-ghost"
-                        onClick={() => void handleEnableProvider(provider)}
+                        onClick={() => void handleToggleProvider(provider)}
                         disabled={updatingProviderId !== null}
                       >
                         {updatingProviderId === provider.providerId
-                          ? 'Enabling...'
+                          ? 'Updating...'
                           : provider.status === 'active'
-                            ? 'Set Active'
+                            ? 'Disable'
                             : 'Enable'}
                       </button>
                       <ConfirmDialog
