@@ -115,6 +115,11 @@ export class RuntimeTurnEngine {
       queue.push(event);
     });
 
+    if (input.signal?.aborted) {
+      await span?.end({ status: 'cancelled', mode: 'model-stream' });
+      return;
+    }
+
     if (!finalResponse) {
       const response = await this.modelChatDriver.generateModelResponse(input, recalled, parentUuid);
       queue.push(toMessageEvent(response));
@@ -175,6 +180,7 @@ export class RuntimeTurnEngine {
     };
 
     const result = await this.runtime.run(runRequest, {
+      signal: input.signal,
       onEvent: async (event) => {
         const isNew = recordRuntimeEvent(event);
         // Emit raw runtime events for end-to-end traceability. Enable via LOG_LEVEL=debug.
@@ -198,6 +204,11 @@ export class RuntimeTurnEngine {
         }
       },
     });
+
+    if (input.signal?.aborted) {
+      await span?.end({ status: 'cancelled' });
+      return;
+    }
 
     // Some executors expose fine-grained events only on the final result. Flush any events
     // missed by live onEvent delivery so the UI can always reconstruct the runtime trace.
@@ -330,6 +341,10 @@ export class RuntimeTurnEngine {
         maxToolRounds: MAX_AUTONOMOUS_MODEL_TOOL_ROUNDS,
       },
     );
+    if (input.signal?.aborted) {
+      await span?.end({ status: 'cancelled', mode: 'autonomous-model-fallback' });
+      return;
+    }
     if (!finalResponse) {
       const fallbackResponse = await this.modelChatDriver.generateModelResponse(input, recalled, parentUuid, {
         runtime: runtimeContext,
@@ -348,6 +363,10 @@ export class RuntimeTurnEngine {
     error: unknown,
   ): Promise<void> {
     const { input, parentUuid, queue, span } = context;
+    if (input.signal?.aborted || isAbortError(error)) {
+      await span?.end({ status: 'cancelled' });
+      return;
+    }
     const message = error instanceof Error ? error.message : String(error);
     this.logger?.error('chat.turn.failed', 'core runtime turn failed', {
       attributes: {
@@ -379,6 +398,10 @@ export class RuntimeTurnEngine {
       ),
     );
   }
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }
 
 function shouldRefreshThinking(event: AgentEvent): boolean {

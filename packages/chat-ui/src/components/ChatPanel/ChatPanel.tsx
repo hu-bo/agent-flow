@@ -15,6 +15,7 @@ import { InputArea } from '../InputArea/InputArea';
 export interface ChatPanelProps {
   messages: ChatMessage[];
   onSend: (text: string, attachments?: FileAttachment[]) => void;
+  onStop?: () => void;
   onRetryMessage?: (message: ChatMessage) => void | Promise<void>;
   onCopyMessage?: (message: ChatMessage) => void | Promise<void>;
   onDeleteMessage?: (message: ChatMessage) => void | Promise<void>;
@@ -43,6 +44,7 @@ export interface ChatPanelProps {
 export function ChatPanel({
   messages,
   onSend,
+  onStop,
   onRetryMessage,
   onCopyMessage,
   onDeleteMessage,
@@ -82,6 +84,7 @@ export function ChatPanel({
       {actionPrompt}
       <InputArea
         onSend={onSend}
+        onStop={onStop}
         selectedModel={selectedModel}
         modelOptions={modelOptions}
         onModelChange={onModelChange}

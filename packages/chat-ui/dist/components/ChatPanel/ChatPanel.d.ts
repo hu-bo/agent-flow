@@ -5,6 +5,7 @@ import { ContentRendererRegistry, type ContentRendererContext } from '../../regi
 export interface ChatPanelProps {
     messages: ChatMessage[];
     onSend: (text: string, attachments?: FileAttachment[]) => void;
+    onStop?: () => void;
     onRetryMessage?: (message: ChatMessage) => void | Promise<void>;
     onCopyMessage?: (message: ChatMessage) => void | Promise<void>;
     onDeleteMessage?: (message: ChatMessage) => void | Promise<void>;
@@ -29,4 +30,4 @@ export interface ChatPanelProps {
     onFileSelect?: (files: File[]) => Promise<FileAttachment[]>;
     className?: string;
 }
-export declare function ChatPanel({ messages, onSend, onRetryMessage, onCopyMessage, onDeleteMessage, messageActionDisabled, selectedModel, modelOptions, onModelChange, reasoningEffort, onReasoningEffortChange, tokenUsage, isStreaming, isConnecting, onCompactContext, compactContextDisabled, compactContextLabel, suggestions, onSuggestionSelect, actionPrompt, theme, registry, rendererContext, onFileSelect, className, }: ChatPanelProps): import("react").JSX.Element;
+export declare function ChatPanel({ messages, onSend, onStop, onRetryMessage, onCopyMessage, onDeleteMessage, messageActionDisabled, selectedModel, modelOptions, onModelChange, reasoningEffort, onReasoningEffortChange, tokenUsage, isStreaming, isConnecting, onCompactContext, compactContextDisabled, compactContextLabel, suggestions, onSuggestionSelect, actionPrompt, theme, registry, rendererContext, onFileSelect, className, }: ChatPanelProps): import("react").JSX.Element;

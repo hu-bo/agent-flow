@@ -48,6 +48,7 @@ interface UseWorkspaceChatRuntimeResult {
   toggleRuntimeTraceEnabled: () => void;
   refreshSessionMessages: ReturnType<typeof useChat>['refreshSessionMessages'];
   sendMessage: ReturnType<typeof useChat>['sendMessage'];
+  stopGenerating: ReturnType<typeof useChat>['stopGenerating'];
   isConnecting: boolean;
   isStreaming: boolean;
   modelOptions: ModelSelectOption[];
@@ -77,6 +78,7 @@ export function useWorkspaceChatRuntime({
     messages,
     sessionRecord,
     sendMessage,
+    stopGenerating,
     dismissPendingApproval,
     pendingApproval,
     refreshSessionMessages,
@@ -358,6 +360,7 @@ export function useWorkspaceChatRuntime({
     toggleRuntimeTraceEnabled,
     refreshSessionMessages,
     sendMessage,
+    stopGenerating,
     isConnecting,
     isStreaming,
     modelOptions,

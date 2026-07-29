@@ -825,6 +825,13 @@ export async function streamChat({
   consumeSseBuffer(buffer, handleFrame);
 }
 
+export async function cancelChat(sessionId: string): Promise<{ cancelled: boolean }> {
+  return requestJson({
+    url: `/api/chat/${encodeURIComponent(sessionId)}/cancel`,
+    method: 'POST',
+  });
+}
+
 function isDeltaPatchFrame(frame: DeltaFrame): frame is DeltaPatchFrame {
   return (frame as DeltaPatchFrame).o === 'patch' && Array.isArray((frame as DeltaPatchFrame).v);
 }

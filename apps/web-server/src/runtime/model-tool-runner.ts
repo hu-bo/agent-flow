@@ -59,6 +59,7 @@ export class ModelToolRunner {
         taskId: input.requestId,
         sessionId: input.session.sessionId,
         stepId,
+        signal: input.signal,
         metadata,
       },
     });

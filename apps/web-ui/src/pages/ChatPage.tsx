@@ -26,6 +26,7 @@ export function ChatPage() {
     activeSession,
     setActiveSession,
     sendMessage,
+    stopGenerating,
     refreshSessionMessages,
     isConnecting,
     isStreaming,
@@ -306,6 +307,7 @@ export function ChatPage() {
             messages={messages}
             rendererContext={rendererContext}
             onSend={handleSend}
+            onStop={stopGenerating}
             onRetryMessage={handleRetryMessage}
             onCopyMessage={handleCopyMessage}
             onDeleteMessage={handleDeleteMessage}

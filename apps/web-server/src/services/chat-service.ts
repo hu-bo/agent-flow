@@ -23,6 +23,8 @@ export interface ChatTurnInput {
   approveRiskyOps?: boolean;
   approvalTicket?: string;
   requestId: string;
+  /** Set when the client closes the stream or explicitly stops generation. */
+  signal?: AbortSignal;
 }
 
 export interface ChatTurnResult {
@@ -56,6 +58,8 @@ interface PreparedTurn {
 }
 
 export class ChatService {
+  private readonly activeTurnControllers = new Map<string, AbortController>();
+
   constructor(
     private readonly sessionService: SessionService,
     private readonly modelService: ModelService,
@@ -67,6 +71,21 @@ export class ChatService {
 
   async *streamTurn(input: ChatTurnInput): AsyncGenerator<ChatStreamEvent, SessionRecord, undefined> {
     const prepared = await this.prepareTurn(input);
+    const turnKey = this.getTurnKey(input.userId, prepared.session.sessionId);
+    const activeController = this.activeTurnControllers.get(turnKey);
+    if (activeController) {
+      throw new ValidationError('A response is already streaming for this session.');
+    }
+
+    const controller = new AbortController();
+    const abortFromRequest = () => controller.abort();
+    input.signal?.addEventListener('abort', abortFromRequest, { once: true });
+    if (input.signal?.aborted) {
+      controller.abort();
+    }
+    this.activeTurnControllers.set(turnKey, controller);
+
+    try {
     const specDocBuffers = new Map<string, string>();
     let attemptedTaskValidationRegenerate = 0;
 
@@ -223,6 +242,7 @@ export class ChatService {
         runnerPlatform,
         approveRiskyOps: input.approveRiskyOps,
         approvalTicket: input.approvalTicket,
+        signal: controller.signal,
       })) {
         const specDeltaEvent = specDeltaStage(event);
         if (specDeltaEvent) {
@@ -263,6 +283,21 @@ export class ChatService {
     }
 
     return await this.sessionService.getSession(prepared.session.sessionId);
+    } finally {
+      input.signal?.removeEventListener('abort', abortFromRequest);
+      if (this.activeTurnControllers.get(turnKey) === controller) {
+        this.activeTurnControllers.delete(turnKey);
+      }
+    }
+  }
+
+  cancelTurn(userId: string, sessionId: string): boolean {
+    const controller = this.activeTurnControllers.get(this.getTurnKey(userId, sessionId));
+    if (!controller || controller.signal.aborted) {
+      return false;
+    }
+    controller.abort();
+    return true;
   }
 
   async runTurn(input: ChatTurnInput): Promise<ChatTurnResult> {
@@ -410,6 +445,10 @@ export class ChatService {
       model: model.model,
       attachments: input.attachments ?? [],
     };
+  }
+
+  private getTurnKey(userId: string, sessionId: string): string {
+    return `${userId}:${sessionId}`;
   }
 
   private async decorateSpecMessageIfNeeded(

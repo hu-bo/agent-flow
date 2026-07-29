@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
 import type { ContentPart, FilePart, TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
 import {
+  cancelChat,
   fetchSession,
   streamChat,
   type SessionRecord,
@@ -33,6 +34,7 @@ interface UseChatReturn {
   messages: UnifiedMessage[];
   sessionRecord: SessionRecord | null;
   sendMessage: (input: SendMessageInput) => Promise<void>;
+  stopGenerating: () => void;
   approvePendingRequest: (approvalTicket: string) => Promise<void>;
   dismissPendingApproval: () => void;
   pendingApproval: PendingApprovalRequest | null;
@@ -339,6 +341,11 @@ export function useChat(): UseChatReturn {
             setMessages((prev) => mergeStreamDoc(prev, doc));
           },
         });
+      } catch (error) {
+        if (controller.signal.aborted || isAbortError(error)) {
+          return;
+        }
+        throw error;
       } finally {
         if (streamAbortRef.current === controller) {
           streamAbortRef.current = null;
@@ -379,10 +386,26 @@ export function useChat(): UseChatReturn {
     commitPendingApproval(null);
   }, [commitPendingApproval]);
 
+  const stopGenerating = useCallback(() => {
+    const controller = streamAbortRef.current;
+    const sessionId = activeSessionRef.current;
+    if (!controller || !sessionId) return;
+
+    controller.abort();
+    streamAbortRef.current = null;
+    setIsStreaming(false);
+    setTypingMessageId(null);
+    commitPendingApproval(null);
+    void cancelChat(sessionId).catch(() => {
+      // Closing the stream already notifies the server; the explicit endpoint is a reliable fallback.
+    });
+  }, [commitPendingApproval]);
+
   return {
     messages,
     sessionRecord,
     sendMessage,
+    stopGenerating,
     approvePendingRequest,
     dismissPendingApproval,
     pendingApproval,
@@ -393,4 +416,8 @@ export function useChat(): UseChatReturn {
     typingMessageId,
     usageByMessageId,
   };
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
 }

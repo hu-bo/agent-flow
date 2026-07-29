@@ -23,6 +23,7 @@ function formatTokenCount(value: number): string {
 
 interface InputAreaProps {
   onSend: (text: string, attachments?: FileAttachment[]) => void;
+  onStop?: () => void;
   selectedModel?: string;
   modelOptions?: ChatOption[];
   onModelChange?: (value: string) => void;
@@ -41,6 +42,7 @@ interface InputAreaProps {
 
 export function InputArea({
   onSend,
+  onStop,
   selectedModel,
   modelOptions,
   onModelChange,
@@ -225,14 +227,26 @@ export function InputArea({
               Tokens {formatTokenCount(usageUsed)} / {usageRemaining}
             </span>
 
-            <button
-              className="chat-ui-send-btn"
-              disabled={disabled}
-              onClick={handleSend}
-              aria-label="Send message"
-            >
-              Send
-            </button>
+            {isStreaming ? (
+              <button
+                type="button"
+                className="chat-ui-send-btn chat-ui-stop-btn"
+                onClick={onStop}
+                disabled={!onStop}
+                aria-label="Stop generating"
+              >
+                Stop
+              </button>
+            ) : (
+              <button
+                className="chat-ui-send-btn"
+                disabled={disabled}
+                onClick={handleSend}
+                aria-label="Send message"
+              >
+                Send
+              </button>
+            )}
           </div>
         </div>
       </div>

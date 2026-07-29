@@ -36,3 +36,7 @@ export const messageMutationParamsSchema = z.object({
   session_id: sessionIdSchema,
   msg_id: messageIdSchema,
 });
+
+export const chatSessionParamsSchema = z.object({
+  session_id: sessionIdSchema,
+});

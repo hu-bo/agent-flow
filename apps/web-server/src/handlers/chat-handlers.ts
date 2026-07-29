@@ -6,6 +6,7 @@ import { parseWithSchema } from '../lib/validation.js';
 import { AppError } from '../lib/errors.js';
 import {
   createChatBodySchema,
+  chatSessionParamsSchema,
   messageMutationParamsSchema,
   retryChatMessageBodySchema,
 } from '../schemas/chat.js';
@@ -34,6 +35,9 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   }
 
   if (body.stream) {
+    const controller = new AbortController();
+    const abortOnDisconnect = () => controller.abort();
+    request.raw.once('close', abortOnDisconnect);
     const stream = createSseStream(reply);
     stream.comment(`request=${request.requestContext.requestId}`);
     stream.send('v1', 'delta_encoding');
@@ -83,6 +87,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
         approveRiskyOps: body.approve_risky_ops,
         approvalTicket: body.approval_ticket,
         requestId: request.requestContext.requestId,
+        signal: controller.signal,
       });
 
       while (true) {
@@ -218,8 +223,14 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
       }
       stream.done();
     } catch (error) {
-      stream.send(toStreamErrorPayload(error), 'error');
-      stream.done();
+      if (!controller.signal.aborted) {
+        stream.send(toStreamErrorPayload(error), 'error');
+        stream.done();
+      } else {
+        stream.close();
+      }
+    } finally {
+      request.raw.removeListener('close', abortOnDisconnect);
     }
 
     return;
@@ -241,6 +252,12 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
   });
 
   return sendSuccess(reply, result);
+}
+
+export async function cancelChatHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(chatSessionParamsSchema, request.params, 'params');
+  const cancelled = request.server.services.chatService.cancelTurn(request.auth.userId, params.session_id);
+  return sendSuccess(reply, { cancelled });
 }
 
 export async function retryChatMessageHandler(request: FastifyRequest, reply: FastifyReply) {

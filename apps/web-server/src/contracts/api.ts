@@ -141,6 +141,8 @@ export interface RuntimeChatInput {
   runnerPlatform?: RunnerPlatformProfile;
   approveRiskyOps?: boolean;
   approvalTicket?: string;
+  /** Cancels model, tool, and runtime work for this chat turn. */
+  signal?: AbortSignal;
 }
 
 export interface ChatStreamMessageEvent {

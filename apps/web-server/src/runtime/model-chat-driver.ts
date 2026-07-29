@@ -57,6 +57,7 @@ export class ModelChatDriver {
         modelId: input.modelId,
         model: input.model,
       },
+      signal: input.signal,
     });
 
     const responseText = getAdapterText(result.message.parts).trim();
@@ -165,6 +166,7 @@ export class ModelChatDriver {
             modelId: input.modelId,
             model: input.model,
           },
+          signal: input.signal,
         })) {
           if (event.type === 'text-delta') {
             if (event.delta.length === 0) {

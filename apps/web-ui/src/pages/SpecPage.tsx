@@ -226,6 +226,7 @@ export function SpecPage() {
     activeSession,
     setActiveSession,
     sendMessage,
+    stopGenerating,
     refreshSessionMessages,
     isConnecting,
     isStreaming,
@@ -659,6 +660,7 @@ export function SpecPage() {
               messages={chatMessages}
               rendererContext={rendererContext}
               onSend={handleSend}
+              onStop={stopGenerating}
               onRetryMessage={handleRetryMessage}
               onCopyMessage={handleCopyMessage}
               onDeleteMessage={handleDeleteMessage}

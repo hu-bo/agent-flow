@@ -2,6 +2,7 @@ import './InputArea.less';
 import type { ChatOption, ChatSuggestion, FileAttachment, ReasoningEffort, TokenUsageSummary } from '../../types';
 interface InputAreaProps {
     onSend: (text: string, attachments?: FileAttachment[]) => void;
+    onStop?: () => void;
     selectedModel?: string;
     modelOptions?: ChatOption[];
     onModelChange?: (value: string) => void;
@@ -17,5 +18,5 @@ interface InputAreaProps {
     suggestions?: ChatSuggestion[];
     onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
 }
-export declare function InputArea({ onSend, selectedModel, modelOptions, onModelChange, reasoningEffort, onReasoningEffortChange, tokenUsage, isStreaming, isConnecting, onCompactContext, compactContextDisabled, compactContextLabel, onFileSelect, suggestions, onSuggestionSelect, }: InputAreaProps): import("react").JSX.Element;
+export declare function InputArea({ onSend, onStop, selectedModel, modelOptions, onModelChange, reasoningEffort, onReasoningEffortChange, tokenUsage, isStreaming, isConnecting, onCompactContext, compactContextDisabled, compactContextLabel, onFileSelect, suggestions, onSuggestionSelect, }: InputAreaProps): import("react").JSX.Element;
 export {};
