@@ -33,10 +33,41 @@ export function buildTokenUsage(
 ): TokenUsageSummary {
   const usedTokens = messages.reduce((sum, message) => {
     const usage = usageByMessageId[message.uuid];
-    return sum + (usage?.totalTokens ?? 0);
+    // Providers only report exact usage when a response has finished.  Fall
+    // back to a lightweight estimate so the context indicator remains useful
+    // for restored history and while an assistant response is streaming.
+    return sum + (usage?.totalTokens ?? estimateMessageTokens(message));
   }, 0);
   const remainingTokens = tokenBudget === null ? null : Math.max(0, tokenBudget - usedTokens);
   return { usedTokens, remainingTokens, tokenBudget };
+}
+
+function estimateMessageTokens(message: ChatMessage): number {
+  return message.content.reduce((total, part) => total + estimateContentPartTokens(part), 0);
+}
+
+function estimateContentPartTokens(part: ChatMessage['content'][number]): number {
+  switch (part.type) {
+    case 'text':
+    case 'thinking':
+      return estimateTextTokens(part.text);
+    case 'file':
+      // File data is base64 encoded. Four base64 characters represent three
+      // source bytes, so this deliberately stays a conservative estimate.
+      return Math.ceil(part.data.length / 4);
+    case 'image':
+      return part.source.type === 'base64' ? Math.ceil(part.source.data.length / 4) : 0;
+    case 'tool-call':
+      return estimateTextTokens(`${part.toolName} ${safeJsonStringify(part.input)}`);
+    case 'tool-result':
+      return estimateTextTokens(`${part.toolName} ${safeJsonStringify(part.output)}`);
+    default:
+      return 0;
+  }
+}
+
+function estimateTextTokens(text: string): number {
+  return text.length === 0 ? 0 : Math.ceil(text.length / 4);
 }
 
 export function buildRunnerLabel(runner: RunnerRecord): string {

@@ -94,6 +94,16 @@ function toClientMessage(message: UnifiedMessage): UnifiedMessage {
   };
 }
 
+function extractUsageByMessageId(messages: UnifiedMessage[]): Record<string, TokenUsage> {
+  return messages.reduce<Record<string, TokenUsage>>((usageByMessageId, message) => {
+    const usage = message.metadata?.tokenUsage;
+    if (usage) {
+      usageByMessageId[message.uuid] = usage;
+    }
+    return usageByMessageId;
+  }, {});
+}
+
 function mergeStreamDoc(messages: UnifiedMessage[], doc: StreamDoc): UnifiedMessage[] {
   if (!doc.order.length) return messages;
 
@@ -196,7 +206,7 @@ export function useChat(): UseChatReturn {
       setMessages(payload.messages.map(toClientMessage));
       setSessionRecord(payload.session);
       setTypingMessageId(null);
-      setUsageByMessageId({});
+      setUsageByMessageId(extractUsageByMessageId(payload.messages));
     } finally {
       if (loadSequenceRef.current === currentLoad) {
         setIsConnecting(false);
@@ -219,7 +229,7 @@ export function useChat(): UseChatReturn {
       setMessages(payload.messages.map(toClientMessage));
       setSessionRecord(payload.session);
       setTypingMessageId(null);
-      setUsageByMessageId({});
+      setUsageByMessageId(extractUsageByMessageId(payload.messages));
     }
   }, [commitPendingApproval]);
 
