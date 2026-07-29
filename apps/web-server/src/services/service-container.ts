@@ -66,7 +66,7 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     runnerDownloadBaseUrl: env.runnerDownloadBaseUrl,
   });
   const runnerRegistryService = new RunnerRegistryService(db, runnerRegistrationService);
-  const runnerApprovalService = new RunnerApprovalService();
+  const runnerApprovalService = new RunnerApprovalService(db);
   const runnerDispatchService = new RunnerDispatchService(runnerRegistryService, runnerApprovalService, logger);
   const runnerPackageService = new RunnerPackageService(runnerRegistrationService, {
     templateDir: env.runnerPackageTemplateDir,

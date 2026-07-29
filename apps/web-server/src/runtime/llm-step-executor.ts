@@ -55,6 +55,7 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
     }
 
     const adapter = await this.modelAdapterService.createAdapter(modelId);
+    const toolAttempts: StructuredLlmStepOutput['toolAttempts'] = [];
     const tools = this.modelToolRunner.getModelToolSpecs({
       internalToolNames: this.enabledToolNames,
     });
@@ -121,7 +122,16 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
               stepId: stepRequest.step.id,
               signal: stepRequest.signal,
               metadata: stepRequest.request.metadata,
-              onEvent: stepRequest.onEvent,
+              onEvent: async (type, payload) => {
+                if (type === 'tool.result') {
+                  toolAttempts.push({
+                    toolName: typeof payload.tool === 'string' ? payload.tool : toolCall.toolName,
+                    ok: payload.ok === true,
+                    error: typeof payload.error === 'string' ? payload.error : undefined,
+                  });
+                }
+                await stepRequest.onEvent?.(type, payload);
+              },
             },
           }),
         ),
@@ -146,6 +156,7 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
       nextAction: getMetadataLikeString(parsedStepObject(text), 'nextAction'),
       incompleteReason: getMetadataLikeString(parsedStepObject(text), 'incompleteReason'),
       evidence: getMetadataLikeStringArray(parsedStepObject(text), 'evidence'),
+      toolAttempts,
       finishReason: result.finishReason,
       usage: result.usage,
     } satisfies StructuredLlmStepOutput;

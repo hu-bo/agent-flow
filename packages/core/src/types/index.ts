@@ -64,6 +64,63 @@ export interface AgentStep {
 export interface CompletionAcceptance {
   verifierName: string;
   requireCompletionSignal?: boolean;
+  requiredEvidence?: RequiredEvidenceKind[];
+}
+
+export type RequiredEvidenceKind =
+  | 'tool-success'
+  | 'runner-success'
+  | 'workspace-inspection'
+  | 'workspace-change'
+  | 'verification';
+
+export interface RecoveryPolicy {
+  /** Total number of distinct strategies, including the initial plan. */
+  maxAttempts: number;
+  rejectDuplicateStrategies?: boolean;
+  pauseOnApprovalRequired?: boolean;
+}
+
+export type RecoveryTrigger = 'execution_failure' | 'verification_failure' | 'stalled';
+
+export type AttemptStatus = 'running' | 'failed' | 'passed' | 'blocked' | 'paused';
+
+export interface StructuredReflection {
+  summary: string;
+  cause: string;
+  failedAssumption?: string;
+  evidence: string[];
+  failureFingerprint: string;
+}
+
+export interface RecoveryStrategy {
+  id: string;
+  fingerprint: string;
+  summary: string;
+  changes: string[];
+  verification: string;
+  requiresApproval?: boolean;
+}
+
+export interface AttemptSummary {
+  attemptId: string;
+  attempt: number;
+  planId: string;
+  strategyFingerprint: string;
+  status: AttemptStatus;
+  trigger?: RecoveryTrigger;
+  failureFingerprint?: string;
+  reflection?: StructuredReflection;
+  strategy?: RecoveryStrategy;
+  verification?: ObjectiveVerificationResult;
+  startedAt: string;
+  endedAt?: string;
+}
+
+export interface RecoveryDecision {
+  plan: AgentPlan;
+  reflection: StructuredReflection;
+  strategy: RecoveryStrategy;
 }
 
 export interface CompletionContract {
@@ -178,8 +235,16 @@ export interface StructuredLlmStepOutput {
   nextAction?: string;
   incompleteReason?: string;
   evidence?: string[];
+  toolAttempts?: ToolAttemptSummary[];
   finishReason?: string;
   usage?: unknown;
+}
+
+export interface ToolAttemptSummary {
+  toolName: string;
+  ok: boolean;
+  error?: string;
+  durationMs?: number;
 }
 
 export interface LlmStepExecutorLike {
@@ -233,6 +298,9 @@ export interface RunnerApprovalRequestEvent extends RunnerEventBase {
   type: 'approval_request';
   requestId: string;
   sessionId: string;
+  scopeType?: 'project' | 'chat';
+  scopeId?: string;
+  scopeLabel?: string;
   command: string;
   workingDir: string;
   risk: 'low' | 'medium' | 'high';
@@ -247,6 +315,8 @@ export interface RunnerApprovalResponseEvent extends RunnerEventBase {
   workingDir: string;
   approved: boolean;
   ticketId?: string;
+  authorizationSource?: 'once' | 'persistent';
+  grantId?: string;
   reason?: string;
 }
 
@@ -430,6 +500,7 @@ export interface ReplayStore {
 
 export interface ReplanContext {
   attempt: number;
+  trigger?: RecoveryTrigger;
   failedStep: AgentStep;
   failedPlan: AgentPlan;
   error: string;
@@ -438,10 +509,12 @@ export interface ReplanContext {
   context: ContextEnvelope;
   outputs: Record<string, unknown>;
   checkpoints: CheckpointRecord[];
+  attempts?: AttemptSummary[];
+  verification?: ObjectiveVerificationResult;
 }
 
 export interface Replanner {
-  replan(ctx: ReplanContext): Promise<AgentPlan | undefined>;
+  replan(ctx: ReplanContext): Promise<RecoveryDecision | AgentPlan | undefined>;
 }
 
 export type ObjectiveVerificationStatus = 'passed' | 'failed' | 'blocked';
@@ -482,6 +555,7 @@ export interface AgentEvent {
     | 'session.verification'
     | 'session.completed'
     | 'session.replanned'
+    | 'session.paused'
     | 'session.blocked'
     | 'session.failed'
     | 'step.started'
@@ -492,6 +566,9 @@ export interface AgentEvent {
     | 'approval_request'
     | 'approval_response'
     | 'runner.event'
+    | 'recovery.reflected'
+    | 'recovery.strategy_selected'
+    | 'recovery.exhausted'
     | 'checkpoint.created';
   timestamp: string;
   payload: Record<string, unknown>;
@@ -506,6 +583,7 @@ export interface AgentRunResult {
   events: AgentEvent[];
   rounds?: number;
   verification?: ObjectiveVerificationResult;
+  attempts?: AttemptSummary[];
   error?: string;
 }
 
@@ -558,6 +636,8 @@ export interface CreateAgentOptions {
   runnerSelection?: RunnerSelectionStrategy;
   maxContextTokens?: number;
   replanner?: Replanner;
+  recoveryPolicy?: Partial<RecoveryPolicy>;
+  /** @deprecated Use recoveryPolicy.maxAttempts. */
   maxReplans?: number;
   objectiveVerifiers?: ObjectiveVerifier[];
 }

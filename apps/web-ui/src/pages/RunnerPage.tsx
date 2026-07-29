@@ -3,13 +3,16 @@ import {
   deleteRunner,
   downloadRunnerPackage,
   fetchRunners,
+  fetchRunnerApprovalGrants,
   formatDeleteRunnerError,
   issueRunnerToken,
   rotateRunnerToken,
+  revokeRunnerApprovalGrant,
   streamRunners,
   type RunnerRecord,
   type RunnerDownloadPlatform,
   type RunnerTokenIssueResult,
+  type RunnerApprovalGrant,
 } from '../api';
 import './pages.less';
 
@@ -112,6 +115,8 @@ export function RunnerPage() {
   const [isCreatingToken, setIsCreatingToken] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [deletingRunnerId, setDeletingRunnerId] = useState<string | null>(null);
+  const [approvalGrants, setApprovalGrants] = useState<RunnerApprovalGrant[]>([]);
+  const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
 
   const refreshRunners = useCallback(async () => {
     const payload = await fetchRunners();
@@ -122,9 +127,15 @@ export function RunnerPage() {
     }
   }, []);
 
+  const refreshApprovalGrants = useCallback(async () => {
+    const payload = await fetchRunnerApprovalGrants();
+    setApprovalGrants(payload.grants ?? []);
+  }, []);
+
   useEffect(() => {
     async function bootstrap() {
       try {
+        void refreshApprovalGrants().catch(() => undefined);
         const runnerPayload = await fetchRunners();
         setRunners(runnerPayload.runners ?? []);
         const storedTokenIssue = loadStoredTokenIssue();
@@ -147,7 +158,7 @@ export function RunnerPage() {
       }
     }
     bootstrap();
-  }, []);
+  }, [refreshApprovalGrants]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,6 +280,19 @@ export function RunnerPage() {
     }
   }, [refreshRunners]);
 
+  const handleRevokeGrant = useCallback(async (grantId: string) => {
+    setRevokingGrantId(grantId);
+    try {
+      await revokeRunnerApprovalGrant(grantId);
+      setApprovalGrants((previous) => previous.filter((grant) => grant.grantId !== grantId));
+      setNotice({ kind: 'success', message: 'Remembered Runner permission revoked.' });
+    } catch (error: unknown) {
+      setNotice({ kind: 'error', message: readErrorMessage(error, 'Failed to revoke Runner permission') });
+    } finally {
+      setRevokingGrantId(null);
+    }
+  }, []);
+
   return (
     <>
       <header className="workspace-header">
@@ -350,6 +374,35 @@ export function RunnerPage() {
                     <span>ip={runner.hostIp ?? '-'}</span>
                     <span>version={runner.version ?? '-'}</span>
                     <span>lastSeen={runner.lastSeenAt ?? '-'}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div className="runner-list">
+            <h3>Remembered Approvals</h3>
+            {approvalGrants.length === 0 ? (
+              <div className="runner-list-empty">No persistent Runner approvals.</div>
+            ) : (
+              approvalGrants.map((grant) => (
+                <div className="runner-item" key={grant.grantId}>
+                  <div className="runner-item-main">
+                    <span className="runner-id">{grant.runnerId}</span>
+                    <button
+                      className="workspace-action-btn runner-delete-btn"
+                      type="button"
+                      onClick={() => void handleRevokeGrant(grant.grantId)}
+                      disabled={revokingGrantId === grant.grantId}
+                    >
+                      {revokingGrantId === grant.grantId ? 'Revoking...' : 'Revoke'}
+                    </button>
+                  </div>
+                  <div className="runner-item-meta">
+                    <span>scope={grant.scopeType}:{grant.scopeLabel ?? grant.scopeId}</span>
+                    <span>coverage={grant.coverage}</span>
+                    <span>created={grant.createdAt}</span>
+                    <span>lastUsed={grant.lastUsedAt ?? '-'}</span>
                   </div>
                 </div>
               ))

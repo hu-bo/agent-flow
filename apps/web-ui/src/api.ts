@@ -119,6 +119,20 @@ export interface RunnerApprovalTicketResult {
     cmd: string;
     workdir: string;
   };
+  approved_request_id?: string;
+  persistent_grant_id?: string;
+  decision?: 'once' | 'always';
+}
+
+export interface RunnerApprovalGrant {
+  grantId: string;
+  runnerId: string;
+  scopeType: 'project' | 'chat';
+  scopeId: string;
+  scopeLabel?: string;
+  coverage: 'all_high_risk';
+  createdAt: string;
+  lastUsedAt?: string;
 }
 
 export interface RunnerDirectoryEntry {
@@ -485,12 +499,21 @@ export async function issueRunnerApprovalTicket(input: {
   workdir?: string;
   request_id?: string;
   ttl_sec?: number;
+  decision?: 'once' | 'always';
 }): Promise<RunnerApprovalTicketResult> {
   return requestJson({
     url: '/api/runners/approval-ticket',
     method: 'POST',
     data: input,
   });
+}
+
+export async function fetchRunnerApprovalGrants(): Promise<{ grants: RunnerApprovalGrant[] }> {
+  return requestJson({ url: '/api/runners/approval-grants', method: 'GET' });
+}
+
+export async function revokeRunnerApprovalGrant(grantId: string): Promise<void> {
+  await requestNoContent({ url: `/api/runners/approval-grants/${grantId}`, method: 'DELETE' });
 }
 
 export async function bindSessionRunner(sessionId: string, runnerId: string): Promise<{
@@ -547,6 +570,10 @@ export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
 export interface ApprovalReqPayload {
   request_id?: string;
   session_id: string;
+  runner_id?: string;
+  scope_type?: 'project' | 'chat';
+  scope_id?: string;
+  scope_label?: string;
   cmd: string;
   workdir: string;
   risk: ApprovalRiskLevel;
@@ -737,6 +764,10 @@ export async function streamChat({
         payload?: {
           requestId?: string;
           session_id?: string;
+          runnerId?: string;
+          scopeType?: 'project' | 'chat';
+          scopeId?: string;
+          scopeLabel?: string;
           cmd?: string;
           workdir?: string;
           risk?: ApprovalRiskLevel;
@@ -749,6 +780,10 @@ export async function streamChat({
         approval: {
           request_id: payload.requestId,
           session_id: payload.session_id ?? '',
+          runner_id: payload.runnerId,
+          scope_type: payload.scopeType === 'project' ? 'project' : 'chat',
+          scope_id: payload.scopeId,
+          scope_label: payload.scopeLabel,
           cmd: payload.cmd ?? '',
           workdir: payload.workdir ?? '',
           risk: payload.risk === 'low' || payload.risk === 'medium' ? payload.risk : 'high',

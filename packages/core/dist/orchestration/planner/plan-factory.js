@@ -63,6 +63,12 @@ export class PlanFactory {
             id: request.plan.id || nextPlanId(),
             strategy: request.plan.strategy || request.strategy || 'plan',
             steps: request.plan.steps.map((step) => normalizeStep(step)),
+            completionContract: request.plan.completionContract ?? {
+                objective: request.goal,
+                completionSignal: 'COMPLETE',
+                maxRounds: 3,
+                acceptance: { verifierName: 'generic' },
+            },
         };
     }
     runner(request) {
@@ -90,6 +96,7 @@ export class PlanFactory {
             maxRounds: 1,
             acceptance: {
                 verifierName: 'generic',
+                requiredEvidence: ['runner-success'],
             },
         });
     }
@@ -112,6 +119,7 @@ export class PlanFactory {
             maxRounds: 1,
             acceptance: {
                 verifierName: 'generic',
+                requiredEvidence: ['tool-success'],
             },
         });
     }
@@ -164,6 +172,7 @@ export class PlanFactory {
             maxRounds: 2,
             acceptance: {
                 verifierName: 'generic',
+                requiredEvidence: ['tool-success'],
             },
         });
     }
@@ -279,6 +288,7 @@ export class PlanFactory {
             maxRounds: 3,
             acceptance: {
                 verifierName: 'repo-understanding',
+                requiredEvidence: ['workspace-inspection'],
             },
         });
     }
@@ -388,6 +398,7 @@ export class PlanFactory {
             maxRounds: 3,
             acceptance: {
                 verifierName: 'coding',
+                requiredEvidence: ['tool-success'],
             },
         });
     }

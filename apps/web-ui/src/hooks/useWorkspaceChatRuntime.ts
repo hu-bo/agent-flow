@@ -36,7 +36,7 @@ interface UseWorkspaceChatRuntimeResult {
   messages: ChatMessage[];
   sessionRecord: SessionRecord | null;
   pendingApproval: ReturnType<typeof useChat>['pendingApproval'];
-  approvePendingApproval: () => Promise<void>;
+  approvePendingApproval: (decision: 'once' | 'always') => Promise<void>;
   cancelPendingApproval: () => void;
   isApprovingPendingApproval: boolean;
   activeSession: string | null;
@@ -258,7 +258,7 @@ export function useWorkspaceChatRuntime({
     };
   }, [activeSession, bindRunnerToSession, selectedRunnerId, sessionRecord?.boundRunnerId, sessionRecord?.sessionId]);
 
-  const approvePendingApproval = useCallback(async () => {
+  const approvePendingApproval = useCallback(async (decision: 'once' | 'always') => {
     if (!pendingApproval) {
       throw new Error('No pending approval request');
     }
@@ -270,6 +270,7 @@ export function useWorkspaceChatRuntime({
         cmd: pendingApproval.approval.cmd,
         workdir: pendingApproval.approval.workdir,
         request_id: pendingApproval.approval.request_id,
+        decision,
       });
       void ticket;
       dismissPendingApproval();

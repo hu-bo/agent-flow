@@ -11,6 +11,7 @@ import {
   runnerDownloadPlatformParamsSchema,
   runnerParamsSchema,
   runnerApprovalTicketBodySchema,
+  runnerApprovalGrantParamsSchema,
 } from '../schemas/runner.js';
 
 export async function listRunnersHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -145,18 +146,30 @@ export async function downloadRunnerPackageHandler(request: FastifyRequest, repl
 export async function issueRunnerApprovalTicketHandler(request: FastifyRequest, reply: FastifyReply) {
   const body = parseWithSchema(runnerApprovalTicketBodySchema, request.body, 'body');
   const workingDir = body.workdir ?? await resolveApprovalWorkingDir(request, body.session_id);
-  const issued = request.server.services.runnerApprovalService.approvePending({
+  const issued = await request.server.services.runnerApprovalService.approvePending({
     ownerUserId: request.auth.userId,
     sessionId: body.session_id,
     command: body.cmd,
     workingDir,
     requestId: body.request_id,
     ttlSec: body.ttl_sec,
+    decision: body.decision,
   });
   if (body.request_id && issued.approved_request_id !== body.request_id) {
     throw new AppError(404, 'APPROVAL_REQUEST_NOT_FOUND', `Approval request not found or expired: ${body.request_id}`);
   }
   return sendSuccess(reply, issued, { statusCode: 201, message: 'Created' });
+}
+
+export async function listRunnerApprovalGrantsHandler(request: FastifyRequest, reply: FastifyReply) {
+  const grants = await request.server.services.runnerApprovalService.listPersistentGrants(request.auth.userId);
+  return sendSuccess(reply, { grants });
+}
+
+export async function revokeRunnerApprovalGrantHandler(request: FastifyRequest, reply: FastifyReply) {
+  const params = parseWithSchema(runnerApprovalGrantParamsSchema, request.params, 'params');
+  await request.server.services.runnerApprovalService.revokePersistentGrant(request.auth.userId, params.grant_id);
+  reply.status(204).send();
 }
 
 async function resolveApprovalWorkingDir(request: FastifyRequest, sessionId: string): Promise<string> {

@@ -101,6 +101,10 @@ export function buildToolContextMetadata(input: RuntimeChatInput): Record<string
     requestId: input.requestId,
     userId: input.userId,
     sessionId: input.session.sessionId,
+    projectId: input.session.projectId,
+    approvalScope: input.session.projectId
+      ? { type: 'project', id: input.session.projectId, label: input.session.projectId }
+      : { type: 'chat', id: input.session.sessionId, label: input.session.title ?? input.session.sessionId },
     sessionCwd: input.session.cwd,
     cwd: input.session.cwd,
     userMessage: input.message,

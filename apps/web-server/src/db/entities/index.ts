@@ -10,6 +10,7 @@ import { ProviderCredentialEntity } from './provider-credential.entity.js';
 import { ProviderModelEntity } from './provider-model.entity.js';
 import { ProviderEntity } from './provider.entity.js';
 import { RunnerEntity } from './runner.entity.js';
+import { RunnerApprovalGrantEntity } from './runner-approval-grant.entity.js';
 import { RunnerTokenEntity } from './runner-token.entity.js';
 import { RoutingPolicyEntity } from './routing-policy.entity.js';
 import { UserEntity } from './user.entity.js';
@@ -24,6 +25,7 @@ export const entities = [
   UserEntity,
   RunnerTokenEntity,
   RunnerEntity,
+  RunnerApprovalGrantEntity,
   ProjectEntity,
   ChatSessionEntity,
   ChatMessageEntity,

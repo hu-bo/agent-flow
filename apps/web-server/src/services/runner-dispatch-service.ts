@@ -3,7 +3,7 @@ import type { StructuredLogger } from '@agent-flow/events';
 import { AppError } from '../lib/errors.js';
 import { AsyncQueue } from '../lib/async-queue.js';
 import { RunnerRegistryService } from './runner-registry-service.js';
-import { RunnerApprovalService } from './runner-approval-service.js';
+import { RunnerApprovalService, type RunnerApprovalScope } from './runner-approval-service.js';
 
 interface PendingSandboxPolicy {
   enabled: boolean;
@@ -175,12 +175,24 @@ export class RunnerDispatchService {
           riskLevel,
         },
       });
-      let approval = validateApprovalForTask(this.runnerApprovalService, task, workingDir, riskLevel);
+      const approvalScope = resolveApprovalScope(task.metadata, task.sessionId);
+      let approval = await validateApprovalForTask(
+        this.runnerApprovalService,
+        task,
+        runner.runnerId,
+        approvalScope,
+        workingDir,
+        riskLevel,
+      );
+      let waitedForApproval = false;
       if (riskLevel === 'high' && !approval.ok) {
+        waitedForApproval = true;
         const approvalStartedAtMs = Date.now();
         const pending = this.runnerApprovalService.waitForApproval({
           ownerUserId: userId,
           sessionId: task.sessionId,
+          runnerId: runner.runnerId,
+          scope: approvalScope,
           command: task.command,
           workingDir,
           risk: riskLevel,
@@ -209,6 +221,9 @@ export class RunnerDispatchService {
           runnerId: runner.runnerId,
           requestId: pending.request.requestId,
           sessionId: pending.request.session_id,
+          scopeType: pending.request.scope_type,
+          scopeId: pending.request.scope_id,
+          scopeLabel: pending.request.scope_label,
           command: pending.request.cmd,
           workingDir: pending.request.workdir,
           risk: pending.request.risk,
@@ -241,10 +256,12 @@ export class RunnerDispatchService {
           workingDir,
           approved: response.approved,
           ticketId: response.ticketId,
+          authorizationSource: response.authorizationSource,
+          grantId: response.grantId,
           reason: response.reason,
         };
 
-        if (!response.approved || !response.ticket) {
+        if (!response.approved) {
           throw new AppError(
             403,
             'APPROVAL_DENIED',
@@ -252,13 +269,22 @@ export class RunnerDispatchService {
           );
         }
 
-        approval = this.runnerApprovalService.consumeAndValidate({
-          ticket: response.ticket,
-          ownerUserId: userId,
-          sessionId: task.sessionId,
-          command: task.command,
-          workingDir,
-        });
+        approval = response.authorizationSource === 'persistent'
+          ? await validatePersistentApproval(
+              this.runnerApprovalService,
+              userId,
+              runner.runnerId,
+              approvalScope,
+            )
+          : response.ticket
+            ? this.runnerApprovalService.consumeAndValidate({
+                ticket: response.ticket,
+                ownerUserId: userId,
+                sessionId: task.sessionId,
+                command: task.command,
+                workingDir,
+              })
+            : { ok: false, reason: 'approved request did not include a valid authorization' };
         if (!approval.ok) {
           throw new AppError(
             403,
@@ -266,6 +292,22 @@ export class RunnerDispatchService {
             approval.reason ?? `Approval ticket was not valid for high-risk command "${task.command}".`,
           );
         }
+      }
+
+      if (riskLevel === 'high' && approval.ok && approval.source === 'persistent' && !waitedForApproval) {
+        yield {
+          type: 'approval_response',
+          timestamp: new Date().toISOString(),
+          runnerId: runner.runnerId,
+          requestId: `grant:${approval.grantId ?? 'persistent'}`,
+          sessionId: task.sessionId,
+          command: task.command,
+          workingDir,
+          approved: true,
+          authorizationSource: 'persistent',
+          grantId: approval.grantId,
+          reason: 'remembered approval grant matched',
+        };
       }
 
       execution = this.createExecution(task.taskId, runner.runnerId, task.timeoutMs, task);
@@ -309,6 +351,8 @@ export class RunnerDispatchService {
           sandboxReadOnly: sandboxPolicy.readOnly,
           sandboxAllowNetwork: sandboxPolicy.allowNetwork,
           approvalTicketId: approval.ticketId,
+          approvalGrantId: approval.grantId,
+          approvalSource: approval.source,
         },
       });
 
@@ -730,18 +774,54 @@ function readRequestId(metadata: Record<string, unknown> | undefined): string | 
   return typeof requestId === 'string' && requestId.trim().length > 0 ? requestId : undefined;
 }
 
-function validateApprovalForTask(
-  approvalService: RunnerApprovalService,
-  task: RunnerTask,
-  workingDir: string,
-  riskLevel: 'low' | 'medium' | 'high',
-): {
+interface TaskApprovalResult {
   ok: boolean;
   reason?: string;
   ticketId?: string;
-} {
+  grantId?: string;
+  source?: 'none' | 'once' | 'persistent' | 'legacy';
+}
+
+function resolveApprovalScope(
+  metadata: Record<string, unknown> | undefined,
+  sessionId: string,
+): RunnerApprovalScope {
+  const raw = metadata?.approvalScope;
+  if (raw && typeof raw === 'object') {
+    const scope = raw as Record<string, unknown>;
+    if ((scope.type === 'project' || scope.type === 'chat') && typeof scope.id === 'string' && scope.id) {
+      return {
+        type: scope.type,
+        id: scope.id,
+        label: typeof scope.label === 'string' ? scope.label : undefined,
+      };
+    }
+  }
+  return { type: 'chat', id: sessionId };
+}
+
+async function validatePersistentApproval(
+  approvalService: RunnerApprovalService,
+  ownerUserId: string,
+  runnerId: string,
+  scope: RunnerApprovalScope,
+): Promise<TaskApprovalResult> {
+  const grant = await approvalService.findPersistentGrant({ ownerUserId, runnerId, scope });
+  return grant
+    ? { ok: true, grantId: grant.grantId, source: 'persistent' }
+    : { ok: false, reason: 'persistent approval grant not found or revoked' };
+}
+
+async function validateApprovalForTask(
+  approvalService: RunnerApprovalService,
+  task: RunnerTask,
+  runnerId: string,
+  scope: RunnerApprovalScope,
+  workingDir: string,
+  riskLevel: 'low' | 'medium' | 'high',
+): Promise<TaskApprovalResult> {
   if (riskLevel !== 'high') {
-    return { ok: true };
+    return { ok: true, source: 'none' };
   }
 
   const userId = typeof task.metadata?.userId === 'string' ? task.metadata.userId : '';
@@ -759,11 +839,14 @@ function validateApprovalForTask(
       command: task.command,
       workingDir,
     });
-    return validation;
+    return { ...validation, source: validation.ok ? 'once' : undefined };
   }
 
+  const persistent = await validatePersistentApproval(approvalService, userId, runnerId, scope);
+  if (persistent.ok) return persistent;
+
   if (isRiskyApprovalGranted(task.metadata)) {
-    return { ok: true, reason: 'legacy approval boolean was accepted' };
+    return { ok: true, reason: 'legacy approval boolean was accepted', source: 'legacy' };
   }
 
   return { ok: false, reason: 'missing approval ticket' };

@@ -25,6 +25,11 @@ export const runnerApprovalTicketBodySchema = z.object({
   workdir: z.string().trim().min(1).max(1024).optional(),
   request_id: z.string().trim().min(1).max(128).optional(),
   ttl_sec: z.number().int().min(30).max(600).optional(),
+  decision: z.enum(['once', 'always']).optional().default('once'),
+});
+
+export const runnerApprovalGrantParamsSchema = z.object({
+  grant_id: z.string().uuid(),
 });
 
 export const runnerFsListBodySchema = z.object({

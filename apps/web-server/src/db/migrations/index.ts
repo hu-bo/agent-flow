@@ -10,6 +10,7 @@ import { InitProjectChatPersistence20260511000100 } from './20260511000100-init-
 import { ProjectDefaultRunnerNullable20260525000100 } from './20260525000100-project-default-runner-nullable.js';
 import { AddCoreRuntimePersistence20260602000100 } from './20260602000100-add-core-runtime-persistence.js';
 import { AddRunnerPlatformProfile20260616000100 } from './20260616000100-add-runner-platform-profile.js';
+import { AddRunnerApprovalGrants20260729000100 } from './20260729000100-add-runner-approval-grants.js';
 
 export const migrations = [
   InitModelConfig20260426000100,
@@ -24,4 +25,5 @@ export const migrations = [
   ProjectDefaultRunnerNullable20260525000100,
   AddCoreRuntimePersistence20260602000100,
   AddRunnerPlatformProfile20260616000100,
+  AddRunnerApprovalGrants20260729000100,
 ];

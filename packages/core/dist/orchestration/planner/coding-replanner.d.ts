@@ -1,5 +1,5 @@
-import type { AgentPlan, ReplanContext, Replanner } from '../../types/index.js';
+import type { RecoveryDecision, ReplanContext, Replanner } from '../../types/index.js';
 export declare class CodingReplanner implements Replanner {
-    replan(ctx: ReplanContext): Promise<AgentPlan | undefined>;
+    replan(ctx: ReplanContext): Promise<RecoveryDecision | undefined>;
 }
 //# sourceMappingURL=coding-replanner.d.ts.map

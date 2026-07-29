@@ -27,6 +27,14 @@
       "types": "./dist/anthropic/index.d.ts",
       "import": "./dist/anthropic/index.js"
     },
+    "./deepseek": {
+      "types": "./dist/deepseek.d.ts",
+      "import": "./dist/deepseek.js"
+    },
+    "./minimax": {
+      "types": "./dist/minimax.d.ts",
+      "import": "./dist/minimax.js"
+    },
     "./local": {
       "types": "./dist/local/index.d.ts",
       "import": "./dist/local/index.js"

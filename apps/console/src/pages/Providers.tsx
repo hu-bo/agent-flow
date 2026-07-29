@@ -9,7 +9,7 @@ import {
 } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
-type ProviderPreset = 'openai' | 'anthropic' | 'custom';
+type ProviderPreset = 'openai' | 'anthropic' | 'deepseek' | 'minimax' | 'custom';
 
 const PRESET_META: Record<
   Exclude<ProviderPreset, 'custom'>,
@@ -26,6 +26,18 @@ const PRESET_META: Record<
     type: 'anthropic',
     officialUrl: 'https://www.anthropic.com',
     baseUrl: 'https://api.anthropic.com',
+  },
+  deepseek: {
+    name: 'deepseek',
+    type: 'deepseek',
+    officialUrl: 'https://platform.deepseek.com',
+    baseUrl: 'https://api.deepseek.com/v1',
+  },
+  minimax: {
+    name: 'minimax',
+    type: 'minimax',
+    officialUrl: 'https://platform.minimaxi.com',
+    baseUrl: 'https://api.minimaxi.com/v1',
   },
 };
 
@@ -215,6 +227,20 @@ export function Providers() {
             Anthropic
           </button>
           <button
+            className={`template-chip ${preset === 'deepseek' ? 'active' : ''}`}
+            onClick={() => applyPreset('deepseek')}
+            type="button"
+          >
+            DeepSeek
+          </button>
+          <button
+            className={`template-chip ${preset === 'minimax' ? 'active' : ''}`}
+            onClick={() => applyPreset('minimax')}
+            type="button"
+          >
+            MiniMax
+          </button>
+          <button
             className={`template-chip ${preset === 'custom' ? 'active' : ''}`}
             onClick={() => applyPreset('custom')}
             type="button"
@@ -240,7 +266,7 @@ export function Providers() {
               id="provider-type"
               value={providerType}
               onChange={(e) => setProviderType(e.target.value)}
-              placeholder="openai / anthropic"
+              placeholder="openai / anthropic / deepseek / minimax"
             />
           </div>
 

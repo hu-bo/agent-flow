@@ -21,6 +21,11 @@ describe('createAgent runtime event forwarding', () => {
     const plan: AgentPlan = {
       id: 'plan-runtime-trace',
       strategy: 'plan',
+      completionContract: {
+        objective: 'understand the project',
+        maxRounds: 1,
+        acceptance: { verifierName: 'generic', requiredEvidence: ['tool-success'] },
+      },
       steps: [
         {
           id: 'step_read',
@@ -79,11 +84,14 @@ describe('createAgent runtime event forwarding', () => {
     expect(result.status).toBe('succeeded');
     expect(observed.map((event) => event.type)).toEqual([
       'session.started',
+      'recovery.strategy_selected',
       'step.started',
       'tool.called',
       'tool.result',
       'checkpoint.created',
       'step.completed',
+      'session.verification',
+      'checkpoint.created',
       'session.completed'
     ]);
     expect(new Set(observed.map((event) => event.id)).size).toBe(observed.length);

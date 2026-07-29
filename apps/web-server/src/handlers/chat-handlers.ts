@@ -117,6 +117,10 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
               v: {
                 request_id: String(event.event.payload.requestId ?? event.event.id),
                 session_id: String(event.event.payload.session_id ?? ''),
+                runner_id: String(event.event.payload.runnerId ?? ''),
+                scope_type: event.event.payload.scopeType === 'project' ? 'project' : 'chat',
+                scope_id: String(event.event.payload.scopeId ?? ''),
+                scope_label: typeof event.event.payload.scopeLabel === 'string' ? event.event.payload.scopeLabel : undefined,
                 cmd: String(event.event.payload.cmd ?? ''),
                 workdir: String(event.event.payload.workdir ?? ''),
                 risk: event.event.payload.risk === 'low' || event.event.payload.risk === 'medium'

@@ -99,6 +99,7 @@ function buildThinkingItems(
   const llmSections = extractLlmSections(options.events);
   const toolEvidence = extractToolEvidence(options.events);
   const verification = extractLatestVerification(options.events);
+  const recoverySummary = extractRecoverySummary(options.events);
   const items: ThoughtChainItemPart[] = [
     {
       key: 'intent',
@@ -115,6 +116,15 @@ function buildThinkingItems(
         .join('\n'),
     },
   ];
+
+  if (recoverySummary) {
+    items.push({
+      key: 'recovery-attempts',
+      title: 'Recovery attempts',
+      status: recoverySummary.includes('exhausted') ? 'error' : status,
+      content: recoverySummary,
+    });
+  }
 
   if (plan.length > 0) {
     items.push({
@@ -345,6 +355,30 @@ function extractLatestVerification(events: AgentEvent[]): VerificationSnapshot |
     };
   }
   return null;
+}
+
+function extractRecoverySummary(events: AgentEvent[]): string | null {
+  const lines: string[] = [];
+  for (const event of events) {
+    if (event.type === 'recovery.strategy_selected') {
+      const attempt = typeof event.payload.attempt === 'number' ? event.payload.attempt : '?';
+      const fingerprint = readString(event.payload.strategyFingerprint);
+      const strategy = isPlainObject(event.payload.strategy) ? event.payload.strategy : null;
+      const summary = readString(strategy?.summary);
+      lines.push(`Attempt ${attempt}: ${summary ?? fingerprint ?? 'initial strategy'}`);
+    } else if (event.type === 'recovery.reflected') {
+      const attempt = typeof event.payload.attempt === 'number' ? event.payload.attempt : '?';
+      const reflection = isPlainObject(event.payload.reflection) ? event.payload.reflection : null;
+      const summary = readString(reflection?.summary) ?? readString(reflection?.cause);
+      if (summary) lines.push(`Reflection ${attempt}: ${truncateText(summary, 500)}`);
+    } else if (event.type === 'recovery.exhausted') {
+      lines.push(`Recovery exhausted: ${readString(event.payload.reason) ?? 'attempt budget exhausted'}`);
+    } else if (event.type === 'approval_response') {
+      const source = readString(event.payload.authorizationSource);
+      if (source) lines.push(`Approval: ${source}${readString(event.payload.grantId) ? ` (${readString(event.payload.grantId)})` : ''}`);
+    }
+  }
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 function summarizeToolOutput(toolName: string, output: unknown): string {

@@ -40,7 +40,7 @@ function classifyErrorCategory(error) {
     return 'unknown';
 }
 function detectRecoveryStrategy(ctx) {
-    if (ctx.failedStep.kind === 'tool' && typeof ctx.failedStep.toolName === 'string') {
+    if (ctx.failedStep?.kind === 'tool' && typeof ctx.failedStep.toolName === 'string') {
         if (ctx.failedStep.toolName.startsWith('fs.')) {
             return 'fs-diagnostics';
         }
@@ -48,7 +48,7 @@ function detectRecoveryStrategy(ctx) {
             return 'shell-diagnostics';
         }
     }
-    if (ctx.failedStep.kind === 'runner') {
+    if (ctx.failedStep?.kind === 'runner') {
         return 'shell-diagnostics';
     }
     return 'generic';
@@ -93,7 +93,9 @@ export class CodingReplanner {
         if (recoveryStrategy === 'fs-diagnostics') {
             diagnosticsStepId = nextReplanStepId();
             diagnosticsConsumeKey = 'fsDiagnostics';
-            const diagnosticsPath = toDiagnosticsPath((ctx.failedStep.input ?? {}).path);
+            const diagnosticsPath = ctx.attempt > 1
+                ? resolveWorkingDir(ctx)
+                : toDiagnosticsPath((ctx.failedStep?.input ?? {}).path);
             steps.push({
                 id: diagnosticsStepId,
                 title: 'replan-fs-diagnostics',
@@ -146,11 +148,13 @@ export class CodingReplanner {
                 errorCategory,
                 recoveryStrategy,
                 failedStep: {
-                    id: ctx.failedStep.id,
-                    title: ctx.failedStep.title,
-                    kind: ctx.failedStep.kind,
-                    toolName: ctx.failedStep.toolName,
+                    id: ctx.failedStep?.id,
+                    title: ctx.failedStep?.title,
+                    kind: ctx.failedStep?.kind,
+                    toolName: ctx.failedStep?.toolName,
                 },
+                previousVerification: ctx.verification,
+                triedStrategies: ctx.attempts?.map((attempt) => attempt.strategyFingerprint) ?? [],
                 availableOutputStepIds: Object.keys(ctx.outputs),
             },
         });
@@ -172,8 +176,8 @@ export class CodingReplanner {
                 mode: 'recovery-implementation',
                 taskType: intent.codingTaskType,
                 recoveryStrategy,
-                previousFailedStepId: ctx.failedStep.id,
-                previousFailedStepKind: ctx.failedStep.kind,
+                previousFailedStepId: ctx.failedStep?.id,
+                previousFailedStepKind: ctx.failedStep?.kind,
             },
         });
         steps.push({
@@ -194,18 +198,59 @@ export class CodingReplanner {
                 previousError: ctx.error,
             },
         });
-        return {
+        const plan = {
             id: nextReplanId(),
             strategy: ctx.failedPlan.strategy,
             metadata: {
                 source: 'coding-replanner',
                 attempt: ctx.attempt,
                 previousPlanId: ctx.failedPlan.id,
-                failedStepId: ctx.failedStep.id,
+                failedStepId: ctx.failedStep?.id,
                 recoveryStrategy,
                 errorCategory,
             },
             steps,
+            completionContract: ctx.failedPlan.completionContract,
+        };
+        const fingerprint = [
+            'coding-recovery',
+            ctx.attempt + 1,
+            recoveryStrategy,
+            errorCategory,
+            diagnosticsStepId ? String(steps[0]?.input?.path ?? steps[0]?.input?.workingDir ?? '') : 'no-diagnostics',
+        ].join(':');
+        const failureFingerprint = [
+            errorCategory,
+            ctx.failedStep?.kind ?? 'verification',
+            ctx.failedStep?.toolName ?? ctx.failedStep?.title ?? 'objective',
+        ].join(':');
+        return {
+            plan,
+            reflection: {
+                summary: `Attempt ${ctx.attempt} failed during ${ctx.trigger ?? 'execution_failure'}: ${ctx.error}`,
+                cause: errorCategory,
+                failedAssumption: errorCategory === 'not-found'
+                    ? 'The previous strategy assumed an invalid workspace path.'
+                    : 'The previous strategy did not produce sufficient successful execution evidence.',
+                evidence: [
+                    ctx.error,
+                    ...(ctx.verification?.missingEvidence ?? []).map((item) => `missing:${item}`),
+                ],
+                failureFingerprint,
+            },
+            strategy: {
+                id: `coding-recovery-${ctx.attempt + 1}`,
+                fingerprint,
+                summary: ctx.attempt > 1
+                    ? 'Use a narrower recovery pass rooted at the trusted working directory, then re-run objective verification.'
+                    : `Diagnose ${errorCategory} with ${recoveryStrategy}, execute the corrected action, and verify it.`,
+                changes: [
+                    diagnosticsStepId ? 'Run deterministic diagnostics before model reasoning.' : 'Feed the concrete failure into recovery analysis.',
+                    'Execute the corrected action instead of only restating the failure.',
+                    'Preserve the original completion contract and verify against it.',
+                ],
+                verification: ctx.failedPlan.completionContract?.acceptance.verifierName ?? 'coding',
+            },
         };
     }
 }

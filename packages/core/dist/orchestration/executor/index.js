@@ -298,6 +298,70 @@ class StepExecutionError extends Error {
         this.cause = cause;
     }
 }
+const DEFAULT_RECOVERY_POLICY = {
+    maxAttempts: 3,
+    rejectDuplicateStrategies: true,
+    pauseOnApprovalRequired: true,
+};
+function isRecoveryDecision(value) {
+    return 'plan' in value && 'reflection' in value && 'strategy' in value;
+}
+function stableValue(value) {
+    if (Array.isArray(value))
+        return value.map(stableValue);
+    if (!value || typeof value !== 'object')
+        return value;
+    return Object.fromEntries(Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, stableValue(item)]));
+}
+function hashText(value) {
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+}
+function planStrategyFingerprint(plan) {
+    const signature = plan.steps.map((step) => ({
+        title: step.title,
+        kind: step.kind,
+        toolName: step.toolName,
+        input: stableValue(step.input),
+        consumes: stableValue(step.consumes),
+        runner: step.runner
+            ? {
+                command: step.runner.command,
+                args: step.runner.args ?? [],
+                input: stableValue(step.runner.input),
+            }
+            : undefined,
+    }));
+    return `strategy_${hashText(JSON.stringify(signature))}`;
+}
+function normalizeFailureText(error) {
+    return error
+        .toLowerCase()
+        .replace(/\b\d{4}-\d{2}-\d{2}t[^\s]+/g, '<timestamp>')
+        .replace(/\b\d+ms\b/g, '<duration>')
+        .replace(/\b\d{5,}\b/g, '<number>')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+function failureFingerprint(error, step) {
+    return `failure_${hashText(`${step?.kind ?? 'verification'}:${step?.toolName ?? step?.title ?? 'objective'}:${normalizeFailureText(error)}`)}`;
+}
+function attemptOutputs(plan, outputs) {
+    const ids = new Set(plan.steps.map((step) => step.id));
+    return Object.fromEntries(Object.entries(outputs).filter(([stepId]) => ids.has(stepId)));
+}
+function persistedAttempts(checkpoints) {
+    return checkpoints
+        .filter((checkpoint) => checkpoint.metadata.recoveryAttempt === true)
+        .map((checkpoint) => checkpoint.output)
+        .filter((output) => Boolean(output) && typeof output === 'object' && typeof output.attemptId === 'string');
+}
 export class DefaultPlanExecutor {
     options;
     constructor(options) {
@@ -314,15 +378,35 @@ export class DefaultPlanExecutor {
             }
             return event;
         };
-        const maxReplans = Math.max(0, this.options.maxReplans ?? 1);
+        const configuredMaxAttempts = this.options.recoveryPolicy?.maxAttempts
+            ?? (this.options.maxReplans === undefined ? DEFAULT_RECOVERY_POLICY.maxAttempts : this.options.maxReplans + 1);
+        const recoveryPolicy = {
+            ...DEFAULT_RECOVERY_POLICY,
+            ...this.options.recoveryPolicy,
+            maxAttempts: Math.max(1, Math.floor(configuredMaxAttempts)),
+        };
+        const storedCheckpoints = await this.options.checkpointStore.list(session.id);
+        const attempts = persistedAttempts(storedCheckpoints);
+        const triedStrategies = new Set(attempts.map((attempt) => attempt.strategyFingerprint));
         let activePlan = plan;
-        let replanAttempt = 0;
-        const maxRounds = Math.max(1, activePlan.completionContract?.maxRounds ?? 1);
+        const rootCompletionContract = plan.completionContract;
+        let attemptNumber = attempts.length + 1;
+        let activeStrategyFingerprint = planStrategyFingerprint(activePlan);
+        let activeStrategy = {
+            id: 'initial-strategy',
+            fingerprint: activeStrategyFingerprint,
+            summary: 'Execute the initial planner strategy.',
+            changes: [],
+            verification: plan.completionContract?.acceptance.verifierName ?? 'objective verifier',
+        };
+        let replanCount = 0;
+        let latestVerification;
         yield await emit(createEvent(session.taskId, session.id, 'session.started', {
             planId: plan.id,
             strategy: plan.strategy,
-            round: 1,
-            maxRounds,
+            round: attemptNumber,
+            maxRounds: recoveryPolicy.maxAttempts,
+            recoveryPolicy,
             steps: plan.steps.map((step) => ({
                 id: step.id,
                 title: step.title,
@@ -343,18 +427,73 @@ export class DefaultPlanExecutor {
             metadata: plan.metadata ?? {},
             completionContract: plan.completionContract,
         }));
-        let round = 1;
-        let latestVerification;
         while (true) {
+            if (attemptNumber > recoveryPolicy.maxAttempts) {
+                const reason = `Recovery exhausted after ${recoveryPolicy.maxAttempts} distinct strategies.`;
+                yield await emit(createEvent(session.taskId, session.id, 'recovery.exhausted', {
+                    attempts: attempts.length,
+                    reason,
+                }));
+                yield await emit(createEvent(session.taskId, session.id, 'session.blocked', { reason }));
+                return {
+                    taskId: session.taskId,
+                    sessionId: session.id,
+                    status: 'blocked',
+                    outputs,
+                    checkpoints,
+                    events,
+                    rounds: attempts.length,
+                    attempts,
+                    verification: latestVerification,
+                    error: reason,
+                };
+            }
+            const attempt = {
+                attemptId: `attempt_${session.id}_${attemptNumber}`,
+                attempt: attemptNumber,
+                planId: activePlan.id,
+                strategyFingerprint: activeStrategyFingerprint,
+                strategy: activeStrategy,
+                status: 'running',
+                startedAt: new Date().toISOString(),
+            };
+            attempts.push(attempt);
+            triedStrategies.add(activeStrategyFingerprint);
+            const attemptEventStart = events.length;
+            const attemptCheckpointStart = checkpoints.length;
+            yield await emit(createEvent(session.taskId, session.id, 'recovery.strategy_selected', {
+                attemptId: attempt.attemptId,
+                attempt: attemptNumber,
+                planId: activePlan.id,
+                strategyFingerprint: activeStrategyFingerprint,
+                maxAttempts: recoveryPolicy.maxAttempts,
+                strategy: attempt.strategy,
+            }));
+            let failedStep;
+            let failureMessage;
+            let recoveryTrigger = 'execution_failure';
             try {
-                const roundStartCheckpointCount = checkpoints.length;
-                await this.executePlanSteps(activePlan, request, session, context, executeOptions, outputs, checkpoints, emit, round, latestVerification);
-                latestVerification = await this.verifyCompletion(activePlan, request, session, context, outputs, checkpoints, events, round, emit);
-                if (!latestVerification || latestVerification.status === 'passed') {
+                await this.executePlanSteps(activePlan, request, session, context, executeOptions, outputs, checkpoints, emit, attemptNumber, latestVerification);
+                latestVerification = await this.verifyCompletion(activePlan, request, session, context, attemptOutputs(activePlan, outputs), checkpoints.slice(attemptCheckpointStart), events.slice(attemptEventStart), attemptNumber, emit);
+                if (!latestVerification) {
+                    latestVerification = {
+                        status: 'failed',
+                        verifierName: 'missing-completion-contract',
+                        reason: 'The active plan did not produce an objective verification result.',
+                        missingEvidence: ['completion-contract'],
+                        nextAction: 'Create a recovery plan that preserves the original completion contract.',
+                    };
+                }
+                attempt.verification = latestVerification;
+                if (latestVerification.status === 'passed') {
+                    attempt.status = 'passed';
+                    attempt.endedAt = new Date().toISOString();
+                    await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
                     yield await emit(createEvent(session.taskId, session.id, 'session.completed', {
                         checkpoints: checkpoints.length,
-                        replanCount: replanAttempt,
-                        rounds: round,
+                        replanCount,
+                        rounds: attemptNumber,
+                        attempts,
                         verification: latestVerification,
                     }));
                     return {
@@ -364,14 +503,18 @@ export class DefaultPlanExecutor {
                         outputs,
                         checkpoints,
                         events,
-                        rounds: round,
+                        rounds: attemptNumber,
+                        attempts,
                         verification: latestVerification,
                     };
                 }
                 if (latestVerification.status === 'blocked') {
+                    attempt.status = 'blocked';
+                    attempt.endedAt = new Date().toISOString();
+                    await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
                     yield await emit(createEvent(session.taskId, session.id, 'session.blocked', {
                         reason: latestVerification.reason ?? 'verification blocked',
-                        rounds: round,
+                        rounds: attemptNumber,
                         verifierName: latestVerification.verifierName,
                         missingEvidence: latestVerification.missingEvidence ?? [],
                         nextAction: latestVerification.nextAction,
@@ -384,111 +527,181 @@ export class DefaultPlanExecutor {
                         outputs,
                         checkpoints,
                         events,
-                        rounds: round,
+                        rounds: attemptNumber,
+                        attempts,
                         verification: latestVerification,
                         error: latestVerification.reason ?? 'Objective verification blocked completion.',
                     };
                 }
-                if (round >= maxRounds) {
-                    const blockedVerification = {
-                        ...latestVerification,
-                        status: 'blocked',
-                        reason: latestVerification.reason ??
-                            `Objective did not pass verification within ${maxRounds} rounds.`,
-                        nextAction: latestVerification.nextAction ??
-                            'Needs user input or a stronger verification strategy before continuing.',
-                    };
-                    latestVerification = blockedVerification;
-                    yield await emit(createEvent(session.taskId, session.id, 'session.blocked', {
-                        reason: blockedVerification.reason,
-                        rounds: round,
-                        verifierName: blockedVerification.verifierName,
-                        missingEvidence: blockedVerification.missingEvidence ?? [],
-                        nextAction: blockedVerification.nextAction,
-                        verification: blockedVerification,
-                    }));
-                    return {
-                        taskId: session.taskId,
-                        sessionId: session.id,
-                        status: 'blocked',
-                        outputs,
-                        checkpoints,
-                        events,
-                        rounds: round,
-                        verification: blockedVerification,
-                        error: blockedVerification.reason,
-                    };
-                }
-                await this.recordRoundCheckpoint(session, checkpoints, round, latestVerification, emit);
-                round += 1;
-                if (checkpoints.length === roundStartCheckpointCount) {
-                    yield await emit(createEvent(session.taskId, session.id, 'session.blocked', {
-                        reason: 'Verification failed without producing new evidence.',
-                        rounds: round - 1,
-                        verifierName: latestVerification.verifierName,
-                        missingEvidence: latestVerification.missingEvidence ?? [],
-                        nextAction: latestVerification.nextAction,
-                        verification: latestVerification,
-                    }));
-                    return {
-                        taskId: session.taskId,
-                        sessionId: session.id,
-                        status: 'blocked',
-                        outputs,
-                        checkpoints,
-                        events,
-                        rounds: round - 1,
-                        verification: latestVerification,
-                        error: 'Verification failed without producing new evidence.',
-                    };
-                }
+                recoveryTrigger = 'verification_failure';
+                failureMessage = latestVerification.reason ?? 'Objective verification failed.';
             }
             catch (error) {
                 const stepError = error instanceof StepExecutionError ? error : undefined;
-                const message = error instanceof Error ? error.message : String(error);
-                if (stepError && this.options.replanner && replanAttempt < maxReplans) {
-                    const nextPlan = await this.options.replanner.replan({
-                        attempt: replanAttempt + 1,
-                        failedStep: stepError.step,
-                        failedPlan: activePlan,
-                        error: message,
-                        request,
-                        session,
-                        context,
-                        outputs: { ...outputs },
-                        checkpoints: [...checkpoints]
-                    });
-                    if (nextPlan) {
-                        replanAttempt += 1;
-                        yield await emit(createEvent(session.taskId, session.id, 'session.replanned', {
-                            attempt: replanAttempt,
-                            fromPlanId: activePlan.id,
-                            toPlanId: nextPlan.id,
-                            failedStepId: stepError.step.id,
-                            error: message
-                        }));
-                        activePlan = nextPlan;
-                        continue;
-                    }
+                failedStep = stepError?.step;
+                failureMessage = error instanceof Error ? error.message : String(error);
+            }
+            const failure = failureMessage ?? 'Attempt failed without a concrete error.';
+            attempt.status = 'failed';
+            attempt.trigger = recoveryTrigger;
+            attempt.failureFingerprint = failureFingerprint(failure, failedStep);
+            attempt.endedAt = new Date().toISOString();
+            if (!this.options.replanner) {
+                const terminalStatus = recoveryTrigger === 'verification_failure' ? 'blocked' : 'failed';
+                if (terminalStatus === 'blocked' && latestVerification) {
+                    latestVerification = { ...latestVerification, status: 'blocked' };
+                    attempt.verification = latestVerification;
+                    attempt.status = 'blocked';
                 }
-                yield await emit(createEvent(session.taskId, session.id, 'session.failed', {
-                    error: message,
-                    replanCount: replanAttempt,
-                    rounds: round,
+                await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
+                yield await emit(createEvent(session.taskId, session.id, terminalStatus === 'blocked' ? 'session.blocked' : 'session.failed', {
+                    error: failure,
+                    reason: failure,
+                    rounds: attemptNumber,
+                    attempts,
+                }));
+                return {
+                    taskId: session.taskId,
+                    sessionId: session.id,
+                    status: terminalStatus,
+                    outputs,
+                    checkpoints,
+                    events,
+                    rounds: attemptNumber,
+                    attempts,
+                    verification: latestVerification,
+                    error: failure,
+                };
+            }
+            if (attemptNumber >= recoveryPolicy.maxAttempts) {
+                if (latestVerification) {
+                    latestVerification = { ...latestVerification, status: 'blocked' };
+                    attempt.verification = latestVerification;
+                }
+                attempt.status = 'blocked';
+                await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
+                const reason = `Recovery exhausted after ${recoveryPolicy.maxAttempts} distinct strategies. Last failure: ${failure}`;
+                yield await emit(createEvent(session.taskId, session.id, 'recovery.exhausted', {
+                    attempts: attemptNumber,
+                    reason,
+                    failureFingerprint: attempt.failureFingerprint,
+                }));
+                yield await emit(createEvent(session.taskId, session.id, 'session.blocked', {
+                    reason,
+                    rounds: attemptNumber,
+                    attempts,
                     verification: latestVerification,
                 }));
                 return {
                     taskId: session.taskId,
                     sessionId: session.id,
-                    status: 'failed',
+                    status: 'blocked',
                     outputs,
                     checkpoints,
                     events,
-                    rounds: round,
+                    rounds: attemptNumber,
+                    attempts,
                     verification: latestVerification,
-                    error: message
+                    error: reason,
                 };
             }
+            const recoveryFailedStep = failedStep ?? activePlan.steps.at(-1) ?? {
+                id: `${activePlan.id}-objective-verification`,
+                title: 'objective-verification',
+                kind: 'llm',
+                dependsOn: [],
+            };
+            const replanned = await this.options.replanner.replan({
+                attempt: attemptNumber,
+                trigger: recoveryTrigger,
+                failedStep: recoveryFailedStep,
+                failedPlan: activePlan,
+                error: failure,
+                request,
+                session,
+                context,
+                outputs: attemptOutputs(activePlan, outputs),
+                checkpoints: checkpoints.slice(attemptCheckpointStart),
+                attempts: [...attempts],
+                verification: latestVerification,
+            });
+            if (!replanned) {
+                await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
+                const reason = `No safe recovery strategy was available. Last failure: ${failure}`;
+                yield await emit(createEvent(session.taskId, session.id, 'session.blocked', { reason, attempts }));
+                return {
+                    taskId: session.taskId,
+                    sessionId: session.id,
+                    status: 'blocked',
+                    outputs,
+                    checkpoints,
+                    events,
+                    rounds: attemptNumber,
+                    attempts,
+                    verification: latestVerification,
+                    error: reason,
+                };
+            }
+            const decision = isRecoveryDecision(replanned) ? replanned : undefined;
+            const nextPlan = decision?.plan ?? replanned;
+            nextPlan.completionContract = nextPlan.completionContract ?? activePlan.completionContract ?? rootCompletionContract;
+            const nextStrategy = decision?.strategy ?? {
+                id: `strategy_${attemptNumber + 1}`,
+                fingerprint: planStrategyFingerprint(nextPlan),
+                summary: `Recovery strategy after ${recoveryTrigger}.`,
+                changes: ['Use the replanner-provided executable plan.'],
+                verification: nextPlan.completionContract?.acceptance.verifierName ?? 'objective verifier',
+            };
+            const nextFingerprint = nextStrategy.fingerprint || planStrategyFingerprint(nextPlan);
+            if (recoveryPolicy.rejectDuplicateStrategies && triedStrategies.has(nextFingerprint)) {
+                attempt.reflection = decision?.reflection;
+                await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
+                const reason = `Recovery stalled because the replanner repeated strategy ${nextFingerprint}.`;
+                yield await emit(createEvent(session.taskId, session.id, 'recovery.exhausted', {
+                    reason,
+                    strategyFingerprint: nextFingerprint,
+                    attempts,
+                }));
+                yield await emit(createEvent(session.taskId, session.id, 'session.blocked', { reason, attempts }));
+                return {
+                    taskId: session.taskId,
+                    sessionId: session.id,
+                    status: 'blocked',
+                    outputs,
+                    checkpoints,
+                    events,
+                    rounds: attemptNumber,
+                    attempts,
+                    verification: latestVerification,
+                    error: reason,
+                };
+            }
+            attempt.reflection = decision?.reflection ?? {
+                summary: failure,
+                cause: recoveryTrigger,
+                evidence: latestVerification?.evidence ?? [],
+                failureFingerprint: attempt.failureFingerprint,
+            };
+            await this.recordAttemptCheckpoint(session, checkpoints, attempt, emit);
+            yield await emit(createEvent(session.taskId, session.id, 'recovery.reflected', {
+                attemptId: attempt.attemptId,
+                attempt: attemptNumber,
+                trigger: recoveryTrigger,
+                reflection: attempt.reflection,
+            }));
+            yield await emit(createEvent(session.taskId, session.id, 'session.replanned', {
+                attempt: attemptNumber,
+                fromPlanId: activePlan.id,
+                toPlanId: nextPlan.id,
+                failedStepId: failedStep?.id,
+                error: failure,
+                strategy: nextStrategy,
+            }));
+            replanCount += 1;
+            activePlan = nextPlan;
+            activeStrategyFingerprint = nextFingerprint;
+            activeStrategy = nextStrategy;
+            attemptNumber += 1;
         }
     }
     async executePlanSteps(plan, request, session, context, executeOptions, outputs, checkpoints, emit, round, previousVerification) {
@@ -500,7 +713,7 @@ export class DefaultPlanExecutor {
                 const resolvedInput = step.kind === 'llm'
                     ? {
                         ...baseResolvedInput,
-                        ralphLoop: {
+                        recoveryLoop: {
                             round,
                             maxRounds: Math.max(1, plan.completionContract?.maxRounds ?? 1),
                             verifierName: plan.completionContract?.acceptance.verifierName,
@@ -538,6 +751,15 @@ export class DefaultPlanExecutor {
                             round,
                             ...payload,
                         }));
+                        if (type === 'approval_request') {
+                            await emit(createEvent(session.taskId, session.id, 'session.paused', {
+                                stepId: step.id,
+                                attempt: round,
+                                reason: 'Waiting for high-risk Runner approval.',
+                                requestId: payload.requestId,
+                                runnerId: payload.runnerId,
+                            }));
+                        }
                     };
                     if (step.kind === 'llm') {
                         if (this.options.llmExecutor) {
@@ -624,6 +846,7 @@ export class DefaultPlanExecutor {
                             }
                         };
                         let runnerOutput = undefined;
+                        let runnerFailure;
                         for await (const runnerEvent of this.options.runnerRouter.execute(runnerTask, executeOptions.signal)) {
                             await emit(createEvent(session.taskId, session.id, 'runner.event', {
                                 stepId: step.id,
@@ -633,7 +856,24 @@ export class DefaultPlanExecutor {
                             if (runnerEvent.type === 'result') {
                                 runnerOutput = runnerEvent.result;
                             }
+                            else if (runnerEvent.type === 'error') {
+                                runnerFailure = runnerEvent.error;
+                            }
+                            else if (runnerEvent.type === 'completed' && runnerEvent.exitCode !== 0) {
+                                runnerFailure = `Runner command exited with code ${runnerEvent.exitCode}.`;
+                            }
+                            else if (runnerEvent.type === 'approval_request') {
+                                await emit(createEvent(session.taskId, session.id, 'session.paused', {
+                                    stepId: step.id,
+                                    attempt: round,
+                                    reason: 'Waiting for high-risk Runner approval.',
+                                    requestId: runnerEvent.requestId,
+                                    runnerId: runnerEvent.runnerId,
+                                }));
+                            }
                         }
+                        if (runnerFailure)
+                            throw new Error(runnerFailure);
                         output = runnerOutput;
                     }
                     await this.options.guardrails.runAfter({
@@ -650,7 +890,7 @@ export class DefaultPlanExecutor {
                         metadata: {
                             taskId: session.taskId,
                             stepTitle: step.title,
-                            ralphLoop: {
+                            recoveryLoop: {
                                 round,
                             },
                         }
@@ -713,46 +953,30 @@ export class DefaultPlanExecutor {
         }));
         return verification;
     }
-    async recordRoundCheckpoint(session, checkpoints, round, verification, emit) {
+    async recordAttemptCheckpoint(session, checkpoints, attempt, emit) {
         const checkpoint = await this.options.checkpointStore.save({
             sessionId: session.id,
-            stepId: `ralph-round-${round}`,
-            output: {
-                round,
-                verification,
-            },
+            stepId: attempt.attemptId,
+            output: attempt,
             metadata: {
                 taskId: session.taskId,
-                stepTitle: `ralph-round-${round}`,
-                ralphLoop: {
-                    round,
-                    acceptanceStatus: verification.status,
-                    verifierName: verification.verifierName,
-                    missingEvidence: verification.missingEvidence ?? [],
-                    nextAction: verification.nextAction,
-                },
+                stepTitle: attempt.attemptId,
+                recoveryAttempt: true,
+                attempt: attempt.attempt,
+                status: attempt.status,
+                strategyFingerprint: attempt.strategyFingerprint,
+                failureFingerprint: attempt.failureFingerprint,
             },
         });
         checkpoints.push(checkpoint);
         await emit(createEvent(session.taskId, session.id, 'checkpoint.created', {
-            stepId: `ralph-round-${round}`,
-            title: `ralph-round-${round}`,
+            stepId: attempt.attemptId,
+            title: attempt.attemptId,
             kind: 'llm',
             checkpointId: checkpoint.id,
-            round,
-            output: {
-                mode: 'llm-step',
-                stepId: `ralph-round-${round}`,
-                title: `ralph-round-${round}`,
-                phase: 'verification',
-                text: verification.reason ?? `Verification ${verification.status}.`,
-                sections: {
-                    verification: verification.reason ?? `Verification ${verification.status}.`,
-                },
-                nextAction: verification.nextAction,
-                incompleteReason: verification.reason,
-                evidence: verification.evidence ?? [],
-            },
+            round: attempt.attempt,
+            recoveryAttempt: true,
+            output: attempt,
         }));
     }
 }

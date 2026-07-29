@@ -27,6 +27,28 @@ const defaultRequest = {
     goal: 'test plan execution',
     strategy: 'plan',
 };
+function retryWithDistinctStrategy(plan) {
+    return {
+        async replan(ctx) {
+            return {
+                plan: { ...plan, id: `${plan.id}-attempt-${ctx.attempt + 1}` },
+                reflection: {
+                    summary: ctx.error,
+                    cause: ctx.trigger ?? 'verification_failure',
+                    evidence: ctx.verification?.evidence ?? [],
+                    failureFingerprint: `failure-${ctx.attempt}`,
+                },
+                strategy: {
+                    id: `retry-${ctx.attempt + 1}`,
+                    fingerprint: `retry-${ctx.attempt + 1}`,
+                    summary: 'Retry with verifier feedback.',
+                    changes: ['Use the latest verifier feedback.'],
+                    verification: plan.completionContract?.acceptance.verifierName ?? 'generic',
+                },
+            };
+        },
+    };
+}
 async function drainExecution(plan, toolExecutor, options = {}) {
     const executor = new DefaultPlanExecutor({
         graphBuilder: new DagGraphBuilder(),
@@ -39,7 +61,17 @@ async function drainExecution(plan, toolExecutor, options = {}) {
         replanner: options.replanner,
         maxReplans: options.maxReplans,
     });
-    const stream = executor.execute(plan, options.request ?? defaultRequest, createSession(), defaultContext);
+    const planWithContract = plan.completionContract
+        ? plan
+        : {
+            ...plan,
+            completionContract: {
+                objective: options.request?.goal ?? defaultRequest.goal,
+                maxRounds: Math.max(1, (options.maxReplans ?? 0) + 1),
+                acceptance: { verifierName: 'generic' },
+            },
+        };
+    const stream = executor.execute(planWithContract, options.request ?? defaultRequest, createSession(), defaultContext);
     while (true) {
         const next = await stream.next();
         if (next.done) {
@@ -522,11 +554,13 @@ describe('DefaultPlanExecutor', () => {
         };
         const result = await drainExecution(plan, toolExecutor, {
             llmExecutor,
+            replanner: retryWithDistinctStrategy(plan),
+            maxReplans: 2,
         });
         expect(result.status).toBe('succeeded');
         expect(result.rounds).toBe(2);
         expect(result.events.filter((event) => event.type === 'session.verification')).toHaveLength(2);
-        expect(result.checkpoints.some((checkpoint) => checkpoint.stepId === 'ralph-round-1')).toBe(true);
+        expect(result.checkpoints.some((checkpoint) => checkpoint.stepId === 'attempt_session-1_1')).toBe(true);
     });
     it('returns blocked after verifier fails for three Ralph rounds', async () => {
         const toolExecutor = {
@@ -594,6 +628,8 @@ describe('DefaultPlanExecutor', () => {
         };
         const result = await drainExecution(plan, toolExecutor, {
             llmExecutor,
+            replanner: retryWithDistinctStrategy(plan),
+            maxReplans: 2,
         });
         expect(result.status).toBe('blocked');
         expect(result.rounds).toBe(3);

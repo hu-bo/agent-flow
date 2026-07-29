@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentPlan, AgentRunRequest, AgentRunResult, AgentSession, CheckpointStore, ContextEnvelope, ExecutePlanOptions, GraphBuilder, Guardrails, LlmStepExecutorLike, PlanExecutor, Replanner, Runner, RunnerEvent, RunnerSelectionStrategy, RunnerTask, Scheduler, ToolExecutorLike } from '../../types/index.js';
+import type { AgentEvent, AgentPlan, AgentRunRequest, AgentRunResult, AgentSession, CheckpointStore, ContextEnvelope, ExecutePlanOptions, GraphBuilder, Guardrails, LlmStepExecutorLike, PlanExecutor, RecoveryPolicy, Replanner, Runner, RunnerEvent, RunnerSelectionStrategy, RunnerTask, Scheduler, ToolExecutorLike } from '../../types/index.js';
 import { ObjectiveVerifierRegistry } from './objective-verifiers.js';
 export declare class InlineRunner implements Runner {
     readonly id = "inline-runner";
@@ -29,6 +29,7 @@ export interface DefaultPlanExecutorOptions {
     checkpointStore: CheckpointStore;
     runnerRouter: RunnerRouter;
     replanner?: Replanner;
+    recoveryPolicy?: Partial<RecoveryPolicy>;
     maxReplans?: number;
     objectiveVerifierRegistry?: ObjectiveVerifierRegistry;
 }
@@ -38,6 +39,6 @@ export declare class DefaultPlanExecutor implements PlanExecutor {
     execute(plan: AgentPlan, request: AgentRunRequest, session: AgentSession, context: ContextEnvelope, executeOptions?: ExecutePlanOptions): AsyncGenerator<AgentEvent, AgentRunResult>;
     private executePlanSteps;
     private verifyCompletion;
-    private recordRoundCheckpoint;
+    private recordAttemptCheckpoint;
 }
 //# sourceMappingURL=index.d.ts.map

@@ -213,6 +213,7 @@ export function createAgent(options: CreateAgentOptions = {}): AgentRuntime {
       checkpointStore,
       runnerRouter,
       replanner,
+      recoveryPolicy: options.recoveryPolicy,
       maxReplans: options.maxReplans,
       objectiveVerifierRegistry: new ObjectiveVerifierRegistry(options.objectiveVerifiers),
     });

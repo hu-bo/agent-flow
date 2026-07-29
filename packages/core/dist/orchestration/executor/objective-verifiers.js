@@ -38,6 +38,42 @@ function collectEvidenceFromOutputs(outputs) {
     }
     return evidence;
 }
+function successfulToolResults(events) {
+    return events.filter((event) => event.type === 'tool.result' && event.payload.ok === true);
+}
+function hasUnrecoveredToolFailure(events) {
+    const latest = events.filter((event) => event.type === 'tool.result').at(-1);
+    return Boolean(latest && latest.payload.ok !== true);
+}
+function hasSuccessfulRunner(events) {
+    return events.some((event) => {
+        if (event.type !== 'runner.event' || !isRecord(event.payload.runnerEvent))
+            return false;
+        const runnerEvent = event.payload.runnerEvent;
+        return runnerEvent.type === 'completed' && runnerEvent.exitCode === 0;
+    });
+}
+function missingRequiredEvidence(context) {
+    const required = context.completionContract.acceptance.requiredEvidence ?? [];
+    const tools = successfulToolResults(context.events);
+    const toolNames = new Set(tools.map((event) => readString(event.payload.tool)).filter(Boolean));
+    const runnerSuccess = hasSuccessfulRunner(context.events);
+    return required.filter((kind) => {
+        if (kind === 'tool-success')
+            return tools.length === 0;
+        if (kind === 'runner-success')
+            return !runnerSuccess;
+        if (kind === 'workspace-inspection') {
+            return ![...toolNames].some((name) => name === 'fs.read' || name === 'fs.list' || name === 'fs.search' || name === 'shell.exec');
+        }
+        if (kind === 'workspace-change') {
+            return ![...toolNames].some((name) => name === 'fs.write' || name === 'fs.patch' || name === 'fs.multiPatch');
+        }
+        if (kind === 'verification')
+            return !runnerSuccess && !toolNames.has('shell.exec');
+        return true;
+    }).map((kind) => `required:${kind}`);
+}
 function createVerificationContext(plan, request, session, context, outputs, checkpoints, events, round) {
     if (!plan.completionContract) {
         return null;
@@ -62,6 +98,17 @@ class GenericObjectiveVerifier {
         const latestLlm = collectLlmOutputs(context.outputs).at(-1);
         const nextAction = readString(latestLlm?.nextAction);
         const incompleteReason = readString(latestLlm?.incompleteReason);
+        if (hasUnrecoveredToolFailure(context.events)) {
+            return {
+                status: 'failed',
+                verifierName: this.name,
+                reason: 'The latest objective tool action failed.',
+                missingEvidence: ['tool-success'],
+                evidence,
+                nextAction: nextAction ?? 'Execute a different action and collect successful objective evidence.',
+                completionSignalObserved,
+            };
+        }
         if (context.completionContract.acceptance.requireCompletionSignal && !completionSignalObserved) {
             return {
                 status: 'failed',
@@ -84,6 +131,18 @@ class GenericObjectiveVerifier {
                 completionSignalObserved,
             };
         }
+        const requiredMissing = missingRequiredEvidence(context);
+        if (requiredMissing.length > 0) {
+            return {
+                status: 'failed',
+                verifierName: this.name,
+                reason: 'The completion contract is missing required objective evidence.',
+                missingEvidence: requiredMissing,
+                evidence,
+                nextAction: 'Execute the required objective action and verify its result.',
+                completionSignalObserved,
+            };
+        }
         return {
             status: 'passed',
             verifierName: this.name,
@@ -95,7 +154,7 @@ class GenericObjectiveVerifier {
 class RepoUnderstandingObjectiveVerifier {
     name = 'repo-understanding';
     async verify(context) {
-        const toolResults = context.events.filter((event) => event.type === 'tool.result');
+        const toolResults = successfulToolResults(context.events);
         const repoToolNames = new Set(toolResults
             .map((event) => readString(event.payload.tool))
             .filter((tool) => Boolean(tool)));
@@ -117,6 +176,7 @@ class RepoUnderstandingObjectiveVerifier {
         const nextAction = readString(summaryOutput?.nextAction);
         const incompleteReason = readString(summaryOutput?.incompleteReason);
         const missingEvidence = [];
+        missingEvidence.push(...missingRequiredEvidence(context));
         if (!repoToolEvidencePresent) {
             missingEvidence.push('repo-tool-evidence');
         }
@@ -178,6 +238,7 @@ class CodingObjectiveVerifier {
         const incompleteReason = readString(latestLlm?.incompleteReason);
         const evidence = [
             ...collectEvidenceFromOutputs(context.outputs),
+            ...successfulToolResults(context.events).map((event) => `tool:${readString(event.payload.tool) ?? 'unknown'}:${readString(event.payload.stepId) ?? event.id}`),
             ...context.events
                 .filter((event) => event.type === 'runner.event')
                 .flatMap((event) => {
@@ -194,14 +255,19 @@ class CodingObjectiveVerifier {
         ];
         const completionSignalObserved = collectCompletionSignal(context.outputs, context.completionContract);
         const needsCommandEvidence = looksLikeVerificationRequest(context.request.goal);
-        const hasRunnerEvidence = context.events.some((event) => event.type === 'runner.event');
-        const hasCheckpointEvidence = context.checkpoints.length > 0;
+        const hasRunnerEvidence = hasSuccessfulRunner(context.events);
+        const hasToolEvidence = successfulToolResults(context.events).length > 0;
+        const hasObjectiveEvidence = hasRunnerEvidence || hasToolEvidence;
         const missingEvidence = [];
-        if (needsCommandEvidence && !hasRunnerEvidence) {
+        missingEvidence.push(...missingRequiredEvidence(context));
+        if (hasUnrecoveredToolFailure(context.events)) {
+            missingEvidence.push('tool-success');
+        }
+        if (needsCommandEvidence && !hasObjectiveEvidence) {
             missingEvidence.push('runner-verification');
         }
-        if (!needsCommandEvidence && !hasCheckpointEvidence) {
-            missingEvidence.push('checkpoint-evidence');
+        if (!needsCommandEvidence && !hasObjectiveEvidence) {
+            missingEvidence.push('objective-execution-evidence');
         }
         if (nextAction || incompleteReason) {
             missingEvidence.push('acceptance');
@@ -223,7 +289,7 @@ class CodingObjectiveVerifier {
                 nextAction: nextAction ??
                     (needsCommandEvidence
                         ? 'Run the required verification command and capture its result before finishing.'
-                        : 'Provide a clearer completion check or checkpoint-backed verification summary.'),
+                        : 'Execute an objective tool action and provide a verifier-backed summary.'),
                 completionSignalObserved,
             };
         }

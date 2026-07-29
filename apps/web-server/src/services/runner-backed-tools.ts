@@ -78,6 +78,9 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
           risk: event.risk,
           reason: event.reason,
           runnerId: event.runnerId,
+          scopeType: event.scopeType,
+          scopeId: event.scopeId,
+          scopeLabel: event.scopeLabel,
         });
       } else if (event.type === 'approval_response') {
         await context.onEvent?.('approval_response', {
@@ -87,6 +90,8 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
           workdir: event.workingDir,
           approved: event.approved,
           ticketId: event.ticketId,
+          authorizationSource: event.authorizationSource,
+          grantId: event.grantId,
           reason: event.reason,
           runnerId: event.runnerId,
         });

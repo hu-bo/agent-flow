@@ -1,5 +1,7 @@
 import { createAnthropicAdapter } from '@agent-flow/model-adapters/anthropic';
 import type { AiSdkGenerationMode } from '@agent-flow/model-adapters/ai-sdk';
+import { createDeepSeekAdapter } from '@agent-flow/model-adapters/deepseek';
+import { createMiniMaxAdapter } from '@agent-flow/model-adapters/minimax';
 import { createOpenAiAdapter } from '@agent-flow/model-adapters/openai';
 import type { ModelAdapter } from '@agent-flow/model-adapters/types';
 import type { AppDataSource } from '../db/data-source.js';
@@ -49,6 +51,26 @@ export class ModelAdapterService {
 
     if (providerType === 'anthropic') {
       return createAnthropicAdapter({
+        model: model.model,
+        providerId: providerName,
+        apiKey,
+        generationMode,
+        ...(baseURL ? { baseURL } : {}),
+      });
+    }
+
+    if (providerType === 'deepseek') {
+      return createDeepSeekAdapter({
+        model: model.model,
+        providerId: providerName,
+        apiKey,
+        generationMode,
+        ...(baseURL ? { baseURL } : {}),
+      });
+    }
+
+    if (providerType === 'minimax') {
+      return createMiniMaxAdapter({
         model: model.model,
         providerId: providerName,
         apiKey,

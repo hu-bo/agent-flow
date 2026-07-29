@@ -189,9 +189,6 @@ export function toApprovalRequiredEvent(
 }
 
 export function toRuntimeEvent(event: AgentEvent): ChatStreamEvent | undefined {
-  if (event.type !== 'approval_request' && event.type !== 'approval_response') {
-    return undefined;
-  }
   return {
     type: 'runtime_event',
     event: {
@@ -274,6 +271,10 @@ export function toProgressMessage(
         round: payload.round,
         verifierName: readString(payload.verifierName),
         reason: readString(payload.reason),
+        runner_id: readString(payload.runnerId),
+        scope_type: readString(payload.scopeType),
+        scope_id: readString(payload.scopeId),
+        scope_label: readString(payload.scopeLabel),
         missingEvidence: payload.missingEvidence,
         evidence: payload.evidence,
         nextAction: readString(payload.nextAction),
@@ -462,6 +463,8 @@ export function toProgressMessage(
         cmd: readString(payload.cmd),
         workdir: readString(payload.workdir),
         ticketId: readString(payload.ticketId),
+        authorizationSource: readString(payload.authorizationSource),
+        grantId: readString(payload.grantId),
         reason: readString(payload.reason),
       },
       payload.approved !== true,
