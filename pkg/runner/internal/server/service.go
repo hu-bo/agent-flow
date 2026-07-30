@@ -123,21 +123,34 @@ func (s *RunnerService) normalizeRequest(req *runnerpb.TaskRequest) (types.TaskR
 	engine := toEngine(req.GetEngine())
 	sandboxPolicy := toSandboxPolicy(req.GetSandboxPolicy())
 	dockerSpec := toDockerSpec(req.GetDocker())
+	var deadline time.Time
+	if raw := strings.TrimSpace(req.GetDeadline()); raw != "" {
+		parsed, parseErr := time.Parse(time.RFC3339Nano, raw)
+		if parseErr != nil {
+			return types.TaskRequest{}, fmt.Errorf("invalid deadline: %w", parseErr)
+		}
+		deadline = parsed
+	}
 
 	normalized := types.TaskRequest{
-		TaskID:     req.GetTaskId(),
-		SessionID:  req.GetSessionId(),
-		StepID:     req.GetStepId(),
-		Command:    req.GetCommand(),
-		Args:       req.GetArgs(),
-		Env:        req.GetEnv(),
-		WorkingDir: req.GetWorkingDir(),
-		Timeout:    time.Duration(req.GetTimeoutMs()) * time.Millisecond,
-		Stream:     req.GetStream(),
-		InputJSON:  req.GetInputJson(),
-		Engine:     engine,
-		Sandbox:    sandboxPolicy,
-		Docker:     dockerSpec,
+		TaskID:                  req.GetTaskId(),
+		SessionID:               req.GetSessionId(),
+		StepID:                  req.GetStepId(),
+		Command:                 req.GetCommand(),
+		Args:                    req.GetArgs(),
+		Env:                     req.GetEnv(),
+		WorkingDir:              req.GetWorkingDir(),
+		Timeout:                 time.Duration(req.GetTimeoutMs()) * time.Millisecond,
+		Stream:                  req.GetStream(),
+		InputJSON:               req.GetInputJson(),
+		ExecutionID:             strings.TrimSpace(req.GetExecutionId()),
+		Attempt:                 req.GetAttempt(),
+		Deadline:                deadline,
+		MaxOutputBytes:          req.GetMaxOutputBytes(),
+		ResumeFromEventSequence: req.GetResumeFromEventSequence(),
+		Engine:                  engine,
+		Sandbox:                 sandboxPolicy,
+		Docker:                  dockerSpec,
 	}
 
 	if normalized.Engine != types.EngineDocker && strings.TrimSpace(normalized.Command) == "" {
@@ -202,17 +215,24 @@ func toDockerSpec(spec *runnerpb.DockerSpec) types.DockerSpec {
 		NetworkDisabled: spec.GetNetworkDisabled(),
 		ReadOnlyRootFS:  spec.GetReadOnlyRootFs(),
 		Mounts:          mounts,
+		CPULimitMillis:  spec.GetCpuLimitMillis(),
+		MemoryLimit:     spec.GetMemoryLimitBytes(),
+		PIDsLimit:       spec.GetPidsLimit(),
+		DiskLimit:       spec.GetDiskLimitBytes(),
 	}
 }
 
 func toPBEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	base := &runnerpb.TaskEvent{
-		TaskId:    event.TaskID,
-		SessionId: event.SessionID,
-		StepId:    event.StepID,
-		Type:      toPBEventType(event.Type),
-		Timestamp: event.Timestamp.UTC().Format(time.RFC3339Nano),
-		RunnerId:  event.RunnerID,
+		TaskId:        event.TaskID,
+		SessionId:     event.SessionID,
+		StepId:        event.StepID,
+		Type:          toPBEventType(event.Type),
+		Timestamp:     event.Timestamp.UTC().Format(time.RFC3339Nano),
+		RunnerId:      event.RunnerID,
+		ExecutionId:   event.ExecutionID,
+		Attempt:       event.Attempt,
+		EventSequence: event.Sequence,
 	}
 
 	switch event.Type {
@@ -225,13 +245,13 @@ func toPBEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	case types.EventStdout:
 		base.Payload = &runnerpb.TaskEvent_Stdout{
 			Stdout: &runnerpb.StreamPayload{
-				Chunk: event.Chunk,
+				Chunk: event.Chunk, ChunkSequence: event.ChunkSequence, ByteOffset: event.ByteOffset, Truncated: event.Truncated,
 			},
 		}
 	case types.EventStderr:
 		base.Payload = &runnerpb.TaskEvent_Stderr{
 			Stderr: &runnerpb.StreamPayload{
-				Chunk: event.Chunk,
+				Chunk: event.Chunk, ChunkSequence: event.ChunkSequence, ByteOffset: event.ByteOffset, Truncated: event.Truncated,
 			},
 		}
 	case types.EventProgress:
@@ -244,15 +264,17 @@ func toPBEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	case types.EventResult:
 		base.Payload = &runnerpb.TaskEvent_Result{
 			Result: &runnerpb.ResultPayload{
-				ExitCode:   event.ExitCode,
-				OutputJson: event.Output,
+				ExitCode:    event.ExitCode,
+				OutputJson:  event.Output,
+				StdoutBytes: event.StdoutBytes, StderrBytes: event.StderrBytes, OutputTruncated: event.OutputTruncated,
 			},
 		}
 	case types.EventError:
 		base.Payload = &runnerpb.TaskEvent_Error{
 			Error: &runnerpb.ErrorPayload{
-				Message:   event.Message,
-				Retryable: event.Retryable,
+				Message:     event.Message,
+				Retryable:   event.Retryable,
+				FailureType: toPBFailureType(event.FailureType), Code: event.Code,
 			},
 		}
 	case types.EventCompleted:
@@ -260,6 +282,9 @@ func toPBEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 			Completed: &runnerpb.CompletedPayload{
 				ExitCode:   event.ExitCode,
 				DurationMs: uint64(event.Duration.Milliseconds()),
+				Status:     toPBTerminalStatus(event.TerminalStatus), FailureType: toPBFailureType(event.FailureType),
+				Message: event.Message, StdoutBytes: event.StdoutBytes, StderrBytes: event.StderrBytes,
+				OutputTruncated: event.OutputTruncated,
 			},
 		}
 	case types.EventHeartbeat:
@@ -271,6 +296,48 @@ func toPBEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	}
 
 	return base
+}
+
+func toPBTerminalStatus(value types.TerminalStatus) runnerpb.TerminalStatus {
+	switch value {
+	case types.TerminalSucceeded:
+		return runnerpb.TerminalStatus_TERMINAL_STATUS_SUCCEEDED
+	case types.TerminalFailed:
+		return runnerpb.TerminalStatus_TERMINAL_STATUS_FAILED
+	case types.TerminalCancelled:
+		return runnerpb.TerminalStatus_TERMINAL_STATUS_CANCELLED
+	case types.TerminalTimedOut:
+		return runnerpb.TerminalStatus_TERMINAL_STATUS_TIMED_OUT
+	case types.TerminalRejected:
+		return runnerpb.TerminalStatus_TERMINAL_STATUS_REJECTED
+	default:
+		return runnerpb.TerminalStatus_TERMINAL_STATUS_UNSPECIFIED
+	}
+}
+
+func toPBFailureType(value types.FailureType) runnerpb.FailureType {
+	switch value {
+	case types.FailureValidation:
+		return runnerpb.FailureType_FAILURE_TYPE_VALIDATION
+	case types.FailurePolicy:
+		return runnerpb.FailureType_FAILURE_TYPE_POLICY
+	case types.FailureProcessStart:
+		return runnerpb.FailureType_FAILURE_TYPE_PROCESS_START
+	case types.FailureProcessExit:
+		return runnerpb.FailureType_FAILURE_TYPE_PROCESS_EXIT
+	case types.FailureTimeout:
+		return runnerpb.FailureType_FAILURE_TYPE_TIMEOUT
+	case types.FailureCancelled:
+		return runnerpb.FailureType_FAILURE_TYPE_CANCELLED
+	case types.FailureOutputLimit:
+		return runnerpb.FailureType_FAILURE_TYPE_OUTPUT_LIMIT
+	case types.FailureResourceExhausted:
+		return runnerpb.FailureType_FAILURE_TYPE_RESOURCE_EXHAUSTED
+	case types.FailureInternal:
+		return runnerpb.FailureType_FAILURE_TYPE_INTERNAL
+	default:
+		return runnerpb.FailureType_FAILURE_TYPE_UNSPECIFIED
+	}
 }
 
 func toPBEventType(kind types.EventType) runnerpb.TaskEventType {

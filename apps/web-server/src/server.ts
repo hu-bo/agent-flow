@@ -1,6 +1,6 @@
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
-import { startRunnerGrpcServer } from './services/runner-grpc-server.js';
+import { startRunnerGrpcServer } from './runner-grpc-server.js';
 
 export async function startServer() {
   const env = loadEnv();

@@ -137,24 +137,261 @@ func (TaskEventType) EnumDescriptor() ([]byte, []int) {
 	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{1}
 }
 
+type ExecutionState int32
+
+const (
+	ExecutionState_EXECUTION_STATE_UNSPECIFIED ExecutionState = 0
+	ExecutionState_EXECUTION_STATE_ACCEPTED    ExecutionState = 1
+	ExecutionState_EXECUTION_STATE_RUNNING     ExecutionState = 2
+	ExecutionState_EXECUTION_STATE_TERMINAL    ExecutionState = 3
+)
+
+// Enum value maps for ExecutionState.
+var (
+	ExecutionState_name = map[int32]string{
+		0: "EXECUTION_STATE_UNSPECIFIED",
+		1: "EXECUTION_STATE_ACCEPTED",
+		2: "EXECUTION_STATE_RUNNING",
+		3: "EXECUTION_STATE_TERMINAL",
+	}
+	ExecutionState_value = map[string]int32{
+		"EXECUTION_STATE_UNSPECIFIED": 0,
+		"EXECUTION_STATE_ACCEPTED":    1,
+		"EXECUTION_STATE_RUNNING":     2,
+		"EXECUTION_STATE_TERMINAL":    3,
+	}
+)
+
+func (x ExecutionState) Enum() *ExecutionState {
+	p := new(ExecutionState)
+	*p = x
+	return p
+}
+
+func (x ExecutionState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ExecutionState) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_proto_runner_proto_enumTypes[2].Descriptor()
+}
+
+func (ExecutionState) Type() protoreflect.EnumType {
+	return &file_protocol_proto_runner_proto_enumTypes[2]
+}
+
+func (x ExecutionState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ExecutionState.Descriptor instead.
+func (ExecutionState) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{2}
+}
+
+type TerminalStatus int32
+
+const (
+	TerminalStatus_TERMINAL_STATUS_UNSPECIFIED TerminalStatus = 0
+	TerminalStatus_TERMINAL_STATUS_SUCCEEDED   TerminalStatus = 1
+	TerminalStatus_TERMINAL_STATUS_FAILED      TerminalStatus = 2
+	TerminalStatus_TERMINAL_STATUS_CANCELLED   TerminalStatus = 3
+	TerminalStatus_TERMINAL_STATUS_TIMED_OUT   TerminalStatus = 4
+	TerminalStatus_TERMINAL_STATUS_REJECTED    TerminalStatus = 5
+)
+
+// Enum value maps for TerminalStatus.
+var (
+	TerminalStatus_name = map[int32]string{
+		0: "TERMINAL_STATUS_UNSPECIFIED",
+		1: "TERMINAL_STATUS_SUCCEEDED",
+		2: "TERMINAL_STATUS_FAILED",
+		3: "TERMINAL_STATUS_CANCELLED",
+		4: "TERMINAL_STATUS_TIMED_OUT",
+		5: "TERMINAL_STATUS_REJECTED",
+	}
+	TerminalStatus_value = map[string]int32{
+		"TERMINAL_STATUS_UNSPECIFIED": 0,
+		"TERMINAL_STATUS_SUCCEEDED":   1,
+		"TERMINAL_STATUS_FAILED":      2,
+		"TERMINAL_STATUS_CANCELLED":   3,
+		"TERMINAL_STATUS_TIMED_OUT":   4,
+		"TERMINAL_STATUS_REJECTED":    5,
+	}
+)
+
+func (x TerminalStatus) Enum() *TerminalStatus {
+	p := new(TerminalStatus)
+	*p = x
+	return p
+}
+
+func (x TerminalStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TerminalStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_proto_runner_proto_enumTypes[3].Descriptor()
+}
+
+func (TerminalStatus) Type() protoreflect.EnumType {
+	return &file_protocol_proto_runner_proto_enumTypes[3]
+}
+
+func (x TerminalStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TerminalStatus.Descriptor instead.
+func (TerminalStatus) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{3}
+}
+
+type FailureType int32
+
+const (
+	FailureType_FAILURE_TYPE_UNSPECIFIED        FailureType = 0
+	FailureType_FAILURE_TYPE_VALIDATION         FailureType = 1
+	FailureType_FAILURE_TYPE_POLICY             FailureType = 2
+	FailureType_FAILURE_TYPE_PROCESS_START      FailureType = 3
+	FailureType_FAILURE_TYPE_PROCESS_EXIT       FailureType = 4
+	FailureType_FAILURE_TYPE_TIMEOUT            FailureType = 5
+	FailureType_FAILURE_TYPE_CANCELLED          FailureType = 6
+	FailureType_FAILURE_TYPE_OUTPUT_LIMIT       FailureType = 7
+	FailureType_FAILURE_TYPE_RESOURCE_EXHAUSTED FailureType = 8
+	FailureType_FAILURE_TYPE_INTERNAL           FailureType = 9
+)
+
+// Enum value maps for FailureType.
+var (
+	FailureType_name = map[int32]string{
+		0: "FAILURE_TYPE_UNSPECIFIED",
+		1: "FAILURE_TYPE_VALIDATION",
+		2: "FAILURE_TYPE_POLICY",
+		3: "FAILURE_TYPE_PROCESS_START",
+		4: "FAILURE_TYPE_PROCESS_EXIT",
+		5: "FAILURE_TYPE_TIMEOUT",
+		6: "FAILURE_TYPE_CANCELLED",
+		7: "FAILURE_TYPE_OUTPUT_LIMIT",
+		8: "FAILURE_TYPE_RESOURCE_EXHAUSTED",
+		9: "FAILURE_TYPE_INTERNAL",
+	}
+	FailureType_value = map[string]int32{
+		"FAILURE_TYPE_UNSPECIFIED":        0,
+		"FAILURE_TYPE_VALIDATION":         1,
+		"FAILURE_TYPE_POLICY":             2,
+		"FAILURE_TYPE_PROCESS_START":      3,
+		"FAILURE_TYPE_PROCESS_EXIT":       4,
+		"FAILURE_TYPE_TIMEOUT":            5,
+		"FAILURE_TYPE_CANCELLED":          6,
+		"FAILURE_TYPE_OUTPUT_LIMIT":       7,
+		"FAILURE_TYPE_RESOURCE_EXHAUSTED": 8,
+		"FAILURE_TYPE_INTERNAL":           9,
+	}
+)
+
+func (x FailureType) Enum() *FailureType {
+	p := new(FailureType)
+	*p = x
+	return p
+}
+
+func (x FailureType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FailureType) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_proto_runner_proto_enumTypes[4].Descriptor()
+}
+
+func (FailureType) Type() protoreflect.EnumType {
+	return &file_protocol_proto_runner_proto_enumTypes[4]
+}
+
+func (x FailureType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FailureType.Descriptor instead.
+func (FailureType) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{4}
+}
+
+type IsolationLevel int32
+
+const (
+	IsolationLevel_ISOLATION_LEVEL_UNSPECIFIED  IsolationLevel = 0
+	IsolationLevel_ISOLATION_LEVEL_GUARDED_HOST IsolationLevel = 1
+	IsolationLevel_ISOLATION_LEVEL_CONTAINER    IsolationLevel = 2
+	IsolationLevel_ISOLATION_LEVEL_OS_SANDBOX   IsolationLevel = 3
+)
+
+// Enum value maps for IsolationLevel.
+var (
+	IsolationLevel_name = map[int32]string{
+		0: "ISOLATION_LEVEL_UNSPECIFIED",
+		1: "ISOLATION_LEVEL_GUARDED_HOST",
+		2: "ISOLATION_LEVEL_CONTAINER",
+		3: "ISOLATION_LEVEL_OS_SANDBOX",
+	}
+	IsolationLevel_value = map[string]int32{
+		"ISOLATION_LEVEL_UNSPECIFIED":  0,
+		"ISOLATION_LEVEL_GUARDED_HOST": 1,
+		"ISOLATION_LEVEL_CONTAINER":    2,
+		"ISOLATION_LEVEL_OS_SANDBOX":   3,
+	}
+)
+
+func (x IsolationLevel) Enum() *IsolationLevel {
+	p := new(IsolationLevel)
+	*p = x
+	return p
+}
+
+func (x IsolationLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (IsolationLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_proto_runner_proto_enumTypes[5].Descriptor()
+}
+
+func (IsolationLevel) Type() protoreflect.EnumType {
+	return &file_protocol_proto_runner_proto_enumTypes[5]
+}
+
+func (x IsolationLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use IsolationLevel.Descriptor instead.
+func (IsolationLevel) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{5}
+}
+
 type TaskRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	Command       string                 `protobuf:"bytes,4,opt,name=command,proto3" json:"command,omitempty"`
-	Args          []string               `protobuf:"bytes,5,rep,name=args,proto3" json:"args,omitempty"`
-	Env           map[string]string      `protobuf:"bytes,6,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	WorkingDir    string                 `protobuf:"bytes,7,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
-	TimeoutMs     int64                  `protobuf:"varint,8,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
-	Stream        bool                   `protobuf:"varint,9,opt,name=stream,proto3" json:"stream,omitempty"`
-	AuthToken     string                 `protobuf:"bytes,10,opt,name=auth_token,json=authToken,proto3" json:"auth_token,omitempty"`
-	InputJson     []byte                 `protobuf:"bytes,11,opt,name=input_json,json=inputJson,proto3" json:"input_json,omitempty"`
-	Engine        Engine                 `protobuf:"varint,12,opt,name=engine,proto3,enum=agentflow.runner.v1.Engine" json:"engine,omitempty"`
-	SandboxPolicy *SandboxPolicy         `protobuf:"bytes,13,opt,name=sandbox_policy,json=sandboxPolicy,proto3" json:"sandbox_policy,omitempty"`
-	Docker        *DockerSpec            `protobuf:"bytes,14,opt,name=docker,proto3" json:"docker,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	TaskId                  string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	SessionId               string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	StepId                  string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	Command                 string                 `protobuf:"bytes,4,opt,name=command,proto3" json:"command,omitempty"`
+	Args                    []string               `protobuf:"bytes,5,rep,name=args,proto3" json:"args,omitempty"`
+	Env                     map[string]string      `protobuf:"bytes,6,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	WorkingDir              string                 `protobuf:"bytes,7,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	TimeoutMs               int64                  `protobuf:"varint,8,opt,name=timeout_ms,json=timeoutMs,proto3" json:"timeout_ms,omitempty"`
+	Stream                  bool                   `protobuf:"varint,9,opt,name=stream,proto3" json:"stream,omitempty"`
+	AuthToken               string                 `protobuf:"bytes,10,opt,name=auth_token,json=authToken,proto3" json:"auth_token,omitempty"`
+	InputJson               []byte                 `protobuf:"bytes,11,opt,name=input_json,json=inputJson,proto3" json:"input_json,omitempty"`
+	Engine                  Engine                 `protobuf:"varint,12,opt,name=engine,proto3,enum=agentflow.runner.v1.Engine" json:"engine,omitempty"`
+	SandboxPolicy           *SandboxPolicy         `protobuf:"bytes,13,opt,name=sandbox_policy,json=sandboxPolicy,proto3" json:"sandbox_policy,omitempty"`
+	Docker                  *DockerSpec            `protobuf:"bytes,14,opt,name=docker,proto3" json:"docker,omitempty"`
+	ExecutionId             string                 `protobuf:"bytes,15,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Attempt                 uint32                 `protobuf:"varint,16,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	Deadline                string                 `protobuf:"bytes,17,opt,name=deadline,proto3" json:"deadline,omitempty"`
+	MaxOutputBytes          uint64                 `protobuf:"varint,18,opt,name=max_output_bytes,json=maxOutputBytes,proto3" json:"max_output_bytes,omitempty"`
+	ResumeFromEventSequence uint64                 `protobuf:"varint,19,opt,name=resume_from_event_sequence,json=resumeFromEventSequence,proto3" json:"resume_from_event_sequence,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *TaskRequest) Reset() {
@@ -283,6 +520,41 @@ func (x *TaskRequest) GetDocker() *DockerSpec {
 		return x.Docker
 	}
 	return nil
+}
+
+func (x *TaskRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *TaskRequest) GetAttempt() uint32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *TaskRequest) GetDeadline() string {
+	if x != nil {
+		return x.Deadline
+	}
+	return ""
+}
+
+func (x *TaskRequest) GetMaxOutputBytes() uint64 {
+	if x != nil {
+		return x.MaxOutputBytes
+	}
+	return 0
+}
+
+func (x *TaskRequest) GetResumeFromEventSequence() uint64 {
+	if x != nil {
+		return x.ResumeFromEventSequence
+	}
+	return 0
 }
 
 type SandboxPolicy struct {
@@ -454,15 +726,19 @@ func (x *DockerMount) GetReadOnly() bool {
 }
 
 type DockerSpec struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Image           string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
-	WorkDir         string                 `protobuf:"bytes,2,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"`
-	User            string                 `protobuf:"bytes,3,opt,name=user,proto3" json:"user,omitempty"`
-	NetworkDisabled bool                   `protobuf:"varint,4,opt,name=network_disabled,json=networkDisabled,proto3" json:"network_disabled,omitempty"`
-	ReadOnlyRootFs  bool                   `protobuf:"varint,5,opt,name=read_only_root_fs,json=readOnlyRootFs,proto3" json:"read_only_root_fs,omitempty"`
-	Mounts          []*DockerMount         `protobuf:"bytes,6,rep,name=mounts,proto3" json:"mounts,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Image            string                 `protobuf:"bytes,1,opt,name=image,proto3" json:"image,omitempty"`
+	WorkDir          string                 `protobuf:"bytes,2,opt,name=work_dir,json=workDir,proto3" json:"work_dir,omitempty"`
+	User             string                 `protobuf:"bytes,3,opt,name=user,proto3" json:"user,omitempty"`
+	NetworkDisabled  bool                   `protobuf:"varint,4,opt,name=network_disabled,json=networkDisabled,proto3" json:"network_disabled,omitempty"`
+	ReadOnlyRootFs   bool                   `protobuf:"varint,5,opt,name=read_only_root_fs,json=readOnlyRootFs,proto3" json:"read_only_root_fs,omitempty"`
+	Mounts           []*DockerMount         `protobuf:"bytes,6,rep,name=mounts,proto3" json:"mounts,omitempty"`
+	CpuLimitMillis   uint64                 `protobuf:"varint,7,opt,name=cpu_limit_millis,json=cpuLimitMillis,proto3" json:"cpu_limit_millis,omitempty"`
+	MemoryLimitBytes uint64                 `protobuf:"varint,8,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
+	PidsLimit        uint32                 `protobuf:"varint,9,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`
+	DiskLimitBytes   uint64                 `protobuf:"varint,10,opt,name=disk_limit_bytes,json=diskLimitBytes,proto3" json:"disk_limit_bytes,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DockerSpec) Reset() {
@@ -537,10 +813,40 @@ func (x *DockerSpec) GetMounts() []*DockerMount {
 	return nil
 }
 
+func (x *DockerSpec) GetCpuLimitMillis() uint64 {
+	if x != nil {
+		return x.CpuLimitMillis
+	}
+	return 0
+}
+
+func (x *DockerSpec) GetMemoryLimitBytes() uint64 {
+	if x != nil {
+		return x.MemoryLimitBytes
+	}
+	return 0
+}
+
+func (x *DockerSpec) GetPidsLimit() uint32 {
+	if x != nil {
+		return x.PidsLimit
+	}
+	return 0
+}
+
+func (x *DockerSpec) GetDiskLimitBytes() uint64 {
+	if x != nil {
+		return x.DiskLimitBytes
+	}
+	return 0
+}
+
 type CancelTaskRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,3,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Attempt       uint32                 `protobuf:"varint,4,opt,name=attempt,proto3" json:"attempt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -589,10 +895,25 @@ func (x *CancelTaskRequest) GetReason() string {
 	return ""
 }
 
+func (x *CancelTaskRequest) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *CancelTaskRequest) GetAttempt() uint32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
 type CancelTaskResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
 	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	State         ExecutionState         `protobuf:"varint,3,opt,name=state,proto3,enum=agentflow.runner.v1.ExecutionState" json:"state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -641,6 +962,249 @@ func (x *CancelTaskResponse) GetMessage() string {
 	return ""
 }
 
+func (x *CancelTaskResponse) GetState() ExecutionState {
+	if x != nil {
+		return x.State
+	}
+	return ExecutionState_EXECUTION_STATE_UNSPECIFIED
+}
+
+type DispatchAck struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TaskId            string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ExecutionId       string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Attempt           uint32                 `protobuf:"varint,3,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	Accepted          bool                   `protobuf:"varint,4,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	State             ExecutionState         `protobuf:"varint,5,opt,name=state,proto3,enum=agentflow.runner.v1.ExecutionState" json:"state,omitempty"`
+	Message           string                 `protobuf:"bytes,6,opt,name=message,proto3" json:"message,omitempty"`
+	LastEventSequence uint64                 `protobuf:"varint,7,opt,name=last_event_sequence,json=lastEventSequence,proto3" json:"last_event_sequence,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *DispatchAck) Reset() {
+	*x = DispatchAck{}
+	mi := &file_protocol_proto_runner_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DispatchAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DispatchAck) ProtoMessage() {}
+
+func (x *DispatchAck) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_proto_runner_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DispatchAck.ProtoReflect.Descriptor instead.
+func (*DispatchAck) Descriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DispatchAck) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *DispatchAck) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *DispatchAck) GetAttempt() uint32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *DispatchAck) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *DispatchAck) GetState() ExecutionState {
+	if x != nil {
+		return x.State
+	}
+	return ExecutionState_EXECUTION_STATE_UNSPECIFIED
+}
+
+func (x *DispatchAck) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *DispatchAck) GetLastEventSequence() uint64 {
+	if x != nil {
+		return x.LastEventSequence
+	}
+	return 0
+}
+
+type CancelAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Attempt       uint32                 `protobuf:"varint,3,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	Accepted      bool                   `protobuf:"varint,4,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	State         ExecutionState         `protobuf:"varint,5,opt,name=state,proto3,enum=agentflow.runner.v1.ExecutionState" json:"state,omitempty"`
+	Message       string                 `protobuf:"bytes,6,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelAck) Reset() {
+	*x = CancelAck{}
+	mi := &file_protocol_proto_runner_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelAck) ProtoMessage() {}
+
+func (x *CancelAck) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_proto_runner_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelAck.ProtoReflect.Descriptor instead.
+func (*CancelAck) Descriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CancelAck) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *CancelAck) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *CancelAck) GetAttempt() uint32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *CancelAck) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *CancelAck) GetState() ExecutionState {
+	if x != nil {
+		return x.State
+	}
+	return ExecutionState_EXECUTION_STATE_UNSPECIFIED
+}
+
+func (x *CancelAck) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+type EventAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Attempt       uint32                 `protobuf:"varint,2,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	EventSequence uint64                 `protobuf:"varint,3,opt,name=event_sequence,json=eventSequence,proto3" json:"event_sequence,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EventAck) Reset() {
+	*x = EventAck{}
+	mi := &file_protocol_proto_runner_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EventAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventAck) ProtoMessage() {}
+
+func (x *EventAck) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_proto_runner_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventAck.ProtoReflect.Descriptor instead.
+func (*EventAck) Descriptor() ([]byte, []int) {
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *EventAck) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *EventAck) GetAttempt() uint32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *EventAck) GetEventSequence() uint64 {
+	if x != nil {
+		return x.EventSequence
+	}
+	return 0
+}
+
 type HealthCheckRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -649,7 +1213,7 @@ type HealthCheckRequest struct {
 
 func (x *HealthCheckRequest) Reset() {
 	*x = HealthCheckRequest{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[6]
+	mi := &file_protocol_proto_runner_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -661,7 +1225,7 @@ func (x *HealthCheckRequest) String() string {
 func (*HealthCheckRequest) ProtoMessage() {}
 
 func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[6]
+	mi := &file_protocol_proto_runner_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -674,7 +1238,7 @@ func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
 func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{6}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{9}
 }
 
 type HealthCheckResponse struct {
@@ -688,7 +1252,7 @@ type HealthCheckResponse struct {
 
 func (x *HealthCheckResponse) Reset() {
 	*x = HealthCheckResponse{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[7]
+	mi := &file_protocol_proto_runner_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -700,7 +1264,7 @@ func (x *HealthCheckResponse) String() string {
 func (*HealthCheckResponse) ProtoMessage() {}
 
 func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[7]
+	mi := &file_protocol_proto_runner_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -713,7 +1277,7 @@ func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
 func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{7}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HealthCheckResponse) GetStatus() string {
@@ -746,7 +1310,7 @@ type StartedPayload struct {
 
 func (x *StartedPayload) Reset() {
 	*x = StartedPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[8]
+	mi := &file_protocol_proto_runner_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -758,7 +1322,7 @@ func (x *StartedPayload) String() string {
 func (*StartedPayload) ProtoMessage() {}
 
 func (x *StartedPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[8]
+	mi := &file_protocol_proto_runner_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -771,7 +1335,7 @@ func (x *StartedPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartedPayload.ProtoReflect.Descriptor instead.
 func (*StartedPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{8}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StartedPayload) GetMessage() string {
@@ -784,13 +1348,16 @@ func (x *StartedPayload) GetMessage() string {
 type StreamPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Chunk         string                 `protobuf:"bytes,1,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	ChunkSequence uint64                 `protobuf:"varint,2,opt,name=chunk_sequence,json=chunkSequence,proto3" json:"chunk_sequence,omitempty"`
+	ByteOffset    uint64                 `protobuf:"varint,3,opt,name=byte_offset,json=byteOffset,proto3" json:"byte_offset,omitempty"`
+	Truncated     bool                   `protobuf:"varint,4,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *StreamPayload) Reset() {
 	*x = StreamPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[9]
+	mi := &file_protocol_proto_runner_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -802,7 +1369,7 @@ func (x *StreamPayload) String() string {
 func (*StreamPayload) ProtoMessage() {}
 
 func (x *StreamPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[9]
+	mi := &file_protocol_proto_runner_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -815,7 +1382,7 @@ func (x *StreamPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamPayload.ProtoReflect.Descriptor instead.
 func (*StreamPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{9}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *StreamPayload) GetChunk() string {
@@ -823,6 +1390,27 @@ func (x *StreamPayload) GetChunk() string {
 		return x.Chunk
 	}
 	return ""
+}
+
+func (x *StreamPayload) GetChunkSequence() uint64 {
+	if x != nil {
+		return x.ChunkSequence
+	}
+	return 0
+}
+
+func (x *StreamPayload) GetByteOffset() uint64 {
+	if x != nil {
+		return x.ByteOffset
+	}
+	return 0
+}
+
+func (x *StreamPayload) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
 }
 
 type ProgressPayload struct {
@@ -835,7 +1423,7 @@ type ProgressPayload struct {
 
 func (x *ProgressPayload) Reset() {
 	*x = ProgressPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[10]
+	mi := &file_protocol_proto_runner_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -847,7 +1435,7 @@ func (x *ProgressPayload) String() string {
 func (*ProgressPayload) ProtoMessage() {}
 
 func (x *ProgressPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[10]
+	mi := &file_protocol_proto_runner_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -860,7 +1448,7 @@ func (x *ProgressPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProgressPayload.ProtoReflect.Descriptor instead.
 func (*ProgressPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{10}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ProgressPayload) GetMessage() string {
@@ -878,16 +1466,19 @@ func (x *ProgressPayload) GetPercent() uint32 {
 }
 
 type ResultPayload struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExitCode      int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	OutputJson    []byte                 `protobuf:"bytes,2,opt,name=output_json,json=outputJson,proto3" json:"output_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ExitCode        int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	OutputJson      []byte                 `protobuf:"bytes,2,opt,name=output_json,json=outputJson,proto3" json:"output_json,omitempty"`
+	StdoutBytes     uint64                 `protobuf:"varint,3,opt,name=stdout_bytes,json=stdoutBytes,proto3" json:"stdout_bytes,omitempty"`
+	StderrBytes     uint64                 `protobuf:"varint,4,opt,name=stderr_bytes,json=stderrBytes,proto3" json:"stderr_bytes,omitempty"`
+	OutputTruncated bool                   `protobuf:"varint,5,opt,name=output_truncated,json=outputTruncated,proto3" json:"output_truncated,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ResultPayload) Reset() {
 	*x = ResultPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[11]
+	mi := &file_protocol_proto_runner_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -899,7 +1490,7 @@ func (x *ResultPayload) String() string {
 func (*ResultPayload) ProtoMessage() {}
 
 func (x *ResultPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[11]
+	mi := &file_protocol_proto_runner_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -912,7 +1503,7 @@ func (x *ResultPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultPayload.ProtoReflect.Descriptor instead.
 func (*ResultPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{11}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ResultPayload) GetExitCode() int32 {
@@ -929,17 +1520,40 @@ func (x *ResultPayload) GetOutputJson() []byte {
 	return nil
 }
 
+func (x *ResultPayload) GetStdoutBytes() uint64 {
+	if x != nil {
+		return x.StdoutBytes
+	}
+	return 0
+}
+
+func (x *ResultPayload) GetStderrBytes() uint64 {
+	if x != nil {
+		return x.StderrBytes
+	}
+	return 0
+}
+
+func (x *ResultPayload) GetOutputTruncated() bool {
+	if x != nil {
+		return x.OutputTruncated
+	}
+	return false
+}
+
 type ErrorPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
 	Retryable     bool                   `protobuf:"varint,2,opt,name=retryable,proto3" json:"retryable,omitempty"`
+	FailureType   FailureType            `protobuf:"varint,3,opt,name=failure_type,json=failureType,proto3,enum=agentflow.runner.v1.FailureType" json:"failure_type,omitempty"`
+	Code          string                 `protobuf:"bytes,4,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ErrorPayload) Reset() {
 	*x = ErrorPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[12]
+	mi := &file_protocol_proto_runner_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -951,7 +1565,7 @@ func (x *ErrorPayload) String() string {
 func (*ErrorPayload) ProtoMessage() {}
 
 func (x *ErrorPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[12]
+	mi := &file_protocol_proto_runner_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -964,7 +1578,7 @@ func (x *ErrorPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorPayload.ProtoReflect.Descriptor instead.
 func (*ErrorPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{12}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ErrorPayload) GetMessage() string {
@@ -981,17 +1595,37 @@ func (x *ErrorPayload) GetRetryable() bool {
 	return false
 }
 
+func (x *ErrorPayload) GetFailureType() FailureType {
+	if x != nil {
+		return x.FailureType
+	}
+	return FailureType_FAILURE_TYPE_UNSPECIFIED
+}
+
+func (x *ErrorPayload) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
 type CompletedPayload struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ExitCode      int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	DurationMs    uint64                 `protobuf:"varint,2,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ExitCode        int32                  `protobuf:"varint,1,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	DurationMs      uint64                 `protobuf:"varint,2,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	Status          TerminalStatus         `protobuf:"varint,3,opt,name=status,proto3,enum=agentflow.runner.v1.TerminalStatus" json:"status,omitempty"`
+	FailureType     FailureType            `protobuf:"varint,4,opt,name=failure_type,json=failureType,proto3,enum=agentflow.runner.v1.FailureType" json:"failure_type,omitempty"`
+	Message         string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
+	StdoutBytes     uint64                 `protobuf:"varint,6,opt,name=stdout_bytes,json=stdoutBytes,proto3" json:"stdout_bytes,omitempty"`
+	StderrBytes     uint64                 `protobuf:"varint,7,opt,name=stderr_bytes,json=stderrBytes,proto3" json:"stderr_bytes,omitempty"`
+	OutputTruncated bool                   `protobuf:"varint,8,opt,name=output_truncated,json=outputTruncated,proto3" json:"output_truncated,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *CompletedPayload) Reset() {
 	*x = CompletedPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[13]
+	mi := &file_protocol_proto_runner_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1003,7 +1637,7 @@ func (x *CompletedPayload) String() string {
 func (*CompletedPayload) ProtoMessage() {}
 
 func (x *CompletedPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[13]
+	mi := &file_protocol_proto_runner_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1016,7 +1650,7 @@ func (x *CompletedPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CompletedPayload.ProtoReflect.Descriptor instead.
 func (*CompletedPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{13}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *CompletedPayload) GetExitCode() int32 {
@@ -1033,6 +1667,48 @@ func (x *CompletedPayload) GetDurationMs() uint64 {
 	return 0
 }
 
+func (x *CompletedPayload) GetStatus() TerminalStatus {
+	if x != nil {
+		return x.Status
+	}
+	return TerminalStatus_TERMINAL_STATUS_UNSPECIFIED
+}
+
+func (x *CompletedPayload) GetFailureType() FailureType {
+	if x != nil {
+		return x.FailureType
+	}
+	return FailureType_FAILURE_TYPE_UNSPECIFIED
+}
+
+func (x *CompletedPayload) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *CompletedPayload) GetStdoutBytes() uint64 {
+	if x != nil {
+		return x.StdoutBytes
+	}
+	return 0
+}
+
+func (x *CompletedPayload) GetStderrBytes() uint64 {
+	if x != nil {
+		return x.StderrBytes
+	}
+	return 0
+}
+
+func (x *CompletedPayload) GetOutputTruncated() bool {
+	if x != nil {
+		return x.OutputTruncated
+	}
+	return false
+}
+
 type HeartbeatPayload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
@@ -1042,7 +1718,7 @@ type HeartbeatPayload struct {
 
 func (x *HeartbeatPayload) Reset() {
 	*x = HeartbeatPayload{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[14]
+	mi := &file_protocol_proto_runner_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1054,7 +1730,7 @@ func (x *HeartbeatPayload) String() string {
 func (*HeartbeatPayload) ProtoMessage() {}
 
 func (x *HeartbeatPayload) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[14]
+	mi := &file_protocol_proto_runner_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1067,7 +1743,7 @@ func (x *HeartbeatPayload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatPayload.ProtoReflect.Descriptor instead.
 func (*HeartbeatPayload) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{14}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *HeartbeatPayload) GetMessage() string {
@@ -1078,13 +1754,16 @@ func (x *HeartbeatPayload) GetMessage() string {
 }
 
 type TaskEvent struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	TaskId    string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	StepId    string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
-	Type      TaskEventType          `protobuf:"varint,4,opt,name=type,proto3,enum=agentflow.runner.v1.TaskEventType" json:"type,omitempty"`
-	Timestamp string                 `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	RunnerId  string                 `protobuf:"bytes,6,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	StepId        string                 `protobuf:"bytes,3,opt,name=step_id,json=stepId,proto3" json:"step_id,omitempty"`
+	Type          TaskEventType          `protobuf:"varint,4,opt,name=type,proto3,enum=agentflow.runner.v1.TaskEventType" json:"type,omitempty"`
+	Timestamp     string                 `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	RunnerId      string                 `protobuf:"bytes,6,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	ExecutionId   string                 `protobuf:"bytes,7,opt,name=execution_id,json=executionId,proto3" json:"execution_id,omitempty"`
+	Attempt       uint32                 `protobuf:"varint,8,opt,name=attempt,proto3" json:"attempt,omitempty"`
+	EventSequence uint64                 `protobuf:"varint,9,opt,name=event_sequence,json=eventSequence,proto3" json:"event_sequence,omitempty"`
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*TaskEvent_Started
@@ -1102,7 +1781,7 @@ type TaskEvent struct {
 
 func (x *TaskEvent) Reset() {
 	*x = TaskEvent{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[15]
+	mi := &file_protocol_proto_runner_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1114,7 +1793,7 @@ func (x *TaskEvent) String() string {
 func (*TaskEvent) ProtoMessage() {}
 
 func (x *TaskEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[15]
+	mi := &file_protocol_proto_runner_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1127,7 +1806,7 @@ func (x *TaskEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskEvent.ProtoReflect.Descriptor instead.
 func (*TaskEvent) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{15}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *TaskEvent) GetTaskId() string {
@@ -1170,6 +1849,27 @@ func (x *TaskEvent) GetRunnerId() string {
 		return x.RunnerId
 	}
 	return ""
+}
+
+func (x *TaskEvent) GetExecutionId() string {
+	if x != nil {
+		return x.ExecutionId
+	}
+	return ""
+}
+
+func (x *TaskEvent) GetAttempt() uint32 {
+	if x != nil {
+		return x.Attempt
+	}
+	return 0
+}
+
+func (x *TaskEvent) GetEventSequence() uint64 {
+	if x != nil {
+		return x.EventSequence
+	}
+	return 0
 }
 
 func (x *TaskEvent) GetPayload() isTaskEvent_Payload {
@@ -1304,29 +2004,36 @@ func (*TaskEvent_Completed) isTaskEvent_Payload() {}
 func (*TaskEvent_Heartbeat) isTaskEvent_Payload() {}
 
 type ConnectRegister struct {
-	state             protoimpl.MessageState `protogen:"open.v1"`
-	RunnerToken       string                 `protobuf:"bytes,1,opt,name=runner_token,json=runnerToken,proto3" json:"runner_token,omitempty"`
-	RunnerId          string                 `protobuf:"bytes,2,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
-	Kind              string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Host              string                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
-	Version           string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
-	Capabilities      []string               `protobuf:"bytes,6,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	HostName          string                 `protobuf:"bytes,7,opt,name=host_name,json=hostName,proto3" json:"host_name,omitempty"`
-	HostIp            string                 `protobuf:"bytes,8,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`
-	Os                string                 `protobuf:"bytes,9,opt,name=os,proto3" json:"os,omitempty"`
-	Arch              string                 `protobuf:"bytes,10,opt,name=arch,proto3" json:"arch,omitempty"`
-	DefaultShell      string                 `protobuf:"bytes,11,opt,name=default_shell,json=defaultShell,proto3" json:"default_shell,omitempty"`
-	PathSeparator     string                 `protobuf:"bytes,12,opt,name=path_separator,json=pathSeparator,proto3" json:"path_separator,omitempty"`
-	LineEnding        string                 `protobuf:"bytes,13,opt,name=line_ending,json=lineEnding,proto3" json:"line_ending,omitempty"`
-	WorkspaceRoots    []string               `protobuf:"bytes,14,rep,name=workspace_roots,json=workspaceRoots,proto3" json:"workspace_roots,omitempty"`
-	AvailableCommands []string               `protobuf:"bytes,15,rep,name=available_commands,json=availableCommands,proto3" json:"available_commands,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	RunnerToken             string                 `protobuf:"bytes,1,opt,name=runner_token,json=runnerToken,proto3" json:"runner_token,omitempty"`
+	RunnerId                string                 `protobuf:"bytes,2,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	Kind                    string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Host                    string                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	Version                 string                 `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	Capabilities            []string               `protobuf:"bytes,6,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	HostName                string                 `protobuf:"bytes,7,opt,name=host_name,json=hostName,proto3" json:"host_name,omitempty"`
+	HostIp                  string                 `protobuf:"bytes,8,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`
+	Os                      string                 `protobuf:"bytes,9,opt,name=os,proto3" json:"os,omitempty"`
+	Arch                    string                 `protobuf:"bytes,10,opt,name=arch,proto3" json:"arch,omitempty"`
+	DefaultShell            string                 `protobuf:"bytes,11,opt,name=default_shell,json=defaultShell,proto3" json:"default_shell,omitempty"`
+	PathSeparator           string                 `protobuf:"bytes,12,opt,name=path_separator,json=pathSeparator,proto3" json:"path_separator,omitempty"`
+	LineEnding              string                 `protobuf:"bytes,13,opt,name=line_ending,json=lineEnding,proto3" json:"line_ending,omitempty"`
+	WorkspaceRoots          []string               `protobuf:"bytes,14,rep,name=workspace_roots,json=workspaceRoots,proto3" json:"workspace_roots,omitempty"`
+	AvailableCommands       []string               `protobuf:"bytes,15,rep,name=available_commands,json=availableCommands,proto3" json:"available_commands,omitempty"`
+	CapabilitySchemaVersion uint32                 `protobuf:"varint,16,opt,name=capability_schema_version,json=capabilitySchemaVersion,proto3" json:"capability_schema_version,omitempty"`
+	IsolationLevel          IsolationLevel         `protobuf:"varint,17,opt,name=isolation_level,json=isolationLevel,proto3,enum=agentflow.runner.v1.IsolationLevel" json:"isolation_level,omitempty"`
+	AvailableEngines        []Engine               `protobuf:"varint,18,rep,packed,name=available_engines,json=availableEngines,proto3,enum=agentflow.runner.v1.Engine" json:"available_engines,omitempty"`
+	LogicalCpuCount         uint32                 `protobuf:"varint,19,opt,name=logical_cpu_count,json=logicalCpuCount,proto3" json:"logical_cpu_count,omitempty"`
+	MemoryBytes             uint64                 `protobuf:"varint,20,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`
+	MaxConcurrentTasks      uint32                 `protobuf:"varint,21,opt,name=max_concurrent_tasks,json=maxConcurrentTasks,proto3" json:"max_concurrent_tasks,omitempty"`
+	ActiveTasks             uint32                 `protobuf:"varint,22,opt,name=active_tasks,json=activeTasks,proto3" json:"active_tasks,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ConnectRegister) Reset() {
 	*x = ConnectRegister{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[16]
+	mi := &file_protocol_proto_runner_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1338,7 +2045,7 @@ func (x *ConnectRegister) String() string {
 func (*ConnectRegister) ProtoMessage() {}
 
 func (x *ConnectRegister) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[16]
+	mi := &file_protocol_proto_runner_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1351,7 +2058,7 @@ func (x *ConnectRegister) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectRegister.ProtoReflect.Descriptor instead.
 func (*ConnectRegister) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{16}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ConnectRegister) GetRunnerToken() string {
@@ -1459,6 +2166,55 @@ func (x *ConnectRegister) GetAvailableCommands() []string {
 	return nil
 }
 
+func (x *ConnectRegister) GetCapabilitySchemaVersion() uint32 {
+	if x != nil {
+		return x.CapabilitySchemaVersion
+	}
+	return 0
+}
+
+func (x *ConnectRegister) GetIsolationLevel() IsolationLevel {
+	if x != nil {
+		return x.IsolationLevel
+	}
+	return IsolationLevel_ISOLATION_LEVEL_UNSPECIFIED
+}
+
+func (x *ConnectRegister) GetAvailableEngines() []Engine {
+	if x != nil {
+		return x.AvailableEngines
+	}
+	return nil
+}
+
+func (x *ConnectRegister) GetLogicalCpuCount() uint32 {
+	if x != nil {
+		return x.LogicalCpuCount
+	}
+	return 0
+}
+
+func (x *ConnectRegister) GetMemoryBytes() uint64 {
+	if x != nil {
+		return x.MemoryBytes
+	}
+	return 0
+}
+
+func (x *ConnectRegister) GetMaxConcurrentTasks() uint32 {
+	if x != nil {
+		return x.MaxConcurrentTasks
+	}
+	return 0
+}
+
+func (x *ConnectRegister) GetActiveTasks() uint32 {
+	if x != nil {
+		return x.ActiveTasks
+	}
+	return 0
+}
+
 type ConnectRegisterAck struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	RunnerId            string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
@@ -1471,7 +2227,7 @@ type ConnectRegisterAck struct {
 
 func (x *ConnectRegisterAck) Reset() {
 	*x = ConnectRegisterAck{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[17]
+	mi := &file_protocol_proto_runner_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1483,7 +2239,7 @@ func (x *ConnectRegisterAck) String() string {
 func (*ConnectRegisterAck) ProtoMessage() {}
 
 func (x *ConnectRegisterAck) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[17]
+	mi := &file_protocol_proto_runner_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1496,7 +2252,7 @@ func (x *ConnectRegisterAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectRegisterAck.ProtoReflect.Descriptor instead.
 func (*ConnectRegisterAck) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{17}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ConnectRegisterAck) GetRunnerId() string {
@@ -1528,17 +2284,19 @@ func (x *ConnectRegisterAck) GetServerTime() string {
 }
 
 type ConnectHeartbeat struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunnerId      string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
-	RunnerToken   string                 `protobuf:"bytes,2,opt,name=runner_token,json=runnerToken,proto3" json:"runner_token,omitempty"`
-	Timestamp     string                 `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	RunnerId           string                 `protobuf:"bytes,1,opt,name=runner_id,json=runnerId,proto3" json:"runner_id,omitempty"`
+	RunnerToken        string                 `protobuf:"bytes,2,opt,name=runner_token,json=runnerToken,proto3" json:"runner_token,omitempty"`
+	Timestamp          string                 `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	ActiveTasks        uint32                 `protobuf:"varint,4,opt,name=active_tasks,json=activeTasks,proto3" json:"active_tasks,omitempty"`
+	MaxConcurrentTasks uint32                 `protobuf:"varint,5,opt,name=max_concurrent_tasks,json=maxConcurrentTasks,proto3" json:"max_concurrent_tasks,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ConnectHeartbeat) Reset() {
 	*x = ConnectHeartbeat{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[18]
+	mi := &file_protocol_proto_runner_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1550,7 +2308,7 @@ func (x *ConnectHeartbeat) String() string {
 func (*ConnectHeartbeat) ProtoMessage() {}
 
 func (x *ConnectHeartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[18]
+	mi := &file_protocol_proto_runner_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1563,7 +2321,7 @@ func (x *ConnectHeartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectHeartbeat.ProtoReflect.Descriptor instead.
 func (*ConnectHeartbeat) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{18}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ConnectHeartbeat) GetRunnerId() string {
@@ -1587,6 +2345,20 @@ func (x *ConnectHeartbeat) GetTimestamp() string {
 	return ""
 }
 
+func (x *ConnectHeartbeat) GetActiveTasks() uint32 {
+	if x != nil {
+		return x.ActiveTasks
+	}
+	return 0
+}
+
+func (x *ConnectHeartbeat) GetMaxConcurrentTasks() uint32 {
+	if x != nil {
+		return x.MaxConcurrentTasks
+	}
+	return 0
+}
+
 type ServerPing struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerTime    string                 `protobuf:"bytes,1,opt,name=server_time,json=serverTime,proto3" json:"server_time,omitempty"`
@@ -1596,7 +2368,7 @@ type ServerPing struct {
 
 func (x *ServerPing) Reset() {
 	*x = ServerPing{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[19]
+	mi := &file_protocol_proto_runner_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1608,7 +2380,7 @@ func (x *ServerPing) String() string {
 func (*ServerPing) ProtoMessage() {}
 
 func (x *ServerPing) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[19]
+	mi := &file_protocol_proto_runner_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1621,7 +2393,7 @@ func (x *ServerPing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerPing.ProtoReflect.Descriptor instead.
 func (*ServerPing) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{19}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *ServerPing) GetServerTime() string {
@@ -1638,6 +2410,8 @@ type RunnerEnvelope struct {
 	//	*RunnerEnvelope_Register
 	//	*RunnerEnvelope_Heartbeat
 	//	*RunnerEnvelope_TaskEvent
+	//	*RunnerEnvelope_DispatchAck
+	//	*RunnerEnvelope_CancelAck
 	Payload       isRunnerEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1645,7 +2419,7 @@ type RunnerEnvelope struct {
 
 func (x *RunnerEnvelope) Reset() {
 	*x = RunnerEnvelope{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[20]
+	mi := &file_protocol_proto_runner_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1657,7 +2431,7 @@ func (x *RunnerEnvelope) String() string {
 func (*RunnerEnvelope) ProtoMessage() {}
 
 func (x *RunnerEnvelope) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[20]
+	mi := &file_protocol_proto_runner_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1670,7 +2444,7 @@ func (x *RunnerEnvelope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunnerEnvelope.ProtoReflect.Descriptor instead.
 func (*RunnerEnvelope) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{20}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *RunnerEnvelope) GetPayload() isRunnerEnvelope_Payload {
@@ -1707,6 +2481,24 @@ func (x *RunnerEnvelope) GetTaskEvent() *TaskEvent {
 	return nil
 }
 
+func (x *RunnerEnvelope) GetDispatchAck() *DispatchAck {
+	if x != nil {
+		if x, ok := x.Payload.(*RunnerEnvelope_DispatchAck); ok {
+			return x.DispatchAck
+		}
+	}
+	return nil
+}
+
+func (x *RunnerEnvelope) GetCancelAck() *CancelAck {
+	if x != nil {
+		if x, ok := x.Payload.(*RunnerEnvelope_CancelAck); ok {
+			return x.CancelAck
+		}
+	}
+	return nil
+}
+
 type isRunnerEnvelope_Payload interface {
 	isRunnerEnvelope_Payload()
 }
@@ -1723,11 +2515,23 @@ type RunnerEnvelope_TaskEvent struct {
 	TaskEvent *TaskEvent `protobuf:"bytes,3,opt,name=task_event,json=taskEvent,proto3,oneof"`
 }
 
+type RunnerEnvelope_DispatchAck struct {
+	DispatchAck *DispatchAck `protobuf:"bytes,4,opt,name=dispatch_ack,json=dispatchAck,proto3,oneof"`
+}
+
+type RunnerEnvelope_CancelAck struct {
+	CancelAck *CancelAck `protobuf:"bytes,5,opt,name=cancel_ack,json=cancelAck,proto3,oneof"`
+}
+
 func (*RunnerEnvelope_Register) isRunnerEnvelope_Payload() {}
 
 func (*RunnerEnvelope_Heartbeat) isRunnerEnvelope_Payload() {}
 
 func (*RunnerEnvelope_TaskEvent) isRunnerEnvelope_Payload() {}
+
+func (*RunnerEnvelope_DispatchAck) isRunnerEnvelope_Payload() {}
+
+func (*RunnerEnvelope_CancelAck) isRunnerEnvelope_Payload() {}
 
 type ServerEnvelope struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1737,6 +2541,7 @@ type ServerEnvelope struct {
 	//	*ServerEnvelope_RunTask
 	//	*ServerEnvelope_CancelTask
 	//	*ServerEnvelope_Ping
+	//	*ServerEnvelope_EventAck
 	Payload       isServerEnvelope_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1744,7 +2549,7 @@ type ServerEnvelope struct {
 
 func (x *ServerEnvelope) Reset() {
 	*x = ServerEnvelope{}
-	mi := &file_protocol_proto_runner_proto_msgTypes[21]
+	mi := &file_protocol_proto_runner_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1756,7 +2561,7 @@ func (x *ServerEnvelope) String() string {
 func (*ServerEnvelope) ProtoMessage() {}
 
 func (x *ServerEnvelope) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_proto_runner_proto_msgTypes[21]
+	mi := &file_protocol_proto_runner_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1769,7 +2574,7 @@ func (x *ServerEnvelope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServerEnvelope.ProtoReflect.Descriptor instead.
 func (*ServerEnvelope) Descriptor() ([]byte, []int) {
-	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{21}
+	return file_protocol_proto_runner_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ServerEnvelope) GetPayload() isServerEnvelope_Payload {
@@ -1815,6 +2620,15 @@ func (x *ServerEnvelope) GetPing() *ServerPing {
 	return nil
 }
 
+func (x *ServerEnvelope) GetEventAck() *EventAck {
+	if x != nil {
+		if x, ok := x.Payload.(*ServerEnvelope_EventAck); ok {
+			return x.EventAck
+		}
+	}
+	return nil
+}
+
 type isServerEnvelope_Payload interface {
 	isServerEnvelope_Payload()
 }
@@ -1835,6 +2649,10 @@ type ServerEnvelope_Ping struct {
 	Ping *ServerPing `protobuf:"bytes,4,opt,name=ping,proto3,oneof"`
 }
 
+type ServerEnvelope_EventAck struct {
+	EventAck *EventAck `protobuf:"bytes,5,opt,name=event_ack,json=eventAck,proto3,oneof"`
+}
+
 func (*ServerEnvelope_RegisterAck) isServerEnvelope_Payload() {}
 
 func (*ServerEnvelope_RunTask) isServerEnvelope_Payload() {}
@@ -1843,11 +2661,13 @@ func (*ServerEnvelope_CancelTask) isServerEnvelope_Payload() {}
 
 func (*ServerEnvelope_Ping) isServerEnvelope_Payload() {}
 
+func (*ServerEnvelope_EventAck) isServerEnvelope_Payload() {}
+
 var File_protocol_proto_runner_proto protoreflect.FileDescriptor
 
 const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\n" +
-	"\x1bprotocol/proto/runner.proto\x12\x13agentflow.runner.v1\"\xd0\x04\n" +
+	"\x1bprotocol/proto/runner.proto\x12\x13agentflow.runner.v1\"\x90\x06\n" +
 	"\vTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -1868,7 +2688,12 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"input_json\x18\v \x01(\fR\tinputJson\x123\n" +
 	"\x06engine\x18\f \x01(\x0e2\x1b.agentflow.runner.v1.EngineR\x06engine\x12I\n" +
 	"\x0esandbox_policy\x18\r \x01(\v2\".agentflow.runner.v1.SandboxPolicyR\rsandboxPolicy\x127\n" +
-	"\x06docker\x18\x0e \x01(\v2\x1f.agentflow.runner.v1.DockerSpecR\x06docker\x1a6\n" +
+	"\x06docker\x18\x0e \x01(\v2\x1f.agentflow.runner.v1.DockerSpecR\x06docker\x12!\n" +
+	"\fexecution_id\x18\x0f \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aattempt\x18\x10 \x01(\rR\aattempt\x12\x1a\n" +
+	"\bdeadline\x18\x11 \x01(\tR\bdeadline\x12(\n" +
+	"\x10max_output_bytes\x18\x12 \x01(\x04R\x0emaxOutputBytes\x12;\n" +
+	"\x1aresume_from_event_sequence\x18\x13 \x01(\x04R\x17resumeFromEventSequence\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x89\x03\n" +
@@ -1885,7 +2710,7 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\vDockerMount\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1b\n" +
-	"\tread_only\x18\x03 \x01(\bR\breadOnly\"\xe1\x01\n" +
+	"\tread_only\x18\x03 \x01(\bR\breadOnly\"\x82\x03\n" +
 	"\n" +
 	"DockerSpec\x12\x14\n" +
 	"\x05image\x18\x01 \x01(\tR\x05image\x12\x19\n" +
@@ -1893,38 +2718,81 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\x04user\x18\x03 \x01(\tR\x04user\x12)\n" +
 	"\x10network_disabled\x18\x04 \x01(\bR\x0fnetworkDisabled\x12)\n" +
 	"\x11read_only_root_fs\x18\x05 \x01(\bR\x0ereadOnlyRootFs\x128\n" +
-	"\x06mounts\x18\x06 \x03(\v2 .agentflow.runner.v1.DockerMountR\x06mounts\"D\n" +
+	"\x06mounts\x18\x06 \x03(\v2 .agentflow.runner.v1.DockerMountR\x06mounts\x12(\n" +
+	"\x10cpu_limit_millis\x18\a \x01(\x04R\x0ecpuLimitMillis\x12,\n" +
+	"\x12memory_limit_bytes\x18\b \x01(\x04R\x10memoryLimitBytes\x12\x1d\n" +
+	"\n" +
+	"pids_limit\x18\t \x01(\rR\tpidsLimit\x12(\n" +
+	"\x10disk_limit_bytes\x18\n" +
+	" \x01(\x04R\x0ediskLimitBytes\"\x81\x01\n" +
 	"\x11CancelTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"J\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12!\n" +
+	"\fexecution_id\x18\x03 \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aattempt\x18\x04 \x01(\rR\aattempt\"\x85\x01\n" +
 	"\x12CancelTaskResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\x14\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x129\n" +
+	"\x05state\x18\x03 \x01(\x0e2#.agentflow.runner.v1.ExecutionStateR\x05state\"\x84\x02\n" +
+	"\vDispatchAck\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
+	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aattempt\x18\x03 \x01(\rR\aattempt\x12\x1a\n" +
+	"\baccepted\x18\x04 \x01(\bR\baccepted\x129\n" +
+	"\x05state\x18\x05 \x01(\x0e2#.agentflow.runner.v1.ExecutionStateR\x05state\x12\x18\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\x12.\n" +
+	"\x13last_event_sequence\x18\a \x01(\x04R\x11lastEventSequence\"\xd2\x01\n" +
+	"\tCancelAck\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12!\n" +
+	"\fexecution_id\x18\x02 \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aattempt\x18\x03 \x01(\rR\aattempt\x12\x1a\n" +
+	"\baccepted\x18\x04 \x01(\bR\baccepted\x129\n" +
+	"\x05state\x18\x05 \x01(\x0e2#.agentflow.runner.v1.ExecutionStateR\x05state\x12\x18\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\"n\n" +
+	"\bEventAck\x12!\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aattempt\x18\x02 \x01(\rR\aattempt\x12%\n" +
+	"\x0eevent_sequence\x18\x03 \x01(\x04R\reventSequence\"\x14\n" +
 	"\x12HealthCheckRequest\"d\n" +
 	"\x13HealthCheckResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12\x1b\n" +
 	"\tunix_time\x18\x03 \x01(\x03R\bunixTime\"*\n" +
 	"\x0eStartedPayload\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"%\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\x8b\x01\n" +
 	"\rStreamPayload\x12\x14\n" +
-	"\x05chunk\x18\x01 \x01(\tR\x05chunk\"E\n" +
+	"\x05chunk\x18\x01 \x01(\tR\x05chunk\x12%\n" +
+	"\x0echunk_sequence\x18\x02 \x01(\x04R\rchunkSequence\x12\x1f\n" +
+	"\vbyte_offset\x18\x03 \x01(\x04R\n" +
+	"byteOffset\x12\x1c\n" +
+	"\ttruncated\x18\x04 \x01(\bR\ttruncated\"E\n" +
 	"\x0fProgressPayload\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x12\x18\n" +
-	"\apercent\x18\x02 \x01(\rR\apercent\"M\n" +
+	"\apercent\x18\x02 \x01(\rR\apercent\"\xbe\x01\n" +
 	"\rResultPayload\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x1f\n" +
 	"\voutput_json\x18\x02 \x01(\fR\n" +
-	"outputJson\"F\n" +
+	"outputJson\x12!\n" +
+	"\fstdout_bytes\x18\x03 \x01(\x04R\vstdoutBytes\x12!\n" +
+	"\fstderr_bytes\x18\x04 \x01(\x04R\vstderrBytes\x12)\n" +
+	"\x10output_truncated\x18\x05 \x01(\bR\x0foutputTruncated\"\x9f\x01\n" +
 	"\fErrorPayload\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x12\x1c\n" +
-	"\tretryable\x18\x02 \x01(\bR\tretryable\"P\n" +
+	"\tretryable\x18\x02 \x01(\bR\tretryable\x12C\n" +
+	"\ffailure_type\x18\x03 \x01(\x0e2 .agentflow.runner.v1.FailureTypeR\vfailureType\x12\x12\n" +
+	"\x04code\x18\x04 \x01(\tR\x04code\"\xdd\x02\n" +
 	"\x10CompletedPayload\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\x12\x1f\n" +
 	"\vduration_ms\x18\x02 \x01(\x04R\n" +
-	"durationMs\",\n" +
+	"durationMs\x12;\n" +
+	"\x06status\x18\x03 \x01(\x0e2#.agentflow.runner.v1.TerminalStatusR\x06status\x12C\n" +
+	"\ffailure_type\x18\x04 \x01(\x0e2 .agentflow.runner.v1.FailureTypeR\vfailureType\x12\x18\n" +
+	"\amessage\x18\x05 \x01(\tR\amessage\x12!\n" +
+	"\fstdout_bytes\x18\x06 \x01(\x04R\vstdoutBytes\x12!\n" +
+	"\fstderr_bytes\x18\a \x01(\x04R\vstderrBytes\x12)\n" +
+	"\x10output_truncated\x18\b \x01(\bR\x0foutputTruncated\",\n" +
 	"\x10HeartbeatPayload\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\"\xe2\x05\n" +
+	"\amessage\x18\x01 \x01(\tR\amessage\"\xc6\x06\n" +
 	"\tTaskEvent\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1d\n" +
 	"\n" +
@@ -1932,7 +2800,10 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\astep_id\x18\x03 \x01(\tR\x06stepId\x126\n" +
 	"\x04type\x18\x04 \x01(\x0e2\".agentflow.runner.v1.TaskEventTypeR\x04type\x12\x1c\n" +
 	"\ttimestamp\x18\x05 \x01(\tR\ttimestamp\x12\x1b\n" +
-	"\trunner_id\x18\x06 \x01(\tR\brunnerId\x12?\n" +
+	"\trunner_id\x18\x06 \x01(\tR\brunnerId\x12!\n" +
+	"\fexecution_id\x18\a \x01(\tR\vexecutionId\x12\x18\n" +
+	"\aattempt\x18\b \x01(\rR\aattempt\x12%\n" +
+	"\x0eevent_sequence\x18\t \x01(\x04R\reventSequence\x12?\n" +
 	"\astarted\x18\x14 \x01(\v2#.agentflow.runner.v1.StartedPayloadH\x00R\astarted\x12<\n" +
 	"\x06stdout\x18\x15 \x01(\v2\".agentflow.runner.v1.StreamPayloadH\x00R\x06stdout\x12<\n" +
 	"\x06stderr\x18\x16 \x01(\v2\".agentflow.runner.v1.StreamPayloadH\x00R\x06stderr\x12B\n" +
@@ -1941,7 +2812,7 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\x05error\x18\x19 \x01(\v2!.agentflow.runner.v1.ErrorPayloadH\x00R\x05error\x12E\n" +
 	"\tcompleted\x18\x1a \x01(\v2%.agentflow.runner.v1.CompletedPayloadH\x00R\tcompleted\x12E\n" +
 	"\theartbeat\x18\x1b \x01(\v2%.agentflow.runner.v1.HeartbeatPayloadH\x00R\theartbeatB\t\n" +
-	"\apayload\"\xd6\x03\n" +
+	"\apayload\"\xce\x06\n" +
 	"\x0fConnectRegister\x12!\n" +
 	"\frunner_token\x18\x01 \x01(\tR\vrunnerToken\x12\x1b\n" +
 	"\trunner_id\x18\x02 \x01(\tR\brunnerId\x12\x12\n" +
@@ -1959,33 +2830,46 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\vline_ending\x18\r \x01(\tR\n" +
 	"lineEnding\x12'\n" +
 	"\x0fworkspace_roots\x18\x0e \x03(\tR\x0eworkspaceRoots\x12-\n" +
-	"\x12available_commands\x18\x0f \x03(\tR\x11availableCommands\"\x9e\x01\n" +
+	"\x12available_commands\x18\x0f \x03(\tR\x11availableCommands\x12:\n" +
+	"\x19capability_schema_version\x18\x10 \x01(\rR\x17capabilitySchemaVersion\x12L\n" +
+	"\x0fisolation_level\x18\x11 \x01(\x0e2#.agentflow.runner.v1.IsolationLevelR\x0eisolationLevel\x12H\n" +
+	"\x11available_engines\x18\x12 \x03(\x0e2\x1b.agentflow.runner.v1.EngineR\x10availableEngines\x12*\n" +
+	"\x11logical_cpu_count\x18\x13 \x01(\rR\x0flogicalCpuCount\x12!\n" +
+	"\fmemory_bytes\x18\x14 \x01(\x04R\vmemoryBytes\x120\n" +
+	"\x14max_concurrent_tasks\x18\x15 \x01(\rR\x12maxConcurrentTasks\x12!\n" +
+	"\factive_tasks\x18\x16 \x01(\rR\vactiveTasks\"\x9e\x01\n" +
 	"\x12ConnectRegisterAck\x12\x1b\n" +
 	"\trunner_id\x18\x01 \x01(\tR\brunnerId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x122\n" +
 	"\x15heartbeat_interval_ms\x18\x03 \x01(\x03R\x13heartbeatIntervalMs\x12\x1f\n" +
 	"\vserver_time\x18\x04 \x01(\tR\n" +
-	"serverTime\"p\n" +
+	"serverTime\"\xc5\x01\n" +
 	"\x10ConnectHeartbeat\x12\x1b\n" +
 	"\trunner_id\x18\x01 \x01(\tR\brunnerId\x12!\n" +
 	"\frunner_token\x18\x02 \x01(\tR\vrunnerToken\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\tR\ttimestamp\"-\n" +
+	"\ttimestamp\x18\x03 \x01(\tR\ttimestamp\x12!\n" +
+	"\factive_tasks\x18\x04 \x01(\rR\vactiveTasks\x120\n" +
+	"\x14max_concurrent_tasks\x18\x05 \x01(\rR\x12maxConcurrentTasks\"-\n" +
 	"\n" +
 	"ServerPing\x12\x1f\n" +
 	"\vserver_time\x18\x01 \x01(\tR\n" +
-	"serverTime\"\xe7\x01\n" +
+	"serverTime\"\xef\x02\n" +
 	"\x0eRunnerEnvelope\x12B\n" +
 	"\bregister\x18\x01 \x01(\v2$.agentflow.runner.v1.ConnectRegisterH\x00R\bregister\x12E\n" +
 	"\theartbeat\x18\x02 \x01(\v2%.agentflow.runner.v1.ConnectHeartbeatH\x00R\theartbeat\x12?\n" +
 	"\n" +
-	"task_event\x18\x03 \x01(\v2\x1e.agentflow.runner.v1.TaskEventH\x00R\ttaskEventB\t\n" +
-	"\apayload\"\xaa\x02\n" +
+	"task_event\x18\x03 \x01(\v2\x1e.agentflow.runner.v1.TaskEventH\x00R\ttaskEvent\x12E\n" +
+	"\fdispatch_ack\x18\x04 \x01(\v2 .agentflow.runner.v1.DispatchAckH\x00R\vdispatchAck\x12?\n" +
+	"\n" +
+	"cancel_ack\x18\x05 \x01(\v2\x1e.agentflow.runner.v1.CancelAckH\x00R\tcancelAckB\t\n" +
+	"\apayload\"\xe8\x02\n" +
 	"\x0eServerEnvelope\x12L\n" +
 	"\fregister_ack\x18\x01 \x01(\v2'.agentflow.runner.v1.ConnectRegisterAckH\x00R\vregisterAck\x12=\n" +
 	"\brun_task\x18\x02 \x01(\v2 .agentflow.runner.v1.TaskRequestH\x00R\arunTask\x12I\n" +
 	"\vcancel_task\x18\x03 \x01(\v2&.agentflow.runner.v1.CancelTaskRequestH\x00R\n" +
 	"cancelTask\x125\n" +
-	"\x04ping\x18\x04 \x01(\v2\x1f.agentflow.runner.v1.ServerPingH\x00R\x04pingB\t\n" +
+	"\x04ping\x18\x04 \x01(\v2\x1f.agentflow.runner.v1.ServerPingH\x00R\x04ping\x12<\n" +
+	"\tevent_ack\x18\x05 \x01(\v2\x1d.agentflow.runner.v1.EventAckH\x00R\beventAckB\t\n" +
 	"\apayload*D\n" +
 	"\x06Engine\x12\x16\n" +
 	"\x12ENGINE_UNSPECIFIED\x10\x00\x12\x0f\n" +
@@ -2000,7 +2884,35 @@ const file_protocol_proto_runner_proto_rawDesc = "" +
 	"\x16TASK_EVENT_TYPE_RESULT\x10\x05\x12\x19\n" +
 	"\x15TASK_EVENT_TYPE_ERROR\x10\x06\x12\x1d\n" +
 	"\x19TASK_EVENT_TYPE_COMPLETED\x10\a\x12\x1d\n" +
-	"\x19TASK_EVENT_TYPE_HEARTBEAT\x10\b2\xf8\x02\n" +
+	"\x19TASK_EVENT_TYPE_HEARTBEAT\x10\b*\x8a\x01\n" +
+	"\x0eExecutionState\x12\x1f\n" +
+	"\x1bEXECUTION_STATE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18EXECUTION_STATE_ACCEPTED\x10\x01\x12\x1b\n" +
+	"\x17EXECUTION_STATE_RUNNING\x10\x02\x12\x1c\n" +
+	"\x18EXECUTION_STATE_TERMINAL\x10\x03*\xc8\x01\n" +
+	"\x0eTerminalStatus\x12\x1f\n" +
+	"\x1bTERMINAL_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19TERMINAL_STATUS_SUCCEEDED\x10\x01\x12\x1a\n" +
+	"\x16TERMINAL_STATUS_FAILED\x10\x02\x12\x1d\n" +
+	"\x19TERMINAL_STATUS_CANCELLED\x10\x03\x12\x1d\n" +
+	"\x19TERMINAL_STATUS_TIMED_OUT\x10\x04\x12\x1c\n" +
+	"\x18TERMINAL_STATUS_REJECTED\x10\x05*\xb5\x02\n" +
+	"\vFailureType\x12\x1c\n" +
+	"\x18FAILURE_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17FAILURE_TYPE_VALIDATION\x10\x01\x12\x17\n" +
+	"\x13FAILURE_TYPE_POLICY\x10\x02\x12\x1e\n" +
+	"\x1aFAILURE_TYPE_PROCESS_START\x10\x03\x12\x1d\n" +
+	"\x19FAILURE_TYPE_PROCESS_EXIT\x10\x04\x12\x18\n" +
+	"\x14FAILURE_TYPE_TIMEOUT\x10\x05\x12\x1a\n" +
+	"\x16FAILURE_TYPE_CANCELLED\x10\x06\x12\x1d\n" +
+	"\x19FAILURE_TYPE_OUTPUT_LIMIT\x10\a\x12#\n" +
+	"\x1fFAILURE_TYPE_RESOURCE_EXHAUSTED\x10\b\x12\x19\n" +
+	"\x15FAILURE_TYPE_INTERNAL\x10\t*\x92\x01\n" +
+	"\x0eIsolationLevel\x12\x1f\n" +
+	"\x1bISOLATION_LEVEL_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cISOLATION_LEVEL_GUARDED_HOST\x10\x01\x12\x1d\n" +
+	"\x19ISOLATION_LEVEL_CONTAINER\x10\x02\x12\x1e\n" +
+	"\x1aISOLATION_LEVEL_OS_SANDBOX\x10\x032\xf8\x02\n" +
 	"\rRunnerService\x12W\n" +
 	"\aConnect\x12#.agentflow.runner.v1.RunnerEnvelope\x1a#.agentflow.runner.v1.ServerEnvelope(\x010\x01\x12M\n" +
 	"\aRunTask\x12 .agentflow.runner.v1.TaskRequest\x1a\x1e.agentflow.runner.v1.TaskEvent0\x01\x12]\n" +
@@ -2020,70 +2932,88 @@ func file_protocol_proto_runner_proto_rawDescGZIP() []byte {
 	return file_protocol_proto_runner_proto_rawDescData
 }
 
-var file_protocol_proto_runner_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_protocol_proto_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_protocol_proto_runner_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_protocol_proto_runner_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_protocol_proto_runner_proto_goTypes = []any{
 	(Engine)(0),                 // 0: agentflow.runner.v1.Engine
 	(TaskEventType)(0),          // 1: agentflow.runner.v1.TaskEventType
-	(*TaskRequest)(nil),         // 2: agentflow.runner.v1.TaskRequest
-	(*SandboxPolicy)(nil),       // 3: agentflow.runner.v1.SandboxPolicy
-	(*DockerMount)(nil),         // 4: agentflow.runner.v1.DockerMount
-	(*DockerSpec)(nil),          // 5: agentflow.runner.v1.DockerSpec
-	(*CancelTaskRequest)(nil),   // 6: agentflow.runner.v1.CancelTaskRequest
-	(*CancelTaskResponse)(nil),  // 7: agentflow.runner.v1.CancelTaskResponse
-	(*HealthCheckRequest)(nil),  // 8: agentflow.runner.v1.HealthCheckRequest
-	(*HealthCheckResponse)(nil), // 9: agentflow.runner.v1.HealthCheckResponse
-	(*StartedPayload)(nil),      // 10: agentflow.runner.v1.StartedPayload
-	(*StreamPayload)(nil),       // 11: agentflow.runner.v1.StreamPayload
-	(*ProgressPayload)(nil),     // 12: agentflow.runner.v1.ProgressPayload
-	(*ResultPayload)(nil),       // 13: agentflow.runner.v1.ResultPayload
-	(*ErrorPayload)(nil),        // 14: agentflow.runner.v1.ErrorPayload
-	(*CompletedPayload)(nil),    // 15: agentflow.runner.v1.CompletedPayload
-	(*HeartbeatPayload)(nil),    // 16: agentflow.runner.v1.HeartbeatPayload
-	(*TaskEvent)(nil),           // 17: agentflow.runner.v1.TaskEvent
-	(*ConnectRegister)(nil),     // 18: agentflow.runner.v1.ConnectRegister
-	(*ConnectRegisterAck)(nil),  // 19: agentflow.runner.v1.ConnectRegisterAck
-	(*ConnectHeartbeat)(nil),    // 20: agentflow.runner.v1.ConnectHeartbeat
-	(*ServerPing)(nil),          // 21: agentflow.runner.v1.ServerPing
-	(*RunnerEnvelope)(nil),      // 22: agentflow.runner.v1.RunnerEnvelope
-	(*ServerEnvelope)(nil),      // 23: agentflow.runner.v1.ServerEnvelope
-	nil,                         // 24: agentflow.runner.v1.TaskRequest.EnvEntry
+	(ExecutionState)(0),         // 2: agentflow.runner.v1.ExecutionState
+	(TerminalStatus)(0),         // 3: agentflow.runner.v1.TerminalStatus
+	(FailureType)(0),            // 4: agentflow.runner.v1.FailureType
+	(IsolationLevel)(0),         // 5: agentflow.runner.v1.IsolationLevel
+	(*TaskRequest)(nil),         // 6: agentflow.runner.v1.TaskRequest
+	(*SandboxPolicy)(nil),       // 7: agentflow.runner.v1.SandboxPolicy
+	(*DockerMount)(nil),         // 8: agentflow.runner.v1.DockerMount
+	(*DockerSpec)(nil),          // 9: agentflow.runner.v1.DockerSpec
+	(*CancelTaskRequest)(nil),   // 10: agentflow.runner.v1.CancelTaskRequest
+	(*CancelTaskResponse)(nil),  // 11: agentflow.runner.v1.CancelTaskResponse
+	(*DispatchAck)(nil),         // 12: agentflow.runner.v1.DispatchAck
+	(*CancelAck)(nil),           // 13: agentflow.runner.v1.CancelAck
+	(*EventAck)(nil),            // 14: agentflow.runner.v1.EventAck
+	(*HealthCheckRequest)(nil),  // 15: agentflow.runner.v1.HealthCheckRequest
+	(*HealthCheckResponse)(nil), // 16: agentflow.runner.v1.HealthCheckResponse
+	(*StartedPayload)(nil),      // 17: agentflow.runner.v1.StartedPayload
+	(*StreamPayload)(nil),       // 18: agentflow.runner.v1.StreamPayload
+	(*ProgressPayload)(nil),     // 19: agentflow.runner.v1.ProgressPayload
+	(*ResultPayload)(nil),       // 20: agentflow.runner.v1.ResultPayload
+	(*ErrorPayload)(nil),        // 21: agentflow.runner.v1.ErrorPayload
+	(*CompletedPayload)(nil),    // 22: agentflow.runner.v1.CompletedPayload
+	(*HeartbeatPayload)(nil),    // 23: agentflow.runner.v1.HeartbeatPayload
+	(*TaskEvent)(nil),           // 24: agentflow.runner.v1.TaskEvent
+	(*ConnectRegister)(nil),     // 25: agentflow.runner.v1.ConnectRegister
+	(*ConnectRegisterAck)(nil),  // 26: agentflow.runner.v1.ConnectRegisterAck
+	(*ConnectHeartbeat)(nil),    // 27: agentflow.runner.v1.ConnectHeartbeat
+	(*ServerPing)(nil),          // 28: agentflow.runner.v1.ServerPing
+	(*RunnerEnvelope)(nil),      // 29: agentflow.runner.v1.RunnerEnvelope
+	(*ServerEnvelope)(nil),      // 30: agentflow.runner.v1.ServerEnvelope
+	nil,                         // 31: agentflow.runner.v1.TaskRequest.EnvEntry
 }
 var file_protocol_proto_runner_proto_depIdxs = []int32{
-	24, // 0: agentflow.runner.v1.TaskRequest.env:type_name -> agentflow.runner.v1.TaskRequest.EnvEntry
+	31, // 0: agentflow.runner.v1.TaskRequest.env:type_name -> agentflow.runner.v1.TaskRequest.EnvEntry
 	0,  // 1: agentflow.runner.v1.TaskRequest.engine:type_name -> agentflow.runner.v1.Engine
-	3,  // 2: agentflow.runner.v1.TaskRequest.sandbox_policy:type_name -> agentflow.runner.v1.SandboxPolicy
-	5,  // 3: agentflow.runner.v1.TaskRequest.docker:type_name -> agentflow.runner.v1.DockerSpec
-	4,  // 4: agentflow.runner.v1.DockerSpec.mounts:type_name -> agentflow.runner.v1.DockerMount
-	1,  // 5: agentflow.runner.v1.TaskEvent.type:type_name -> agentflow.runner.v1.TaskEventType
-	10, // 6: agentflow.runner.v1.TaskEvent.started:type_name -> agentflow.runner.v1.StartedPayload
-	11, // 7: agentflow.runner.v1.TaskEvent.stdout:type_name -> agentflow.runner.v1.StreamPayload
-	11, // 8: agentflow.runner.v1.TaskEvent.stderr:type_name -> agentflow.runner.v1.StreamPayload
-	12, // 9: agentflow.runner.v1.TaskEvent.progress:type_name -> agentflow.runner.v1.ProgressPayload
-	13, // 10: agentflow.runner.v1.TaskEvent.result:type_name -> agentflow.runner.v1.ResultPayload
-	14, // 11: agentflow.runner.v1.TaskEvent.error:type_name -> agentflow.runner.v1.ErrorPayload
-	15, // 12: agentflow.runner.v1.TaskEvent.completed:type_name -> agentflow.runner.v1.CompletedPayload
-	16, // 13: agentflow.runner.v1.TaskEvent.heartbeat:type_name -> agentflow.runner.v1.HeartbeatPayload
-	18, // 14: agentflow.runner.v1.RunnerEnvelope.register:type_name -> agentflow.runner.v1.ConnectRegister
-	20, // 15: agentflow.runner.v1.RunnerEnvelope.heartbeat:type_name -> agentflow.runner.v1.ConnectHeartbeat
-	17, // 16: agentflow.runner.v1.RunnerEnvelope.task_event:type_name -> agentflow.runner.v1.TaskEvent
-	19, // 17: agentflow.runner.v1.ServerEnvelope.register_ack:type_name -> agentflow.runner.v1.ConnectRegisterAck
-	2,  // 18: agentflow.runner.v1.ServerEnvelope.run_task:type_name -> agentflow.runner.v1.TaskRequest
-	6,  // 19: agentflow.runner.v1.ServerEnvelope.cancel_task:type_name -> agentflow.runner.v1.CancelTaskRequest
-	21, // 20: agentflow.runner.v1.ServerEnvelope.ping:type_name -> agentflow.runner.v1.ServerPing
-	22, // 21: agentflow.runner.v1.RunnerService.Connect:input_type -> agentflow.runner.v1.RunnerEnvelope
-	2,  // 22: agentflow.runner.v1.RunnerService.RunTask:input_type -> agentflow.runner.v1.TaskRequest
-	6,  // 23: agentflow.runner.v1.RunnerService.CancelTask:input_type -> agentflow.runner.v1.CancelTaskRequest
-	8,  // 24: agentflow.runner.v1.RunnerService.HealthCheck:input_type -> agentflow.runner.v1.HealthCheckRequest
-	23, // 25: agentflow.runner.v1.RunnerService.Connect:output_type -> agentflow.runner.v1.ServerEnvelope
-	17, // 26: agentflow.runner.v1.RunnerService.RunTask:output_type -> agentflow.runner.v1.TaskEvent
-	7,  // 27: agentflow.runner.v1.RunnerService.CancelTask:output_type -> agentflow.runner.v1.CancelTaskResponse
-	9,  // 28: agentflow.runner.v1.RunnerService.HealthCheck:output_type -> agentflow.runner.v1.HealthCheckResponse
-	25, // [25:29] is the sub-list for method output_type
-	21, // [21:25] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	7,  // 2: agentflow.runner.v1.TaskRequest.sandbox_policy:type_name -> agentflow.runner.v1.SandboxPolicy
+	9,  // 3: agentflow.runner.v1.TaskRequest.docker:type_name -> agentflow.runner.v1.DockerSpec
+	8,  // 4: agentflow.runner.v1.DockerSpec.mounts:type_name -> agentflow.runner.v1.DockerMount
+	2,  // 5: agentflow.runner.v1.CancelTaskResponse.state:type_name -> agentflow.runner.v1.ExecutionState
+	2,  // 6: agentflow.runner.v1.DispatchAck.state:type_name -> agentflow.runner.v1.ExecutionState
+	2,  // 7: agentflow.runner.v1.CancelAck.state:type_name -> agentflow.runner.v1.ExecutionState
+	4,  // 8: agentflow.runner.v1.ErrorPayload.failure_type:type_name -> agentflow.runner.v1.FailureType
+	3,  // 9: agentflow.runner.v1.CompletedPayload.status:type_name -> agentflow.runner.v1.TerminalStatus
+	4,  // 10: agentflow.runner.v1.CompletedPayload.failure_type:type_name -> agentflow.runner.v1.FailureType
+	1,  // 11: agentflow.runner.v1.TaskEvent.type:type_name -> agentflow.runner.v1.TaskEventType
+	17, // 12: agentflow.runner.v1.TaskEvent.started:type_name -> agentflow.runner.v1.StartedPayload
+	18, // 13: agentflow.runner.v1.TaskEvent.stdout:type_name -> agentflow.runner.v1.StreamPayload
+	18, // 14: agentflow.runner.v1.TaskEvent.stderr:type_name -> agentflow.runner.v1.StreamPayload
+	19, // 15: agentflow.runner.v1.TaskEvent.progress:type_name -> agentflow.runner.v1.ProgressPayload
+	20, // 16: agentflow.runner.v1.TaskEvent.result:type_name -> agentflow.runner.v1.ResultPayload
+	21, // 17: agentflow.runner.v1.TaskEvent.error:type_name -> agentflow.runner.v1.ErrorPayload
+	22, // 18: agentflow.runner.v1.TaskEvent.completed:type_name -> agentflow.runner.v1.CompletedPayload
+	23, // 19: agentflow.runner.v1.TaskEvent.heartbeat:type_name -> agentflow.runner.v1.HeartbeatPayload
+	5,  // 20: agentflow.runner.v1.ConnectRegister.isolation_level:type_name -> agentflow.runner.v1.IsolationLevel
+	0,  // 21: agentflow.runner.v1.ConnectRegister.available_engines:type_name -> agentflow.runner.v1.Engine
+	25, // 22: agentflow.runner.v1.RunnerEnvelope.register:type_name -> agentflow.runner.v1.ConnectRegister
+	27, // 23: agentflow.runner.v1.RunnerEnvelope.heartbeat:type_name -> agentflow.runner.v1.ConnectHeartbeat
+	24, // 24: agentflow.runner.v1.RunnerEnvelope.task_event:type_name -> agentflow.runner.v1.TaskEvent
+	12, // 25: agentflow.runner.v1.RunnerEnvelope.dispatch_ack:type_name -> agentflow.runner.v1.DispatchAck
+	13, // 26: agentflow.runner.v1.RunnerEnvelope.cancel_ack:type_name -> agentflow.runner.v1.CancelAck
+	26, // 27: agentflow.runner.v1.ServerEnvelope.register_ack:type_name -> agentflow.runner.v1.ConnectRegisterAck
+	6,  // 28: agentflow.runner.v1.ServerEnvelope.run_task:type_name -> agentflow.runner.v1.TaskRequest
+	10, // 29: agentflow.runner.v1.ServerEnvelope.cancel_task:type_name -> agentflow.runner.v1.CancelTaskRequest
+	28, // 30: agentflow.runner.v1.ServerEnvelope.ping:type_name -> agentflow.runner.v1.ServerPing
+	14, // 31: agentflow.runner.v1.ServerEnvelope.event_ack:type_name -> agentflow.runner.v1.EventAck
+	29, // 32: agentflow.runner.v1.RunnerService.Connect:input_type -> agentflow.runner.v1.RunnerEnvelope
+	6,  // 33: agentflow.runner.v1.RunnerService.RunTask:input_type -> agentflow.runner.v1.TaskRequest
+	10, // 34: agentflow.runner.v1.RunnerService.CancelTask:input_type -> agentflow.runner.v1.CancelTaskRequest
+	15, // 35: agentflow.runner.v1.RunnerService.HealthCheck:input_type -> agentflow.runner.v1.HealthCheckRequest
+	30, // 36: agentflow.runner.v1.RunnerService.Connect:output_type -> agentflow.runner.v1.ServerEnvelope
+	24, // 37: agentflow.runner.v1.RunnerService.RunTask:output_type -> agentflow.runner.v1.TaskEvent
+	11, // 38: agentflow.runner.v1.RunnerService.CancelTask:output_type -> agentflow.runner.v1.CancelTaskResponse
+	16, // 39: agentflow.runner.v1.RunnerService.HealthCheck:output_type -> agentflow.runner.v1.HealthCheckResponse
+	36, // [36:40] is the sub-list for method output_type
+	32, // [32:36] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_protocol_proto_runner_proto_init() }
@@ -2091,7 +3021,7 @@ func file_protocol_proto_runner_proto_init() {
 	if File_protocol_proto_runner_proto != nil {
 		return
 	}
-	file_protocol_proto_runner_proto_msgTypes[15].OneofWrappers = []any{
+	file_protocol_proto_runner_proto_msgTypes[18].OneofWrappers = []any{
 		(*TaskEvent_Started)(nil),
 		(*TaskEvent_Stdout)(nil),
 		(*TaskEvent_Stderr)(nil),
@@ -2101,24 +3031,27 @@ func file_protocol_proto_runner_proto_init() {
 		(*TaskEvent_Completed)(nil),
 		(*TaskEvent_Heartbeat)(nil),
 	}
-	file_protocol_proto_runner_proto_msgTypes[20].OneofWrappers = []any{
+	file_protocol_proto_runner_proto_msgTypes[23].OneofWrappers = []any{
 		(*RunnerEnvelope_Register)(nil),
 		(*RunnerEnvelope_Heartbeat)(nil),
 		(*RunnerEnvelope_TaskEvent)(nil),
+		(*RunnerEnvelope_DispatchAck)(nil),
+		(*RunnerEnvelope_CancelAck)(nil),
 	}
-	file_protocol_proto_runner_proto_msgTypes[21].OneofWrappers = []any{
+	file_protocol_proto_runner_proto_msgTypes[24].OneofWrappers = []any{
 		(*ServerEnvelope_RegisterAck)(nil),
 		(*ServerEnvelope_RunTask)(nil),
 		(*ServerEnvelope_CancelTask)(nil),
 		(*ServerEnvelope_Ping)(nil),
+		(*ServerEnvelope_EventAck)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_proto_runner_proto_rawDesc), len(file_protocol_proto_runner_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   23,
+			NumEnums:      6,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

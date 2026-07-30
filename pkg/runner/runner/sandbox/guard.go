@@ -3,7 +3,6 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -107,23 +106,8 @@ func (e *guardedExecutor) Run(ctx context.Context, req types.TaskRequest, sink t
 }
 
 func isPathAllowed(path string, allowlist []string) (bool, error) {
-	targetAbs, err := filepath.Abs(path)
-	if err != nil {
-		return false, fmt.Errorf("resolve path %q: %w", path, err)
-	}
-	targetAbs = filepath.Clean(targetAbs)
-
 	for _, allowedRoot := range allowlist {
-		rootAbs, err := filepath.Abs(allowedRoot)
-		if err != nil {
-			continue
-		}
-		rootAbs = filepath.Clean(rootAbs)
-		rel, err := filepath.Rel(rootAbs, targetAbs)
-		if err != nil {
-			continue
-		}
-		if rel == "." || (!strings.HasPrefix(rel, "..") && rel != "..") {
+		if _, err := ResolveScopedPath(allowedRoot, path); err == nil {
 			return true, nil
 		}
 	}

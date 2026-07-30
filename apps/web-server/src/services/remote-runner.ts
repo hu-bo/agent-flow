@@ -6,7 +6,8 @@ export class RemoteRunner implements Runner {
   readonly kind = 'remote' as const;
   readonly capabilities: RunnerCapabilities = {
     streaming: true,
-    sandboxed: true,
+    sandboxed: false,
+    isolationLevel: 'guarded-host',
   };
 
   constructor(private readonly dispatchService: RunnerDispatchService) {}
@@ -21,4 +22,3 @@ export class RemoteRunner implements Runner {
     }
   }
 }
-

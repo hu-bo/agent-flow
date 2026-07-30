@@ -14,23 +14,26 @@ import {
   getAdapterText,
 } from './message-mappers.js';
 import { ModelToolRunner } from './model-tool-runner.js';
-import { renderLlmStepPrompt } from './runtime-renderers.js';
+import { renderLlmStepPrompt, renderStructuredMarkdown } from './runtime-renderers.js';
 import { resolveMaxOutputTokens, type ModelToolCall } from './runtime-types.js';
 
-const DEFAULT_LLM_STEP_TOOL_NAMES = ['shell.exec'] as const;
+const DEFAULT_LLM_STEP_TOOL_NAMES = ['fs.list', 'fs.read', 'fs.search', 'shell.exec'] as const;
 const DEFAULT_LLM_STEP_MAX_TOOL_ROUNDS = 4;
+const DEFAULT_LLM_STEP_TIMEOUT_MS = 120_000;
 
 export interface ModelBackedLlmStepExecutorOptions {
   toolRegistry?: ToolRegistryLike;
   toolExecutor?: ToolExecutorLike;
   enabledToolNames?: readonly string[];
   maxToolRounds?: number;
+  timeoutMs?: number;
 }
 
 export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
   private readonly modelToolRunner: ModelToolRunner;
   private readonly enabledToolNames: readonly string[];
   private readonly maxToolRounds: number;
+  private readonly timeoutMs: number;
 
   constructor(
     private readonly modelAdapterService: ModelAdapterService,
@@ -39,9 +42,18 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
     this.modelToolRunner = new ModelToolRunner(options.toolRegistry, options.toolExecutor);
     this.enabledToolNames = options.enabledToolNames ?? DEFAULT_LLM_STEP_TOOL_NAMES;
     this.maxToolRounds = Math.max(0, Math.floor(options.maxToolRounds ?? DEFAULT_LLM_STEP_MAX_TOOL_ROUNDS));
+    this.timeoutMs = Math.max(1_000, Math.floor(options.timeoutMs ?? DEFAULT_LLM_STEP_TIMEOUT_MS));
   }
 
   async execute(stepRequest: LlmStepRequest): Promise<unknown> {
+    if (isRepositorySummaryStep(stepRequest)) {
+      return createRepositorySummaryFallback(
+        stepRequest,
+        'The repository summary reused the completed analysis without an additional model call.',
+        [],
+      );
+    }
+
     const modelId = getMetadataNumber(stepRequest.request.metadata, 'modelId');
     const model = getMetadataString(stepRequest.request.metadata, 'model');
     if (modelId === undefined || !model) {
@@ -91,19 +103,28 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
         stepId: stepRequest.step.id,
         taskId: stepRequest.session.taskId,
       },
-      signal: stepRequest.signal,
     };
 
     let result: GenerationResult | undefined;
     let toolRound = 0;
     while (true) {
       const allowTools = tools.length > 0 && toolRound < this.maxToolRounds;
-      result = await adapter.generate({
-        ...baseRequest,
-        messages,
-        tools: allowTools ? tools : undefined,
-        toolChoice: allowTools ? 'auto' : 'none',
-      });
+      try {
+        result = await generateWithDeadline(
+          (signal) => adapter.generate({
+            ...baseRequest,
+            messages,
+            tools: allowTools ? tools : undefined,
+            toolChoice: allowTools ? 'auto' : 'none',
+            signal,
+          }),
+          this.timeoutMs,
+          stepRequest.signal,
+          stepRequest.step.id,
+        );
+      } catch (error) {
+        throw error;
+      }
 
       const toolCalls = allowTools ? extractToolCalls(result) : [];
       if (toolCalls.length === 0) {
@@ -151,7 +172,7 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
       title: stepRequest.step.title,
       phase,
       text: text || 'The model returned no text for this internal step.',
-      sections: parseStructuredSections(text, phase),
+      sections: parseStructuredSections(text, phase, stepRequest.step.title),
       completionSignal: getMetadataLikeString(parsedStepObject(text), 'completionSignal'),
       nextAction: getMetadataLikeString(parsedStepObject(text), 'nextAction'),
       incompleteReason: getMetadataLikeString(parsedStepObject(text), 'incompleteReason'),
@@ -163,6 +184,130 @@ export class ModelBackedLlmStepExecutor implements LlmStepExecutorLike {
   }
 }
 
+class LlmStepTimeoutError extends Error {
+  constructor(stepId: string, timeoutMs: number) {
+    super(`Internal LLM step "${stepId}" timed out after ${timeoutMs}ms.`);
+    this.name = 'LlmStepTimeoutError';
+  }
+}
+
+async function generateWithDeadline<T>(
+  generate: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+  parentSignal: AbortSignal | undefined,
+  stepId: string,
+): Promise<T> {
+  if (parentSignal?.aborted) {
+    throw parentSignal.reason ?? new Error('LLM step was aborted.');
+  }
+
+  const controller = new AbortController();
+  let rejectFromParent: ((reason?: unknown) => void) | undefined;
+  const parentAbort = new Promise<never>((_, reject) => {
+    rejectFromParent = reject;
+  });
+  const abortFromParent = () => {
+    const reason = parentSignal?.reason ?? new Error('LLM step was aborted.');
+    controller.abort(reason);
+    rejectFromParent?.(reason);
+  };
+  parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      const error = new LlmStepTimeoutError(stepId, timeoutMs);
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+    timeoutHandle.unref?.();
+  });
+
+  try {
+    return await Promise.race([generate(controller.signal), timeout, parentAbort]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    parentSignal?.removeEventListener('abort', abortFromParent);
+  }
+}
+
+function isRepositorySummaryStep(stepRequest: LlmStepRequest): boolean {
+  return stepRequest.step.title === 'repo.summary' || getMetadataLikeString(stepRequest.input, 'mode') === 'repo-summary';
+}
+
+function createRepositorySummaryFallback(
+  stepRequest: LlmStepRequest,
+  timeoutReason: string,
+  toolAttempts: StructuredLlmStepOutput['toolAttempts'],
+): StructuredLlmStepOutput {
+  const analysis = stepRequest.input.analysis;
+  const text = extractPriorStepText(analysis)
+    ?? 'Repository inspection completed successfully, but the final model summary timed out.';
+  return {
+    mode: 'llm-step',
+    stepId: stepRequest.step.id,
+    title: stepRequest.step.title,
+    phase: 'analysis',
+    text,
+    sections: { analysis: text },
+    completionSignal: 'COMPLETE',
+    evidence: ['workspace-inspection', 'repo.analysis'],
+    toolAttempts,
+    finishReason: 'analysis-reuse',
+    usage: undefined,
+    incompleteReason: undefined,
+    nextAction: undefined,
+    timeoutReason,
+  } as StructuredLlmStepOutput & { timeoutReason: string };
+}
+
+function extractPriorStepText(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) {
+    return renderRepositorySummaryText(value);
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+
+  const renderedSections = renderRepositorySummarySections(record.sections);
+  if (renderedSections) {
+    return renderedSections;
+  }
+
+  for (const candidate of [record.text, record.analysis]) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return renderRepositorySummaryText(candidate);
+    }
+  }
+  return undefined;
+}
+
+function renderRepositorySummaryText(text: string): string {
+  const trimmed = text.trim();
+  const parsed = tryParseJsonObject(trimmed);
+  return parsed ? renderRepositorySummaryObject(parsed) ?? trimmed : trimmed;
+}
+
+function renderRepositorySummarySections(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return renderRepositorySummaryObject(value as Record<string, unknown>);
+}
+
+function renderRepositorySummaryObject(value: Record<string, unknown>): string | undefined {
+  const summary = renderStructuredMarkdown(value.analysis ?? value.summary);
+  const details = renderStructuredMarkdown(value.implementation ?? value.details);
+  const verification = renderStructuredMarkdown(value.verification);
+  const evidence = verification ? undefined : renderStructuredMarkdown(value.evidence);
+  const sections = [
+    summary,
+    details ? `## Project Details\n${details}` : undefined,
+    verification ? `## Verification\n${verification}` : undefined,
+    evidence ? `## Evidence\n${evidence}` : undefined,
+  ].filter((section): section is string => Boolean(section?.trim()));
+
+  return sections.length > 0 ? sections.join('\n\n') : undefined;
+}
+
 function buildLlmStepSystemPrompt(toolsEnabled: boolean): string {
   const lines = [
     'You are an internal executor inside a goal-driven autonomous agent runtime.',
@@ -171,6 +316,7 @@ function buildLlmStepSystemPrompt(toolsEnabled: boolean): string {
     'Return concise, concrete execution output that the next step can consume.',
     'Do not expose private chain-of-thought. Provide short decision summaries and evidence only.',
     'Prefer JSON with keys analysis, implementation, and verification when it fits the step.',
+    'The analysis, implementation, and verification values must be concise Markdown strings, not nested objects.',
   ];
 
   if (toolsEnabled) {
@@ -211,7 +357,6 @@ function inferLlmStepPhase(stepRequest: LlmStepRequest): LlmStepOutputPhase {
   if (
     joined.includes('implementation') ||
     joined.includes('execution') ||
-    joined.includes('summary') ||
     joined.includes('tool-first')
   ) {
     return 'implementation';
@@ -219,7 +364,11 @@ function inferLlmStepPhase(stepRequest: LlmStepRequest): LlmStepOutputPhase {
   return 'analysis';
 }
 
-function parseStructuredSections(text: string, phase: LlmStepOutputPhase): StructuredLlmStepOutput['sections'] {
+function parseStructuredSections(
+  text: string,
+  phase: LlmStepOutputPhase,
+  stepTitle: string,
+): StructuredLlmStepOutput['sections'] {
   const trimmed = text.trim();
   if (!trimmed) {
     return { [phase]: 'The model returned no text for this internal step.' };
@@ -228,9 +377,19 @@ function parseStructuredSections(text: string, phase: LlmStepOutputPhase): Struc
   const parsed = tryParseJsonObject(trimmed);
   if (parsed) {
     const sections: StructuredLlmStepOutput['sections'] = {};
-    const analysis = getMetadataLikeString(parsed, 'analysis');
-    const implementation = getMetadataLikeString(parsed, 'implementation');
-    const verification = getMetadataLikeString(parsed, 'verification');
+    const analysis = getStructuredSection(parsed, 'analysis');
+    const implementation = getStructuredSection(parsed, 'implementation');
+    const verification = getStructuredSection(parsed, 'verification');
+    if (isRepositoryInspectionStep(stepTitle) && phase === 'analysis') {
+      const summary = [
+        analysis,
+        implementation ? `## Project Details\n${implementation}` : undefined,
+      ].filter((section): section is string => Boolean(section)).join('\n\n');
+      return {
+        ...(summary ? { analysis: summary } : {}),
+        ...(verification ? { verification } : {}),
+      };
+    }
     if (analysis) sections.analysis = analysis;
     if (implementation) sections.implementation = implementation;
     if (verification) sections.verification = verification;
@@ -240,6 +399,14 @@ function parseStructuredSections(text: string, phase: LlmStepOutputPhase): Struc
   }
 
   return { [phase]: trimmed };
+}
+
+function getStructuredSection(record: Record<string, unknown>, key: string): string | undefined {
+  return renderStructuredMarkdown(record[key]);
+}
+
+function isRepositoryInspectionStep(stepTitle: string): boolean {
+  return stepTitle === 'repo.analysis' || stepTitle === 'repo.summary';
 }
 
 function parsedStepObject(text: string): Record<string, unknown> | undefined {

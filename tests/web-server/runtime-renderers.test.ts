@@ -34,6 +34,41 @@ describe('runtime-renderers', () => {
     })).toContain('STDOUT:\nok');
   });
 
+  it('renders nested structured summary output as readable Markdown', () => {
+    const rendered = renderRuntimeOutput({
+      mode: 'llm-step',
+      title: 'repo.summary',
+      phase: 'analysis',
+      text: '{"analysis":"raw JSON should not be used"}',
+      sections: {
+        analysis: 'Identified the workspace as a pnpm and Turborepo monorepo.',
+        implementation: {
+          projectType: 'Monorepo',
+          packageManager: 'pnpm@10.32.1',
+          workspacePackages: ['packages/*', 'apps/*', 'tests/*'],
+          keyFiles: {
+            'package.json': 'Defines the root scripts.',
+            'turbo.json': 'Defines the task pipeline.',
+          },
+        },
+        verification: {
+          status: 'Project structure inspected',
+          evidence: ['pnpm-workspace.yaml', 'turbo.json'],
+        },
+      },
+      completionSignal: 'COMPLETE',
+    });
+
+    expect(rendered).toContain('## Summary');
+    expect(rendered).toContain('## Details');
+    expect(rendered).toContain('- **Project Type:** Monorepo');
+    expect(rendered).toContain('### Key Files');
+    expect(rendered).toContain('## Verification');
+    expect(rendered).not.toContain('## Implementation');
+    expect(rendered).not.toContain('raw JSON should not be used');
+    expect(rendered).not.toContain('completionSignal');
+  });
+
   it('injects Windows runner platform command guidance', () => {
     const rendered = renderEnvironmentContext(
       {

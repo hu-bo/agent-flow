@@ -280,6 +280,74 @@ export function renderRuntimeOutput(output: unknown): string | undefined {
   return formatUnknown(output);
 }
 
+export function renderStructuredMarkdown(value: unknown): string | undefined {
+  return renderStructuredValue(value, 0);
+}
+
+function renderStructuredValue(value: unknown, depth: number): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value === null) {
+    return 'None';
+  }
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => renderStructuredValue(item, depth + 1))
+      .filter((item): item is string => Boolean(item));
+    if (items.length === 0) {
+      return undefined;
+    }
+    return items.map((item) => `- ${item.replace(/\n/g, '\n  ')}`).join('\n');
+  }
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+
+  const lines = Object.entries(value)
+    .filter(([key]) => !isInternalResultKey(key))
+    .map(([key, nested]) => {
+      const rendered = renderStructuredValue(nested, depth + 1);
+      if (!rendered) {
+        return undefined;
+      }
+      const label = humanizeStructuredKey(key);
+      if (
+        typeof nested === 'string' ||
+        typeof nested === 'number' ||
+        typeof nested === 'boolean' ||
+        nested === null
+      ) {
+        return `- **${label}:** ${rendered}`;
+      }
+      if (depth === 0) {
+        return `### ${label}\n${rendered}`;
+      }
+      return `- **${label}:**\n${rendered.replace(/^/gm, '  ')}`;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+function isInternalResultKey(key: string): boolean {
+  return key === 'completionSignal' || key === 'finishReason' || key === 'usage';
+}
+
+function humanizeStructuredKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `${word.slice(0, 1).toUpperCase()}${word.slice(1)}`)
+    .join(' ');
+}
+
 export function buildSystemPrompt(
   input: RuntimeChatInput,
   recalled: RecalledMemory[],
@@ -488,7 +556,8 @@ export function renderLlmStepPrompt(stepRequest: LlmStepRequest): string {
     [
       'Produce the output for this step now.',
       'Use concise summaries only; do not include hidden chain-of-thought.',
-      'When useful, return JSON like {"analysis":"...","implementation":"...","verification":"...","completionSignal":"COMPLETE","nextAction":"...","incompleteReason":"...","evidence":["..."]}.',
+      'When useful, return JSON like {"analysis":"Markdown summary","implementation":"Markdown changes or details","verification":"Markdown verification","completionSignal":"COMPLETE","nextAction":"...","incompleteReason":"...","evidence":["..."]}.',
+      'The analysis, implementation, and verification fields must be strings. Use Markdown bullets inside those strings instead of nested JSON objects.',
       'Only emit completionSignal=COMPLETE if the current objective has actually met the completion contract.',
       'If the objective is not done, do not claim completion. Instead provide incompleteReason, nextAction, and concrete evidence gaps.',
     ].join('\n'),
@@ -550,8 +619,8 @@ function renderLlmStepOutput(output: Record<string, unknown>): string | undefine
   if (sections) {
     const sectionText = ['analysis', 'implementation', 'verification']
       .map((key) => {
-        const value = getObjectString(sections, key);
-        return value ? `## ${titleCase(key)}\n${value}` : undefined;
+        const value = renderStructuredMarkdown(sections[key]);
+        return value ? `## ${resolveSectionTitle(output, key)}\n${value}` : undefined;
       })
       .filter((value): value is string => Boolean(value))
       .join('\n\n');
@@ -566,6 +635,15 @@ function renderLlmStepOutput(output: Record<string, unknown>): string | undefine
   }
   const trimmed = text.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveSectionTitle(output: Record<string, unknown>, key: string): string {
+  const outputTitle = getObjectString(output, 'title')?.toLowerCase() ?? '';
+  if (outputTitle.includes('summary') || outputTitle === 'repo.analysis') {
+    if (key === 'analysis') return 'Summary';
+    if (key === 'implementation') return 'Details';
+  }
+  return titleCase(key);
 }
 
 function titleCase(value: string): string {

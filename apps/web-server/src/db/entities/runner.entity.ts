@@ -65,6 +65,27 @@ export class RunnerEntity {
   @Column({ name: 'available_commands', type: 'jsonb', default: () => "'[]'::jsonb" })
   availableCommands!: string[];
 
+  @Column({ name: 'capability_schema_version', type: 'integer', default: 1 })
+  capabilitySchemaVersion!: number;
+
+  @Column({ name: 'isolation_level', type: 'varchar', length: 32, default: 'guarded-host' })
+  isolationLevel!: 'guarded-host' | 'container' | 'os-sandbox';
+
+  @Column({ name: 'available_engines', type: 'jsonb', default: () => "'[\"host\"]'::jsonb" })
+  availableEngines!: Array<'host' | 'docker'>;
+
+  @Column({ name: 'logical_cpu_count', type: 'integer', default: 0 })
+  logicalCpuCount!: number;
+
+  @Column({ name: 'memory_bytes', type: 'bigint', default: 0 })
+  memoryBytes!: string;
+
+  @Column({ name: 'max_concurrent_tasks', type: 'integer', default: 1 })
+  maxConcurrentTasks!: number;
+
+  @Column({ name: 'active_tasks', type: 'integer', default: 0 })
+  activeTasks!: number;
+
   @Column({ name: 'last_seen_at', type: 'timestamptz', nullable: true })
   lastSeenAt!: Date | null;
 

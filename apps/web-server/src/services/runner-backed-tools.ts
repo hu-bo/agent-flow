@@ -10,11 +10,18 @@ import type { RunnerDispatchService } from './runner-dispatch-service.js';
 
 type RunnerBackedToolName =
   | 'fs.read'
+  | 'fs.stat'
   | 'fs.write'
   | 'fs.patch'
   | 'fs.multiPatch'
+  | 'fs.applyPatch'
   | 'fs.list'
+  | 'fs.glob'
   | 'fs.search'
+  | 'git.status'
+  | 'git.diff'
+  | 'git.show'
+  | 'git.apply'
   | 'shell.exec';
 
 interface RunnerBackedToolOptions {
@@ -130,7 +137,12 @@ const runnerBackedInputSchemas = {
     encoding: z.literal('utf8').optional(),
     maxBytes: z.number().int().positive().max(10_000_000).optional(),
     allowMissing: z.boolean().optional(),
+    byteOffset: z.number().int().nonnegative().optional(),
+    byteLength: z.number().int().positive().max(10_000_000).optional(),
+    startLine: z.number().int().positive().optional(),
+    endLine: z.number().int().positive().optional(),
   }),
+  fsStat: z.object({ path: z.string().trim().min(1) }),
   fsWrite: z.object({
     path: z.string().trim().min(1),
     content: z.string(),
@@ -150,11 +162,22 @@ const runnerBackedInputSchemas = {
       replaceAll: z.boolean().optional(),
     })).min(1).max(100),
   }),
+  fsApplyPatch: z.object({
+    path: z.string().trim().min(1),
+    patch: z.string().min(1),
+    expectedSha256: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+    expectedContent: z.string().optional(),
+  }),
   fsList: z.object({
     path: z.string().trim().min(1).optional(),
     recursive: z.boolean().optional(),
     maxEntries: z.number().int().positive().max(5_000).optional(),
     includeHidden: z.boolean().optional(),
+  }),
+  fsGlob: z.object({
+    path: z.string().trim().min(1).optional(),
+    pattern: z.string().trim().min(1),
+    maxEntries: z.number().int().positive().max(5_000).optional(),
   }),
   fsSearch: z.object({
     path: z.string().trim().min(1).optional(),
@@ -163,6 +186,14 @@ const runnerBackedInputSchemas = {
     maxMatches: z.number().int().positive().max(1_000).optional(),
     includeHidden: z.boolean().optional(),
   }),
+  gitStatus: z.object({ pathspec: z.array(z.string().trim().min(1)).max(100).optional() }),
+  gitDiff: z.object({
+    cached: z.boolean().optional(),
+    base: z.string().trim().min(1).optional(),
+    pathspec: z.array(z.string().trim().min(1)).max(100).optional(),
+  }),
+  gitShow: z.object({ revision: z.string().trim().min(1).optional(), path: z.string().trim().min(1).optional() }),
+  gitApply: z.object({ patch: z.string().min(1), reverse: z.boolean().optional() }),
   shellExec: z.object({
     command: z.string().trim().min(1),
     args: z.array(z.string()).optional(),
@@ -211,6 +242,16 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
           allowMissing: { type: 'boolean', description: 'Return an empty result when the file is missing.' },
         },
       },
+    }),
+    new RunnerBackedTool({
+      dispatchService,
+      name: 'fs.stat',
+      description: 'Inspect file metadata and content identity in the bound runner workspace.',
+      zodInput: runnerBackedInputSchemas.fsStat,
+      risk: 'low',
+      access: 'read',
+      approval: 'never',
+      input: { type: 'object', required: ['path'], properties: { path: { type: 'string' } } },
     }),
     new RunnerBackedTool({
       dispatchService,
@@ -298,6 +339,35 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
     }),
     new RunnerBackedTool({
       dispatchService,
+      name: 'fs.applyPatch',
+      description: 'Atomically apply a unified diff with optional content preconditions.',
+      zodInput: runnerBackedInputSchemas.fsApplyPatch,
+      risk: 'high',
+      access: 'write',
+      approval: 'on_write',
+      input: {
+        type: 'object',
+        required: ['path', 'patch'],
+        properties: {
+          path: { type: 'string' }, patch: { type: 'string' }, expectedSha256: { type: 'string' }, expectedContent: { type: 'string' },
+        },
+      },
+    }),
+    new RunnerBackedTool({
+      dispatchService,
+      name: 'fs.glob',
+      description: 'Find workspace files by path pattern with bounded results.',
+      zodInput: runnerBackedInputSchemas.fsGlob,
+      risk: 'low',
+      access: 'read',
+      approval: 'never',
+      input: {
+        type: 'object', required: ['pattern'],
+        properties: { path: { type: 'string' }, pattern: { type: 'string' }, maxEntries: { type: 'number' } },
+      },
+    }),
+    new RunnerBackedTool({
+      dispatchService,
       name: 'fs.search',
       description: 'Search files under a directory in the bound runner workspace.',
       zodInput: runnerBackedInputSchemas.fsSearch,
@@ -339,6 +409,26 @@ function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDe
           env: { type: 'object', description: 'Additional environment variables.' },
         },
       },
+    }),
+    new RunnerBackedTool({
+      dispatchService, name: 'git.status', description: 'Read structured Git worktree status from the bound workspace.',
+      zodInput: runnerBackedInputSchemas.gitStatus, risk: 'low', access: 'git', approval: 'never',
+      input: { type: 'object', properties: { pathspec: { type: 'array', items: { type: 'string' } } } },
+    }),
+    new RunnerBackedTool({
+      dispatchService, name: 'git.diff', description: 'Read a bounded Git patch from the bound workspace.',
+      zodInput: runnerBackedInputSchemas.gitDiff, risk: 'low', access: 'git', approval: 'never',
+      input: { type: 'object', properties: { cached: { type: 'boolean' }, base: { type: 'string' }, pathspec: { type: 'array', items: { type: 'string' } } } },
+    }),
+    new RunnerBackedTool({
+      dispatchService, name: 'git.show', description: 'Inspect a revision or path through Git in the bound workspace.',
+      zodInput: runnerBackedInputSchemas.gitShow, risk: 'low', access: 'git', approval: 'never',
+      input: { type: 'object', properties: { revision: { type: 'string' }, path: { type: 'string' } } },
+    }),
+    new RunnerBackedTool({
+      dispatchService, name: 'git.apply', description: 'Validate and apply a Git patch in the bound workspace.',
+      zodInput: runnerBackedInputSchemas.gitApply, risk: 'high', access: 'git', approval: 'on_write',
+      input: { type: 'object', required: ['patch'], properties: { patch: { type: 'string' }, reverse: { type: 'boolean' } } },
     }),
   ];
 }

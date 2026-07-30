@@ -28,11 +28,20 @@ export interface RunnerRegisterInput {
   lineEnding?: string;
   workspaceRoots?: string[];
   availableCommands?: string[];
+  capabilitySchemaVersion?: number;
+  isolationLevel?: 'guarded-host' | 'container' | 'os-sandbox';
+  availableEngines?: Array<'host' | 'docker'>;
+  logicalCpuCount?: number;
+  memoryBytes?: number;
+  maxConcurrentTasks?: number;
+  activeTasks?: number;
 }
 
 export interface RunnerHeartbeatInput {
   runnerId: string;
   runnerToken: string;
+  activeTasks?: number;
+  maxConcurrentTasks?: number;
 }
 
 export class RunnerRegistryService {
@@ -108,6 +117,8 @@ export class RunnerRegistryService {
     const runner = await this.authorizeRunnerConnection(input.runnerId, input.runnerToken);
     runner.status = 'online';
     runner.lastSeenAt = new Date();
+    runner.activeTasks = normalizeNonNegativeInteger(input.activeTasks, runner.activeTasks ?? 0);
+    runner.maxConcurrentTasks = Math.max(1, normalizeNonNegativeInteger(input.maxConcurrentTasks, runner.maxConcurrentTasks ?? 1));
     return this.runnerRepository.save(runner);
   }
 
@@ -133,6 +144,9 @@ export class RunnerRegistryService {
         return false;
       }
       if (options.preferredRunnerKind && runner.kind !== options.preferredRunnerKind) {
+        return false;
+      }
+      if (runner.maxConcurrentTasks > 0 && runner.activeTasks >= runner.maxConcurrentTasks) {
         return false;
       }
       const capabilities = normalizeCapabilities(runner.capabilities);
@@ -206,6 +220,13 @@ export class RunnerRegistryService {
     runner.lineEnding = normalizeText(input.lineEnding) ?? runner.lineEnding ?? null;
     runner.workspaceRoots = normalizeStringList(input.workspaceRoots ?? runner.workspaceRoots ?? []);
     runner.availableCommands = normalizeStringList(input.availableCommands ?? runner.availableCommands ?? []);
+    runner.capabilitySchemaVersion = normalizeNonNegativeInteger(input.capabilitySchemaVersion, runner.capabilitySchemaVersion ?? 1);
+    runner.isolationLevel = input.isolationLevel ?? runner.isolationLevel ?? 'guarded-host';
+    runner.availableEngines = normalizeEngines(input.availableEngines ?? runner.availableEngines ?? ['host']);
+    runner.logicalCpuCount = normalizeNonNegativeInteger(input.logicalCpuCount, runner.logicalCpuCount ?? 0);
+    runner.memoryBytes = String(normalizeNonNegativeInteger(input.memoryBytes, Number(runner.memoryBytes ?? 0)));
+    runner.maxConcurrentTasks = Math.max(1, normalizeNonNegativeInteger(input.maxConcurrentTasks, runner.maxConcurrentTasks ?? 1));
+    runner.activeTasks = normalizeNonNegativeInteger(input.activeTasks, runner.activeTasks ?? 0);
     runner.lastSeenAt = new Date();
     return this.runnerRepository.save(runner);
   }
@@ -238,6 +259,15 @@ export class RunnerRegistryService {
       .andWhere('last_seen_at IS NULL OR last_seen_at < :threshold', { threshold })
       .execute();
   }
+}
+
+function normalizeNonNegativeInteger(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+}
+
+function normalizeEngines(values: Array<'host' | 'docker'> | undefined): Array<'host' | 'docker'> {
+  const engines = [...new Set((values ?? []).filter((value) => value === 'host' || value === 'docker'))];
+  return engines.length > 0 ? engines : ['host'];
 }
 
 function createRunnerId(): string {
