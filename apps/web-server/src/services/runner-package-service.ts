@@ -1,6 +1,6 @@
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import AdmZipType from 'adm-zip';
 import axios from 'axios';
 import { AppError } from '../lib/errors.js';
@@ -49,7 +49,12 @@ const RUNNER_PACKAGE_TEMPLATES = {
     fileName: 'agent-flow-runner-darwin-amd64.zip',
     url: 'http://minio.8and1.cn/static/aflow/agent-flow-runner-darwin-amd64.zip',
   },
-} as const satisfies Record<'windows' | 'darwin', RunnerPackageTemplate>;
+  linux: {
+    fileName: 'agent-flow-runner-linux-amd64.zip',
+    url: 'http://minio.8and1.cn/static/aflow/agent-flow-runner-linux-amd64.zip',
+  },
+} as const satisfies Record<'windows' | 'darwin' | 'linux', RunnerPackageTemplate>;
+
 
 export class RunnerPackageService {
   constructor(
@@ -72,14 +77,15 @@ export class RunnerPackageService {
       await updateRunnerConfig(extractDir, issued.runnerToken);
 
       const zip = new AdmZip();
-      const files = await collectFiles(extractDir, extractDir);
-      for (const file of files) {
-        zip.addFile(file.relativePath, file.content);
+      zip.addLocalFolder(extractDir);
+      const buffer = zip.toBuffer();
+      if (zip.getEntries().length === 0 || buffer.byteLength === 0) {
+        throw new AppError(500, 'RUNNER_PACKAGE_BUILD_FAILED', 'Generated runner package is empty');
       }
 
       return {
         fileName: packageTemplate.fileName,
-        buffer: zip.toBuffer(),
+        buffer,
       };
     } finally {
       await rm(tempDir, { recursive: true, force: true });
@@ -113,8 +119,12 @@ export class RunnerPackageService {
       responseType: 'arraybuffer',
       timeout: 60_000,
     });
+    const templateBuffer = Buffer.from(response.data);
+    if (templateBuffer.byteLength === 0) {
+      throw new AppError(502, 'RUNNER_TEMPLATE_DOWNLOAD_FAILED', `Downloaded runner template is empty: ${packageTemplate.url}`);
+    }
     const templatePath = join(tempDir, packageTemplate.fileName);
-    await writeFile(templatePath, Buffer.from(response.data));
+    await writeFile(templatePath, templateBuffer);
     return templatePath;
   }
 }
@@ -173,7 +183,11 @@ async function materializeTemplate(templatePath: string, extractDir: string): Pr
   }
 
   const zip = new AdmZip(templatePath);
-  for (const entry of zip.getEntries()) {
+  const entries = zip.getEntries();
+  if (entries.length === 0) {
+    throw new AppError(400, 'RUNNER_TEMPLATE_INVALID', 'Runner template zip is empty');
+  }
+  for (const entry of entries) {
     const target = resolve(extractDir, entry.entryName);
     const rel = relative(extractDir, target);
     if (!rel || rel.startsWith('..') || resolve(extractDir, rel) === extractDir) {
@@ -207,27 +221,6 @@ async function findZip(dir: string): Promise<string | undefined> {
   return zip ? join(dir, zip) : undefined;
 }
 
-async function collectFiles(root: string, dir: string): Promise<Array<{ relativePath: string; content: Buffer }>> {
-  const entries = await readdir(dir, { withFileTypes: true });
-  const files: Array<{ relativePath: string; content: Buffer }> = [];
-  for (const entry of entries) {
-    const fullPath = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...await collectFiles(root, fullPath));
-      continue;
-    }
-    const relativePath = relative(root, fullPath);
-    if (!relativePath || relativePath.startsWith('..')) {
-      continue;
-    }
-    files.push({
-      relativePath: relativePath.split(sep).join('/'),
-      content: await readFile(fullPath),
-    });
-  }
-  return files;
-}
-
 function normalizePlatform(raw: string): NormalizedPlatform {
   const key = raw.trim().toLowerCase();
   const normalized = key.startsWith('macos-') ? key.replace(/^macos-/, 'darwin-') : key;
@@ -246,9 +239,7 @@ function resolvePackageTemplate(platform: NormalizedPlatform): RunnerPackageTemp
   if (platform.arch !== 'amd64') {
     throw new AppError(400, 'RUNNER_PLATFORM_UNSUPPORTED', `Unsupported runner platform: ${platform.key}`);
   }
-  return platform.os === 'windows'
-    ? RUNNER_PACKAGE_TEMPLATES.windows
-    : RUNNER_PACKAGE_TEMPLATES.darwin;
+  return RUNNER_PACKAGE_TEMPLATES[platform.os];
 }
 
 function isSupportedOs(value: string | undefined): value is NormalizedPlatform['os'] {

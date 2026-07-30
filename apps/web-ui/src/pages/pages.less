@@ -387,15 +387,116 @@
   gap: 0.55rem;
 }
 
-.runner-action-link[aria-disabled="true"] {
-  pointer-events: none;
-  opacity: 0.5;
+.runner-platform-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.runner-platform-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0.24rem;
+  border-radius: 0.78rem;
+  background: rgba(226, 232, 240, 0.62);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.runner-platform-tab {
+  min-width: 6.4rem;
+  border: 0;
+  border-radius: 0.6rem;
+  padding: 0.48rem 0.72rem;
+  background: transparent;
+  color: var(--pg-text-muted);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.runner-platform-tab:hover {
+  color: var(--pg-brand-600);
+}
+
+.runner-platform-tab.is-active {
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--pg-brand-600);
+  box-shadow: var(--pg-shadow-1);
+  transform: translateY(-1px);
+}
+
+.runner-action-link {
+  min-height: 2.7rem;
+  padding: 0.68rem 1.25rem;
+  border-color: transparent;
+  background: var(--pg-brand-600);
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 650;
+  box-shadow: 0 10px 22px rgba(79, 70, 229, 0.22);
+}
+
+.runner-action-link:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--pg-brand-700, var(--pg-brand-600));
+  color: #fff;
+  box-shadow: 0 13px 26px rgba(79, 70, 229, 0.28);
+  transform: translateY(-1px);
+}
+
+.runner-action-link:active:not(:disabled) {
+  box-shadow: 0 7px 16px rgba(79, 70, 229, 0.2);
+  transform: translateY(0);
+}
+
+.runner-action-link:disabled {
+  border-color: transparent;
+  background: var(--pg-brand-600);
+  color: #fff;
+  opacity: 0.52;
 }
 
 .runner-commands {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.7rem;
+}
+
+.runner-install-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.runner-install-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.runner-install-heading h3 {
+  margin: 0;
+  color: var(--pg-text);
+  font-size: 0.82rem;
+}
+
+.runner-install-heading span {
+  border-radius: 999px;
+  padding: 0.18rem 0.48rem;
+  background: rgba(79, 70, 229, 0.1);
+  color: var(--pg-brand-600);
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+}
+
+.runner-install-note {
+  margin: 0;
+  color: var(--pg-text-muted);
+  font-size: 0.72rem;
 }
 
 .runner-command-block {
@@ -420,6 +521,10 @@
   font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.7rem;
   color: var(--pg-text);
+}
+
+.runner-command-block-combined pre {
+  line-height: 1.65;
 }
 
 .runner-token-tip {
@@ -775,6 +880,19 @@
 
   .runner-commands {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .runner-platform-tabs {
+    width: 100%;
+  }
+
+  .runner-platform-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .runner-platform-tab {
+    min-width: 0;
   }
 
   .mode-gate-overlay {

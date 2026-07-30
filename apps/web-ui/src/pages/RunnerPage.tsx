@@ -17,8 +17,19 @@ import {
 import './pages.less';
 
 type RunnerInstallState = 'NOT_INSTALLED' | 'OFFLINE' | 'CONNECTING' | 'ONLINE';
+type RunnerPlatform = 'windows' | 'macos' | 'linux';
 type NoticeState = { kind: 'success' | 'error'; message: string } | null;
 const RUNNER_TOKEN_STORAGE_KEY = 'af_webui_runner_token_issue';
+
+const RUNNER_PLATFORM_OPTIONS: Array<{
+  key: RunnerPlatform;
+  label: string;
+  downloadPlatform: RunnerDownloadPlatform;
+}> = [
+  { key: 'windows', label: 'Windows', downloadPlatform: 'windows-amd64' },
+  { key: 'macos', label: 'macOS', downloadPlatform: 'darwin-amd64' },
+  { key: 'linux', label: 'Linux', downloadPlatform: 'linux-amd64' },
+];
 
 function readErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
@@ -58,9 +69,9 @@ function persistTokenIssue(tokenIssue: RunnerTokenIssueResult): void {
   window.localStorage.setItem(RUNNER_TOKEN_STORAGE_KEY, JSON.stringify(tokenIssue));
 }
 
-function detectRunnerDownloadPlatform(): RunnerDownloadPlatform {
+function detectRunnerPlatform(): RunnerPlatform {
   if (typeof navigator === 'undefined') {
-    return 'linux-amd64';
+    return 'linux';
   }
 
   const navigatorWithPlatformData = navigator as Navigator & {
@@ -76,7 +87,7 @@ function detectRunnerDownloadPlatform(): RunnerDownloadPlatform {
     .toLowerCase();
 
   if (platform.includes('win')) {
-    return 'windows-amd64';
+    return 'windows';
   }
   if (
     platform.includes('mac')
@@ -84,26 +95,37 @@ function detectRunnerDownloadPlatform(): RunnerDownloadPlatform {
     || platform.includes('iphone')
     || platform.includes('ipad')
   ) {
-    return 'darwin-amd64';
+    return 'macos';
   }
-  return 'linux-amd64';
+  return 'linux';
 }
 
-function buildStartCommands(token: RunnerTokenIssueResult | null): {
-  macosLinuxGrpc: string;
-  windowsGrpc: string;
-} {
-  if (!token) {
-    return {
-      macosLinuxGrpc: './runner start --rpc_host 127.0.0.1:9201 --rpc_token <runner_token>',
-      windowsGrpc: '.\\runner.exe start --rpc_host 127.0.0.1:9201 --rpc_token <runner_token>',
-    };
+function getPlatformInstructions(platform: RunnerPlatform): Array<{ title: string; command: string }> {
+  if (platform === 'windows') {
+    return [
+      { title: '1. Extract package', command: 'Expand-Archive .\\agent-flow-runner-windows-amd64.zip -DestinationPath .\\agent-flow-runner' },
+      { title: '2. Enter directory', command: 'cd .\\agent-flow-runner' },
+      { title: '3. Start Runner', command: '.\\agent-flow-runner.exe start' },
+      { title: 'Optional: start automatically at login', command: '.\\agent-flow-runner.exe install-autostart' },
+    ];
   }
 
-  return {
-    macosLinuxGrpc: `./runner start --rpc_host ${token.grpcServerAddr} --rpc_token ${token.runnerToken}`,
-    windowsGrpc: `.\\runner.exe start --rpc_host ${token.grpcServerAddr} --rpc_token ${token.runnerToken}`,
-  };
+  if (platform === 'macos') {
+    return [
+      { title: '1. Extract package', command: 'unzip agent-flow-runner-darwin-amd64.zip -d agent-flow-runner' },
+      { title: '2. Enter directory and grant permission', command: 'cd agent-flow-runner && chmod +x ./agent-flow-runner' },
+      { title: '3. Start Runner', command: './agent-flow-runner start' },
+      { title: 'Optional: start automatically at login', command: './agent-flow-runner install-autostart' },
+    ];
+  }
+
+  return [
+    { title: '1. Extract package', command: 'unzip agent-flow-runner-linux-amd64.zip -d agent-flow-runner' },
+    { title: '2. Enter directory and grant permission', command: 'cd agent-flow-runner && chmod +x ./agent-flow-runner' },
+    { title: '3. Start Runner in foreground', command: './agent-flow-runner start' },
+    { title: 'Run in background', command: 'nohup ./agent-flow-runner start > runner.log 2>&1 &' },
+    { title: 'View background log', command: 'tail -f runner.log' },
+  ];
 }
 
 export function RunnerPage() {
@@ -114,6 +136,7 @@ export function RunnerPage() {
   const [notice, setNotice] = useState<NoticeState>(null);
   const [isCreatingToken, setIsCreatingToken] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState<RunnerPlatform>(() => detectRunnerPlatform());
   const [deletingRunnerId, setDeletingRunnerId] = useState<string | null>(null);
   const [approvalGrants, setApprovalGrants] = useState<RunnerApprovalGrant[]>([]);
   const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null);
@@ -210,7 +233,9 @@ export function RunnerPage() {
 
   const state = deriveState(runners, isConnecting);
   const onlineCount = runners.filter((runner) => runner.status === 'online').length;
-  const commands = buildStartCommands(tokenIssue);
+  const platformOption = RUNNER_PLATFORM_OPTIONS.find((option) => option.key === selectedPlatform)
+    ?? RUNNER_PLATFORM_OPTIONS[2];
+  const platformInstructions = getPlatformInstructions(selectedPlatform);
 
   const statusText = useMemo(() => {
     if (state === 'ONLINE') return `Runner online (${onlineCount})`;
@@ -239,10 +264,10 @@ export function RunnerPage() {
   const handleDownloadRunner = useCallback(async () => {
     setIsDownloading(true);
     try {
-      await downloadRunnerPackage(detectRunnerDownloadPlatform());
+      await downloadRunnerPackage(platformOption.downloadPlatform);
       setNotice({
         kind: 'success',
-        message: 'Runner package download started.',
+        message: `${platformOption.label} Runner package download started.`,
       });
     } catch (error: unknown) {
       setNotice({
@@ -252,7 +277,7 @@ export function RunnerPage() {
     } finally {
       setIsDownloading(false);
     }
-  }, []);
+  }, [platformOption]);
 
   const handleDeleteRunner = useCallback(async (runnerId: string) => {
     if (typeof window !== 'undefined') {
@@ -316,6 +341,27 @@ export function RunnerPage() {
             </p>
           </div>
 
+          <div className="runner-platform-row">
+            <div className="runner-platform-tabs" role="tablist" aria-label="Runner platform">
+              {RUNNER_PLATFORM_OPTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  className={`runner-platform-tab${selectedPlatform === option.key ? ' is-active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={selectedPlatform === option.key}
+                  onClick={() => setSelectedPlatform(option.key)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <button className="workspace-action-btn" onClick={() => void handleRefresh()} disabled={isLoading}>
+              Refresh Status
+            </button>
+          </div>
+
           <div className="runner-actions">
             <button
               className="workspace-action-btn runner-action-link"
@@ -323,22 +369,25 @@ export function RunnerPage() {
               onClick={() => void handleDownloadRunner()}
               disabled={isDownloading}
             >
-              {isDownloading ? 'Downloading...' : 'Download Runner'}
-            </button>
-
-            <button className="workspace-action-btn" onClick={() => void handleRefresh()} disabled={isLoading}>
-              Refresh Status
+              {isDownloading ? 'Downloading...' : `Download for ${platformOption.label}`}
             </button>
           </div>
 
-          <div className="runner-commands">
-            <div className="runner-command-block">
-              <h3>macOS / Linux</h3>
-              <pre>{commands.macosLinuxGrpc}</pre>
+          <div className="runner-install-guide">
+            <div className="runner-install-heading">
+              <h3>{platformOption.label} installation</h3>
+              <span>amd64</span>
             </div>
-            <div className="runner-command-block">
-              <h3>Windows PowerShell</h3>
-              <pre>{commands.windowsGrpc}</pre>
+            <p className="runner-install-note">
+              The downloaded package includes your connection config. Extract it, then run the production binary below.
+            </p>
+            <div className="runner-command-block runner-command-block-combined">
+              <h3>Installation commands</h3>
+              <pre>
+                {platformInstructions
+                  .map((instruction) => `# ${instruction.title}\n${instruction.command}`)
+                  .join('\n\n')}
+              </pre>
             </div>
           </div>
 
