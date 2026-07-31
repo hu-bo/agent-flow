@@ -332,11 +332,7 @@ export class SpecWorkflowService {
 }
 
 function extractMessageText(message: UnifiedMessage): string {
-  return message.content
-    .filter((part): part is Extract<UnifiedMessage['content'][number], { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n')
-    .trim();
+  return message.type === 'text' ? message.text.trim() : '';
 }
 
 function hasAllSections(content: string, sections: string[]): boolean {
@@ -419,7 +415,8 @@ export function createSpecPromptMessage(prompt: string, parentUuid: string | nul
     uuid: `spec_auto_${Date.now().toString(16)}_${Math.random().toString(16).slice(2, 10)}`,
     parentUuid,
     role: 'user',
-    content: [{ type: 'text', text: prompt }],
+    type: 'text',
+    text: prompt,
     timestamp: new Date().toISOString(),
     metadata: {
       isMeta: true,
@@ -445,7 +442,8 @@ function createSpecSummaryMessage(
 
   return {
     ...source,
-    content: [{ type: 'text', text: nextAction }],
+    type: 'text',
+    text: nextAction,
     metadata: {
       ...source.metadata,
       extensions: {

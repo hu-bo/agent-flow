@@ -118,7 +118,7 @@ export class RunnerRegistryService {
     runner.status = 'online';
     runner.lastSeenAt = new Date();
     runner.activeTasks = normalizeNonNegativeInteger(input.activeTasks, runner.activeTasks ?? 0);
-    runner.maxConcurrentTasks = Math.max(1, normalizeNonNegativeInteger(input.maxConcurrentTasks, runner.maxConcurrentTasks ?? 1));
+    runner.maxConcurrentTasks = Math.max(10, normalizeNonNegativeInteger(input.maxConcurrentTasks, runner.maxConcurrentTasks ?? 10));
     return this.runnerRepository.save(runner);
   }
 
@@ -225,7 +225,7 @@ export class RunnerRegistryService {
     runner.availableEngines = normalizeEngines(input.availableEngines ?? runner.availableEngines ?? ['host']);
     runner.logicalCpuCount = normalizeNonNegativeInteger(input.logicalCpuCount, runner.logicalCpuCount ?? 0);
     runner.memoryBytes = String(normalizeNonNegativeInteger(input.memoryBytes, Number(runner.memoryBytes ?? 0)));
-    runner.maxConcurrentTasks = Math.max(1, normalizeNonNegativeInteger(input.maxConcurrentTasks, runner.maxConcurrentTasks ?? 1));
+    runner.maxConcurrentTasks = Math.max(10, normalizeNonNegativeInteger(input.maxConcurrentTasks, runner.maxConcurrentTasks ?? 10));
     runner.activeTasks = normalizeNonNegativeInteger(input.activeTasks, runner.activeTasks ?? 0);
     runner.lastSeenAt = new Date();
     return this.runnerRepository.save(runner);

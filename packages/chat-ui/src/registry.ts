@@ -33,8 +33,7 @@ import { TextRenderer } from './renderers/TextRenderer';
 import { ThinkingRenderer } from './renderers/ThinkingRenderer';
 import { ImageRenderer } from './renderers/ImageRenderer';
 import { CodeDiffRenderer } from './renderers/CodeDiffRenderer';
-import { ToolCallRenderer } from './renderers/ToolCallRenderer';
-import { ToolResultRenderer } from './renderers/ToolResultRenderer';
+import { ToolExecutionRenderer } from './renderers/ToolExecutionRenderer';
 import { FileAttachmentRenderer } from './renderers/FileAttachmentRenderer';
 
 export function createDefaultRegistry(): ContentRendererRegistry {
@@ -43,7 +42,6 @@ export function createDefaultRegistry(): ContentRendererRegistry {
     .register('thinking', ThinkingRenderer)
     .register('image', ImageRenderer)
     .register('code-diff', CodeDiffRenderer)
-    .register('tool-call', ToolCallRenderer)
-    .register('tool-result', ToolResultRenderer)
+    .register('tool_execution', ToolExecutionRenderer)
     .register('file', FileAttachmentRenderer);
 }

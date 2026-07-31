@@ -97,19 +97,17 @@ describe('core runtime startup recovery', () => {
         uuid: 'runtime_thinking_req-1',
         parentUuid: null,
         role: 'assistant',
-        timestamp: now.toISOString(),
-        content: [{
-          type: 'thinking',
-          title: 'Thinking',
-          text: '## Plan\n1. Scan repository - success\n2. Summarize repository - pending',
+        type: 'thinking',
+        title: 'Thinking',
+        text: '## Plan\n1. Scan repository - success\n2. Summarize repository - pending',
+        status: 'running',
+        items: [{
+          key: 'plan',
+          title: 'Plan',
           status: 'running',
-          items: [{
-            key: 'plan',
-            title: 'Plan',
-            status: 'running',
-            content: '1. Scan repository - success\n2. Summarize repository - pending',
-          }],
+          content: '1. Scan repository - success\n2. Summarize repository - pending',
         }],
+        timestamp: now.toISOString(),
         metadata: {
           provider: 'core-runtime',
           isMeta: true,
@@ -147,13 +145,13 @@ describe('core runtime startup recovery', () => {
     ]);
     expect(replayRows[2]?.event.payload).toMatchObject({ stepId: 'repo.summary' });
     expect(thinkingMessage.payload.metadata.extensions).toMatchObject({ status: 'error' });
-    expect(thinkingMessage.payload.content[0]).toMatchObject({
+    expect(thinkingMessage.payload).toMatchObject({
       type: 'thinking',
       status: 'error',
       title: 'Complete thinking',
     });
-    expect(thinkingMessage.payload.content[0]?.type === 'thinking'
-      ? thinkingMessage.payload.content[0].items?.[0]?.content
+    expect(thinkingMessage.payload.type === 'thinking'
+      ? thinkingMessage.payload.items?.[0]?.content
       : undefined).toContain('Summarize repository - error');
   });
 });

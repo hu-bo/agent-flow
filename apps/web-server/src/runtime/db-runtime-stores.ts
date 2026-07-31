@@ -216,14 +216,12 @@ export class DbSessionStore implements SessionStore {
     const messageId = `runtime_thinking_${requestId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
     const message = await this.chatMessageRepository.findOne({ where: { messageId } });
     if (!message) return;
-    const needsRecovery = message.payload.content.some((part) =>
-      part.type === 'thinking' && (
-        part.status === 'pending' ||
-        part.status === 'running' ||
-        part.items?.some((item) => item.status === 'pending' || item.status === 'running') ||
-        / - (pending|running)$/m.test(part.text)
-      ),
-    );
+    if (message.payload.type !== 'thinking') return;
+    const needsRecovery =
+      message.payload.status === 'pending' ||
+      message.payload.status === 'running' ||
+      message.payload.items?.some((item) => item.status === 'pending' || item.status === 'running') ||
+      / - (pending|running)$/m.test(message.payload.text);
     if (!needsRecovery) return;
 
     message.payload = terminalizeThinkingPayload(message.payload, reason, recoveredAt);
@@ -237,37 +235,34 @@ function terminalizeThinkingPayload(
   reason: string,
   recoveredAt: Date,
 ): ChatMessageEntity['payload'] {
-  const content = payload.content.map((part) => {
-    if (part.type !== 'thinking') return part;
-    const items = (part.items ?? []).map((item) => ({
-      ...item,
-      status: item.status === 'pending' || item.status === 'running' ? 'error' as const : item.status,
-      content: item.key === 'plan'
-        ? item.content?.replace(/ - (pending|running)$/gm, ' - error')
-        : item.content,
-    }));
-    if (!items.some((item) => item.key === 'process-restart')) {
-      items.push({
-        key: 'process-restart',
-        title: 'Execution interrupted',
-        status: 'error',
-        content: reason,
-      });
-    }
-    return {
-      ...part,
-      title: 'Complete thinking',
-      status: 'error' as const,
-      text: items
-        .map((item) => item.content ? `## ${item.title ?? item.key}\n${item.content}` : `## ${item.title ?? item.key}`)
-        .join('\n\n'),
-      items,
-    };
-  });
+  if (payload.type !== 'thinking') {
+    return payload;
+  }
+
+  const items = (payload.items ?? []).map((item) => ({
+    ...item,
+    status: item.status === 'pending' || item.status === 'running' ? 'error' as const : item.status,
+    content: item.key === 'plan'
+      ? item.content?.replace(/ - (pending|running)$/gm, ' - error')
+      : item.content,
+  }));
+  if (!items.some((item) => item.key === 'process-restart')) {
+    items.push({
+      key: 'process-restart',
+      title: 'Execution interrupted',
+      status: 'error',
+      content: reason,
+    });
+  }
 
   return {
     ...payload,
-    content,
+    title: 'Complete thinking',
+    status: 'error',
+    text: items
+      .map((item) => item.content ? `## ${item.title ?? item.key}\n${item.content}` : `## ${item.title ?? item.key}`)
+      .join('\n\n'),
+    items,
     timestamp: recoveredAt.toISOString(),
     metadata: {
       ...payload.metadata,

@@ -126,17 +126,16 @@ describe('buildRuntimeThinkingMessage', () => {
 
     expect(message.uuid).toBe('runtime_thinking_req_1');
     expect(message.metadata.isMeta).toBe(true);
-    expect(message.content[0]).toMatchObject({
+    expect(message).toMatchObject({
       type: 'thinking',
       title: 'Complete thinking',
       status: 'success',
     });
 
-    const part = message.content[0];
-    if (!part || part.type !== 'thinking') {
-      throw new Error('Expected a thinking content part.');
+    if (message.type !== 'thinking') {
+      throw new Error('Expected a thinking message.');
     }
-    expect(part.items?.map((item) => item.key)).toEqual([
+    expect(message.items?.map((item) => item.key)).toEqual([
       'intent',
       'plan',
       'analysis',
@@ -144,10 +143,10 @@ describe('buildRuntimeThinkingMessage', () => {
       'verification',
       'result',
     ]);
-    expect(part.text).toContain('The repository is a multi-package agent workspace.');
-    expect(part.text).toContain('fs.list');
-    expect(part.text).toContain('12 entries');
-    expect(part.text).toContain('Verifier: repo-understanding');
-    expect(part.text).toContain('Round: 1');
+    expect(message.text).toContain('The repository is a multi-package agent workspace.');
+    expect(message.text).toContain('fs.list');
+    expect(message.text).toContain('12 entries');
+    expect(message.text).toContain('Verifier: repo-understanding');
+    expect(message.text).toContain('Round: 1');
   });
 });

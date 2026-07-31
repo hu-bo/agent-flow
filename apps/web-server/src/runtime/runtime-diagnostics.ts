@@ -1,13 +1,11 @@
 import type { UnifiedMessage } from '@agent-flow/core/messages';
+import { getMessageText } from '../lib/messages.js';
 
 export function isRuntimeDiagnosticMessage(message: UnifiedMessage): boolean {
   if (message.metadata.provider !== 'core-runtime') {
     return false;
   }
-  const text = message.content
-    .filter((part): part is Extract<UnifiedMessage['content'][number], { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n');
+  const text = getMessageText(message);
   return isRuntimeDiagnosticText(text);
 }
 

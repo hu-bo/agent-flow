@@ -36,8 +36,7 @@ export { TextRenderer } from './renderers/TextRenderer';
 export { ThinkingRenderer } from './renderers/ThinkingRenderer';
 export { ImageRenderer } from './renderers/ImageRenderer';
 export { CodeDiffRenderer } from './renderers/CodeDiffRenderer';
-export { ToolCallRenderer } from './renderers/ToolCallRenderer';
-export { ToolResultRenderer } from './renderers/ToolResultRenderer';
+export { ToolExecutionRenderer } from './renderers/ToolExecutionRenderer';
 export { FileAttachmentRenderer } from './renderers/FileAttachmentRenderer';
 
 // Types
@@ -53,15 +52,18 @@ export type {
   ThoughtChainItem,
   ThoughtChainItemStatus,
   CodeDiffPart,
+  ToolExecutionPart,
   // Re-exports from model-contracts
-  ContentPart,
   TextPart,
   ImagePart,
   ImageSource,
-  ToolCallPart,
-  ToolResultPart,
   FilePart,
   MessageRole,
+  MessageStatus,
+  TextMessage,
+  ImageMessage,
+  ToolExecution,
+  ToolExecutionMessage,
   UnifiedMessage,
   MessageMetadata,
   TokenUsage,

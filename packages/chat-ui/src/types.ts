@@ -1,30 +1,34 @@
 import type {
-  ContentPart,
   TextPart,
   ImagePart,
   ImageSource,
-  ToolCallPart,
-  ToolResultPart,
   FilePart,
   MessageRole,
+  TextMessage,
+  ImageMessage,
+  ToolExecutionMessage,
   UnifiedMessage,
   MessageMetadata,
+  MessageStatus,
+  ToolExecution,
   TokenUsage,
 } from '@agent-flow/core/messages';
 import type { ReactNode } from 'react';
 
 // Re-export base types
 export type {
-  ContentPart,
   TextPart,
   ImagePart,
   ImageSource,
-  ToolCallPart,
-  ToolResultPart,
   FilePart,
   MessageRole,
+  TextMessage,
+  ImageMessage,
+  ToolExecutionMessage,
   UnifiedMessage,
   MessageMetadata,
+  MessageStatus,
+  ToolExecution,
   TokenUsage,
 };
 
@@ -73,13 +77,13 @@ export interface CodeDiffPart {
   newCode: string;
 }
 
+export type ToolExecutionPart = ToolExecutionMessage;
+
 /** All content parts the chat-ui understands */
-export type ChatContentPart = ContentPart | ThinkingPart | CodeDiffPart;
+export type ChatContentPart = TextPart | ImagePart | FilePart | ThinkingPart | ToolExecutionPart | CodeDiffPart;
 
 /** Chat message with extended content types */
-export interface ChatMessage extends Omit<UnifiedMessage, 'content'> {
-  content: ChatContentPart[];
-}
+export type ChatMessage = UnifiedMessage;
 
 /** File attachment metadata */
 export interface FileAttachment {

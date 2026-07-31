@@ -170,7 +170,7 @@ export async function createChatHandler(request: FastifyRequest, reply: FastifyR
             sendDelta({ o: 'patch', v: patchOps });
           }
 
-          const pointer = `/messages/${escapedMsgId}/content/0/text`;
+          const pointer = `/messages/${escapedMsgId}/text`;
           sendAppend(pointer, event.delta);
           continue;
         }
@@ -332,7 +332,8 @@ function createAssistantSkeletonMessage(uuid: string): UnifiedMessage {
     uuid,
     parentUuid: null,
     role: 'assistant',
-    content: [{ type: 'text', text: '' }],
+    type: 'text',
+    text: '',
     timestamp: new Date().toISOString(),
     metadata: {},
   };
@@ -351,7 +352,6 @@ function toClientMessage(message: UnifiedMessage): UnifiedMessage {
 
   return {
     ...message,
-    content: [...message.content],
     metadata: nextMetadata,
   };
 }

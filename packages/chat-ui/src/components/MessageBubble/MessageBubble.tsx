@@ -1,6 +1,6 @@
 import './MessageBubble.less';
 import { useMemo } from 'react';
-import type { ChatMessage } from '../../types';
+import type { ChatContentPart, ChatMessage } from '../../types';
 import {
   ContentRendererRegistry,
   createDefaultRegistry,
@@ -92,11 +92,12 @@ export function MessageBubble({
   const isTool = message.role === 'tool';
   const roleClass = isUser ? 'is-user' : isTool ? 'is-tool' : 'is-assistant';
   const showActions = !isUser && !isTool && !message.metadata?.isMeta && Boolean(onRetry || onCopy);
+  const parts = useMemo(() => getMessageParts(message), [message]);
 
   return (
     <div className={`chat-ui-message-row ${roleClass}`}>
       <div className={`chat-ui-bubble ${roleClass}`}>
-        {message.content.map((part, i) => {
+        {parts.map((part, i) => {
           const Renderer = reg.get(part.type);
           if (Renderer) {
             return (
@@ -151,4 +152,23 @@ export function MessageBubble({
       </div>
     </div>
   );
+}
+
+function getMessageParts(message: ChatMessage): ChatContentPart[] {
+  if (message.type === 'text') {
+    return [
+      { type: 'text', text: message.text },
+      ...(message.attachments ?? []),
+    ];
+  }
+
+  if (message.type === 'thinking' || message.type === 'tool_execution') {
+    return [message];
+  }
+
+  if (message.type === 'image') {
+    return [{ type: 'image', source: message.source }];
+  }
+
+  return [];
 }

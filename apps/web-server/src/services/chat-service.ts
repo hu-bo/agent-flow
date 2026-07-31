@@ -2,7 +2,7 @@ import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { MemoryService } from '@agent-flow/memory';
 import type { ChatStreamEvent, ReasoningEffort, RunnerPlatformProfile, SessionRecord } from '../contracts/api.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
-import { createUnifiedMessage, createUserContent } from '../lib/messages.js';
+import { createUserTextMessage, getMessageText } from '../lib/messages.js';
 import type { RuntimeTurnEngine } from '../runtime/runtime-turn-engine.js';
 import type { RunnerRegistryService } from './runner-registry-service.js';
 import { createSpecPromptMessage, type SpecWorkflowService } from './spec-workflow-service.js';
@@ -359,9 +359,7 @@ export class ChatService {
       selectedArtifacts: input.selectedArtifacts,
     });
     const actionAnswerMessage = input.actionAnswer?.trim()
-      ? createUnifiedMessage({
-          role: 'user',
-          content: createUserContent(input.actionAnswer.trim()),
+      ? createUserTextMessage(input.actionAnswer.trim(), [], {
           parentUuid: (await this.sessionService.listMessages(input.sessionId)).at(-1)?.uuid ?? null,
           metadata: {
             extensions: {
@@ -421,9 +419,7 @@ export class ChatService {
     }
 
     const history = await this.sessionService.listMessages(session.sessionId);
-    const baseUserMessage = createUnifiedMessage({
-      role: 'user',
-      content: createUserContent(input.message, input.attachments ?? []),
+    const baseUserMessage = createUserTextMessage(input.message, input.attachments ?? [], {
       parentUuid: history.at(-1)?.uuid ?? null,
       metadata: {
         modelId: String(modelId),
@@ -483,14 +479,12 @@ export class ChatService {
       session,
       phase: workflow.phase,
     });
-    const textParts = message.content
-      .filter((part): part is Extract<UnifiedMessage['content'][number], { type: 'text' }> => part.type === 'text');
-    const original = textParts.map((part) => part.text).join('\n').trim();
+    const original = message.type === 'text' ? message.text.trim() : '';
     const wrapped = [phasePrompt, '', 'User input:', original || '(empty)'].join('\n');
 
     return {
       ...message,
-      content: message.content.map((part) => (part.type === 'text' ? { ...part, text: wrapped } : part)),
+      ...(message.type === 'text' ? { text: wrapped } : {}),
       metadata: {
         ...message.metadata,
         extensions: {
@@ -550,19 +544,7 @@ export class ChatService {
 }
 
 function extractMemoryText(message: UnifiedMessage): string {
-  return message.content
-    .map((part) => {
-      if (part.type === 'text') return part.text;
-      if (part.type === 'file') return `[file:${part.mimeType}]`;
-      if (part.type === 'tool-call') return `[tool-call:${part.toolName}]`;
-      if (part.type === 'tool-result') return `[tool-result:${part.toolName}]`;
-      if (part.type === 'thinking') return part.text;
-      if (part.type === 'image') return '[image]';
-      return '';
-    })
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  return getMessageText(message).trim();
 }
 
 interface RetryRequestParts {
@@ -590,7 +572,7 @@ function resolveRetryRequest(messages: UnifiedMessage[], messageId: string): Ret
   return {
     retryUserIndex,
     retryText: extractRetryText(userMessage),
-    retryAttachments: userMessage.content.filter((part): part is FilePart => part.type === 'file'),
+    retryAttachments: userMessage.type === 'text' ? userMessage.attachments ?? [] : [],
   };
 }
 
@@ -604,10 +586,7 @@ function resolveRetryUserIndex(messages: UnifiedMessage[], targetIndex: number):
 }
 
 function extractRetryText(message: UnifiedMessage): string {
-  const textPart = message.content.find(
-    (part): part is { type: 'text'; text: string } => part.type === 'text',
-  );
-  const text = textPart?.text?.trim();
+  const text = message.type === 'text' ? message.text.trim() : '';
   if (!text) {
     throw new ValidationError('The selected message does not contain retryable text');
   }

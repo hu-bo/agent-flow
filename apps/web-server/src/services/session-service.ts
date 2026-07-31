@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { UnifiedMessage } from '@agent-flow/core/messages';
+import type { ToolExecutionMessage, UnifiedMessage } from '@agent-flow/core/messages';
 import type { Repository } from 'typeorm';
 import type { AppDataSource } from '../db/data-source.js';
 import { ChatMessageEntity } from '../db/entities/chat-message.entity.js';
@@ -7,6 +7,7 @@ import { ChatSessionEntity } from '../db/entities/chat-session.entity.js';
 import { ProjectEntity } from '../db/entities/project.entity.js';
 import type { SessionMode, SessionRecord, SessionState, SpecWorkflowState } from '../contracts/api.js';
 import { NotFoundError } from '../lib/errors.js';
+import { getMessageText } from '../lib/messages.js';
 
 interface CreateSessionInput {
   ownerUserId: string;
@@ -33,13 +34,7 @@ function normalizeSessionTitle(text: string | undefined): string | undefined {
 
 function extractUserQueryTitle(messages: UnifiedMessage[]): string | undefined {
   const firstUserMessage = messages.find((message) => message.role === 'user');
-  const text = firstUserMessage?.content
-    .filter(
-      (part): part is Extract<UnifiedMessage['content'][number], { type: 'text' }> =>
-        part.type === 'text',
-    )
-    .map((part) => part.text)
-    .join(' ');
+  const text = firstUserMessage ? getMessageText(firstUserMessage) : undefined;
 
   return normalizeSessionTitle(text);
 }
@@ -206,9 +201,10 @@ export class SessionService {
     const session = await this.getSessionEntity(sessionId);
     const existing = await this.messageRepository.findOne({ where: { messageId: message.uuid } });
     if (existing) {
-      existing.role = message.role;
-      existing.timestamp = new Date(message.timestamp);
-      existing.payload = message;
+      const merged = mergeExistingMessage(existing.payload, message);
+      existing.role = merged.role;
+      existing.timestamp = new Date(merged.timestamp);
+      existing.payload = merged;
       await this.messageRepository.save(existing);
     } else {
       const count = await this.messageRepository.count({ where: { sessionId } });
@@ -315,6 +311,41 @@ export class SessionService {
       await this.projectRepository.update({ projectId: session.projectId }, { updatedAt: new Date() });
     }
   }
+}
+
+function mergeExistingMessage(existing: UnifiedMessage, next: UnifiedMessage): UnifiedMessage {
+  if (existing.type !== 'tool_execution' || next.type !== 'tool_execution') {
+    return next;
+  }
+
+  return {
+    ...existing,
+    ...next,
+    timestamp: existing.timestamp,
+    updatedAt: next.updatedAt ?? next.timestamp,
+    metadata: {
+      ...existing.metadata,
+      ...next.metadata,
+      extensions: {
+        ...(existing.metadata.extensions ?? {}),
+        ...(next.metadata.extensions ?? {}),
+      },
+    },
+    tool: mergeToolExecution(existing, next),
+  };
+}
+
+function mergeToolExecution(
+  existing: ToolExecutionMessage,
+  next: ToolExecutionMessage,
+): ToolExecutionMessage['tool'] {
+  return {
+    ...existing.tool,
+    ...next.tool,
+    input: next.tool.input ?? existing.tool.input,
+    output: next.tool.output ?? existing.tool.output,
+    error: next.tool.error ?? existing.tool.error ?? null,
+  };
 }
 
 export function toSessionRecord(entity: ChatSessionEntity): SessionRecord {

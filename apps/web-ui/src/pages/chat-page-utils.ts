@@ -1,5 +1,5 @@
 import type { ChatMessage, FileAttachment, TokenUsageSummary } from '@agent-flow/chat-ui';
-import type { TokenUsage } from '@agent-flow/core/messages';
+import type { FilePart, TokenUsage } from '@agent-flow/core/messages';
 import type { RunnerRecord } from '../api';
 
 export type NoticeState = { kind: 'success' | 'error'; message: string } | null;
@@ -43,27 +43,25 @@ export function buildTokenUsage(
 }
 
 function estimateMessageTokens(message: ChatMessage): number {
-  return message.content.reduce((total, part) => total + estimateContentPartTokens(part), 0);
+  switch (message.type) {
+    case 'text':
+      return estimateTextTokens(message.text) + estimateFileTokens(message.attachments ?? []);
+    case 'thinking':
+      return estimateTextTokens(message.text);
+    case 'image':
+      return message.source.type === 'base64' ? Math.ceil(message.source.data.length / 4) : 0;
+    case 'tool_execution':
+      return estimateTextTokens([
+        message.tool.name,
+        safeJsonStringify(message.tool.input),
+        safeJsonStringify(message.tool.output),
+        message.tool.error ?? '',
+      ].join(' '));
+  }
 }
 
-function estimateContentPartTokens(part: ChatMessage['content'][number]): number {
-  switch (part.type) {
-    case 'text':
-    case 'thinking':
-      return estimateTextTokens(part.text);
-    case 'file':
-      // File data is base64 encoded. Four base64 characters represent three
-      // source bytes, so this deliberately stays a conservative estimate.
-      return Math.ceil(part.data.length / 4);
-    case 'image':
-      return part.source.type === 'base64' ? Math.ceil(part.source.data.length / 4) : 0;
-    case 'tool-call':
-      return estimateTextTokens(`${part.toolName} ${safeJsonStringify(part.input)}`);
-    case 'tool-result':
-      return estimateTextTokens(`${part.toolName} ${safeJsonStringify(part.output)}`);
-    default:
-      return 0;
-  }
+function estimateFileTokens(files: FilePart[]): number {
+  return files.reduce((total, file) => total + Math.ceil(file.data.length / 4), 0);
 }
 
 function estimateTextTokens(text: string): number {
@@ -85,11 +83,7 @@ export function extractAssistantMarkdown(messages: ChatMessage[]): string {
   if (!target) {
     return '';
   }
-  return target.content
-    .filter((part): part is Extract<ChatMessage['content'][number], { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n')
-    .trim();
+  return target.type === 'text' ? target.text.trim() : '';
 }
 
 function safeJsonStringify(value: unknown): string {
@@ -101,28 +95,20 @@ function safeJsonStringify(value: unknown): string {
 }
 
 export function stringifyMessageForCopy(message: ChatMessage): string {
-  return message.content
-    .map((part) => {
-      if (part.type === 'text') return part.text;
-      if (part.type === 'thinking') return part.text;
-      if (part.type === 'file') return `[file:${part.mimeType}]`;
-      if (part.type === 'image') return '[image]';
-      if (part.type === 'tool-call') return `[tool-call:${part.toolName}] ${safeJsonStringify(part.input)}`;
-      if (part.type === 'tool-result') return `[tool-result:${part.toolName}] ${safeJsonStringify(part.output)}`;
-      if (part.type === 'code-diff') {
-        return [
-          `[code-diff:${part.filename ?? 'untitled'}.${part.language}]`,
-          '--- OLD ---',
-          part.oldCode,
-          '--- NEW ---',
-          part.newCode,
-        ].join('\n');
-      }
-      return safeJsonStringify(part);
-    })
-    .filter((value) => value.trim().length > 0)
-    .join('\n\n')
-    .trim();
+  if (message.type === 'text') {
+    return [
+      message.text,
+      ...(message.attachments ?? []).map((file) => `[file:${file.mimeType}]`),
+    ].filter(Boolean).join('\n\n').trim();
+  }
+  if (message.type === 'thinking') return message.text.trim();
+  if (message.type === 'image') return (message.text ?? '[image]').trim();
+  return [
+    `[tool:${message.tool.name} ${message.status}]`,
+    message.tool.input === undefined ? '' : `input: ${safeJsonStringify(message.tool.input)}`,
+    message.tool.output === undefined ? '' : `output: ${safeJsonStringify(message.tool.output)}`,
+    message.tool.error ? `error: ${message.tool.error}` : '',
+  ].filter((value) => value.trim().length > 0).join('\n');
 }
 
 export async function copyToClipboard(content: string): Promise<void> {

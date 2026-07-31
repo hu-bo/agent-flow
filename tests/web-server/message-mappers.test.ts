@@ -9,7 +9,8 @@ function message(overrides: Partial<UnifiedMessage>): UnifiedMessage {
     uuid: 'm1',
     parentUuid: null,
     role: 'user',
-    content: [{ type: 'text', text: 'hello' }],
+    type: 'text',
+    text: 'hello',
     timestamp: '2026-01-01T00:00:00.000Z',
     metadata: {},
     ...overrides,
@@ -56,7 +57,8 @@ describe('message-mappers', () => {
       message({
         uuid: 'diag',
         role: 'assistant',
-        content: [{ type: 'text', text: 'Latest output:\n{"mode": "placeholder"}' }],
+        type: 'text',
+        text: 'Latest output:\n{"mode": "placeholder"}',
         metadata: { provider: 'core-runtime' },
       }),
     ]);
@@ -64,70 +66,78 @@ describe('message-mappers', () => {
     expect(messages.map((item) => item.id)).toEqual(['keep']);
   });
 
-  it('maps files, images, and tool parts into adapter parts', () => {
+  it('maps text attachments and images into adapter parts', () => {
     const parts = toAdapterParts(message({
-      content: [
-        { type: 'file', mimeType: 'text/plain', data: 'abc' },
-        { type: 'image', source: { type: 'url', url: 'https://example.com/a.png' } },
-        { type: 'tool-call', toolCallId: 'call1', toolName: 'fs.read', input: { path: 'a' } },
-        { type: 'tool-result', toolCallId: 'call1', toolName: 'fs.read', output: { ok: true }, isError: false },
-      ],
+      text: '',
+      attachments: [{ type: 'file', mimeType: 'text/plain', data: 'abc' }],
+    }));
+    const imageParts = toAdapterParts(message({
+      role: 'user',
+      type: 'image',
+      source: { type: 'url', url: 'https://example.com/a.png' },
     }));
 
     expect(parts).toMatchObject([
       { type: 'text', text: '[Attached file: mime=text/plain, base64Length=3]' },
+    ]);
+    expect(imageParts).toMatchObject([
       { type: 'image', source: { kind: 'url', url: 'https://example.com/a.png' } },
-      { type: 'tool-call', callId: 'call1', toolName: 'fs.read' },
-      { type: 'tool-result', callId: 'call1', toolName: 'fs.read', isError: false },
     ]);
   });
 
   it('clones streamed message events before returning them', () => {
     const source = message({ metadata: { extensions: { model: 'x' } } });
     const event = toMessageEvent(source);
-    source.content.push({ type: 'text', text: 'mutated' });
+    source.text = 'mutated';
 
     expect(event.type).toBe('msg');
     if (event.type === 'msg') {
-      expect(event.msg.content).toHaveLength(1);
+      expect(event.msg.type).toBe('text');
+      expect(event.msg.type === 'text' ? event.msg.text : '').toBe('hello');
       expect(event.msg.metadata.extensions).toEqual({ model: 'x' });
     }
   });
 
-  it('maps session.verification and session.blocked progress events', () => {
-    const verification = toProgressMessage(
+  it('maps tool progress into compact tool execution messages', () => {
+    const called = toProgressMessage(
       runtimeInput(),
       null,
-      runtimeEvent('session.verification', {
-        round: 2,
-        status: 'failed',
-        verifierName: 'repo-understanding',
-        reason: 'Missing direct evidence.',
-        missingEvidence: ['README.md'],
-        nextAction: 'Read README.md',
-        completionSignalObserved: false,
+      runtimeEvent('tool.called', {
+        stepId: 'step_1',
+        title: 'Read package',
+        tool: 'fs.read',
+        input: { path: 'package.json' },
       }),
     );
-    const blocked = toProgressMessage(
+    const result = toProgressMessage(
       runtimeInput(),
       null,
-      runtimeEvent('session.blocked', {
-        reason: 'Verification did not pass within 3 rounds.',
-        rounds: 3,
-        verifierName: 'repo-understanding',
-        missingEvidence: ['README.md'],
-        nextAction: 'Needs user input.',
+      runtimeEvent('tool.result', {
+        stepId: 'step_1',
+        title: 'Read package',
+        tool: 'fs.read',
+        ok: true,
+        output: { path: 'package.json', size: 128 },
       }),
+    );
+    const sessionEvent = toProgressMessage(
+      runtimeInput(),
+      null,
+      runtimeEvent('session.verification', { status: 'failed' }),
     );
 
-    expect(verification?.content[0]).toMatchObject({
-      type: 'tool-result',
-      toolName: 'agent.verification',
+    expect(called).toMatchObject({
+      type: 'tool_execution',
+      status: 'running',
+      stepId: 'step_1',
+      tool: { name: 'fs.read', input: { path: 'package.json' } },
     });
-    expect(blocked?.content[0]).toMatchObject({
-      type: 'tool-result',
-      toolName: 'agent.session',
-      isError: true,
+    expect(result).toMatchObject({
+      uuid: called?.uuid,
+      type: 'tool_execution',
+      status: 'success',
+      tool: { name: 'fs.read', output: { path: 'package.json', size: 128 } },
     });
+    expect(sessionEvent).toBeUndefined();
   });
 });

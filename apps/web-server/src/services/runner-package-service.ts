@@ -82,6 +82,7 @@ export class RunnerPackageService {
       if (zip.getEntries().length === 0 || buffer.byteLength === 0) {
         throw new AppError(500, 'RUNNER_PACKAGE_BUILD_FAILED', 'Generated runner package is empty');
       }
+      validateGeneratedPackage(buffer);
 
       return {
         fileName: packageTemplate.fileName,
@@ -137,7 +138,8 @@ async function updateRunnerConfig(extractDir: string, runnerToken: string): Prom
 
   let config: unknown;
   try {
-    config = JSON.parse(await readFile(configPath, 'utf8'));
+    const configText = await readFile(configPath, 'utf8');
+    config = JSON.parse(configText.replace(/^\uFEFF/, ''));
   } catch {
     throw new AppError(400, 'RUNNER_TEMPLATE_INVALID', 'Runner template config.json is not valid JSON');
   }
@@ -154,6 +156,18 @@ async function updateRunnerConfig(extractDir: string, runnerToken: string): Prom
     }, null, 2)}\n`,
     'utf8',
   );
+}
+
+function validateGeneratedPackage(buffer: Buffer): void {
+  try {
+    const zip = new AdmZip(buffer);
+    const entries = zip.getEntries();
+    if (entries.length === 0 || !entries.some((entry) => !entry.isDirectory && entry.entryName.endsWith('config.json'))) {
+      throw new Error('Required files are missing');
+    }
+  } catch {
+    throw new AppError(500, 'RUNNER_PACKAGE_BUILD_FAILED', 'Generated runner package is not a valid zip');
+  }
 }
 
 async function findConfigFile(dir: string): Promise<string | undefined> {

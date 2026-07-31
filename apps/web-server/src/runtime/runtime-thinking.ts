@@ -1,5 +1,5 @@
 import type { AgentEvent, AgentRunResult, LlmStepOutputPhase } from '@agent-flow/core';
-import type { ThinkingPart, ThoughtChainItemPart, ThinkingStatus, UnifiedMessage } from '@agent-flow/core/messages';
+import type { ThoughtChainItemPart, ThinkingStatus, UnifiedMessage } from '@agent-flow/core/messages';
 import type { RuntimeChatInput } from '../contracts/api.js';
 import type { RunnerDirective, RuntimeMode } from './runtime-types.js';
 import { formatUnknown, isPlainObject, truncateText } from './runtime-types.js';
@@ -51,28 +51,11 @@ export function buildRuntimeThinkingMessage(options: RuntimeThinkingMessageOptio
   const items = buildThinkingItems(options, status);
   const now = Date.now();
   const durationMs = Math.max(0, now - options.startedAt);
-  const part: ThinkingPart = {
-    type: 'thinking',
-    title: status === 'running' ? 'Thinking' : 'Complete thinking',
-    text: items
-      .map((item) => {
-        const title = typeof item.title === 'string' ? item.title : item.key;
-        const content = typeof item.content === 'string' ? item.content : '';
-        return content ? `## ${title}\n${content}` : `## ${title}`;
-      })
-      .join('\n\n'),
-    status,
-    durationMs,
-    defaultOpen: true,
-    defaultExpandedKeys: items.map((item) => item.key),
-    items,
-  };
-
   return {
     uuid: `runtime_thinking_${sanitizeMessageId(options.input.requestId)}`,
     parentUuid: options.parentUuid,
     role: 'assistant',
-    content: [part],
+    type: 'thinking',
     timestamp: new Date().toISOString(),
     metadata: {
       modelId: String(options.input.modelId),
@@ -87,6 +70,19 @@ export function buildRuntimeThinkingMessage(options: RuntimeThinkingMessageOptio
         status,
       },
     },
+    title: status === 'running' ? 'Thinking' : 'Complete thinking',
+    text: items
+      .map((item) => {
+        const title = typeof item.title === 'string' ? item.title : item.key;
+        const content = typeof item.content === 'string' ? item.content : '';
+        return content ? `## ${title}\n${content}` : `## ${title}`;
+      })
+      .join('\n\n'),
+    status,
+    durationMs,
+    defaultOpen: true,
+    defaultExpandedKeys: items.map((item) => item.key),
+    items,
   };
 }
 

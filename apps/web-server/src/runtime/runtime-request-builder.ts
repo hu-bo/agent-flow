@@ -1,7 +1,7 @@
 import type { AgentRunRequest, ContextFragmentInput } from '@agent-flow/core';
 import type { RecalledMemory } from '@agent-flow/memory';
 import type { RuntimeChatInput } from '../contracts/api.js';
-import { summarizeMessages } from '../lib/messages.js';
+import { getMessageText, summarizeMessages } from '../lib/messages.js';
 import { isRuntimeDiagnosticMessage } from './runtime-diagnostics.js';
 import { renderEnvironmentContext } from './runtime-renderers.js';
 import type { RunnerDirective, RuntimeMode } from './runtime-types.js';
@@ -120,22 +120,5 @@ export function buildToolContextMetadata(input: RuntimeChatInput): Record<string
 }
 
 function toContextText(message: RuntimeChatInput['history'][number]): string {
-  const text = message.content
-    .map((part) => {
-      if (part.type === 'text') return part.text;
-      if (part.type === 'file') return `[file ${part.mimeType}, base64Length=${part.data.length}]`;
-      if (part.type === 'tool-call') return `[tool-call ${part.toolName}]`;
-      if (part.type === 'tool-result') return `[tool-result ${part.toolName}]`;
-      if (part.type === 'image') {
-        if (part.source.type === 'url') {
-          return `[image url=${part.source.url}]`;
-        }
-        return `[image base64Length=${part.source.data.length}]`;
-      }
-      return '';
-    })
-    .filter(Boolean)
-    .join(' ');
-
-  return `${message.role}: ${text}`.trim();
+  return `${message.role}: ${getMessageText(message)}`.trim();
 }

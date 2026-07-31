@@ -240,7 +240,7 @@ export class ModelChatDriver {
     if (responseText.trim().length === 0) {
       responseText = 'The model returned no text for this turn.';
     }
-    finalMessage.content = [{ type: 'text', text: responseText }];
+    finalMessage.text = responseText;
     finalMessage.timestamp = new Date().toISOString();
     finalMessage.metadata = {
       ...finalMessage.metadata,
@@ -251,7 +251,7 @@ export class ModelChatDriver {
         finishReason,
       },
     };
-    onEvent(toMessageEvent({ ...finalMessage, content: [...finalMessage.content], metadata: { ...finalMessage.metadata } }));
+    onEvent(toMessageEvent({ ...finalMessage, metadata: { ...finalMessage.metadata } }));
 
     this.logger?.info('chat.turn.completed', 'model chat stream completed', {
       attributes: {

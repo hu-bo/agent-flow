@@ -1,7 +1,44 @@
-@import "./ToolCallRenderer.less";
+.chat-ui-tool-block {
+  margin: 0.3rem 0;
+}
+
+.chat-ui-tool-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 0;
+  background: none;
+  color: var(--chat-text-muted);
+  font-size: 0.72rem;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-ui-tool-toggle:hover {
+  color: var(--chat-text-primary);
+}
 
 .chat-ui-tool-toggle.is-error {
   color: var(--chat-danger-text);
+}
+
+.chat-ui-tool-arrow {
+  color: var(--chat-text-subtle);
+}
+
+.chat-ui-tool-payload {
+  margin-top: 0.3rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--chat-border);
+  background: #f7faff;
+  padding: 0.5rem 0.65rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.72rem;
+  font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  color: var(--chat-text-primary);
 }
 
 .chat-ui-tool-payload.is-error {
@@ -46,7 +83,6 @@
 
 .chat-ui-tool-diff-title {
   font-size: 0.76rem;
-  letter-spacing: 0.01em;
 }
 
 .chat-ui-tool-diff-stats {

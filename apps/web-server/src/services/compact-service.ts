@@ -1,6 +1,6 @@
 import { AutoCompactor, estimateItemsTokens, type CompactItem } from '@agent-flow/compact';
 import type { UnifiedMessage } from '@agent-flow/core/messages';
-import { createTextMessage } from '../lib/messages.js';
+import { createTextMessage, getMessageText } from '../lib/messages.js';
 import { SessionService } from './session-service.js';
 
 export interface CompactSessionResult {
@@ -169,18 +169,7 @@ function computeImportance(role: UnifiedMessage['role'], index: number, size: nu
 }
 
 function toMessageText(message: UnifiedMessage): string {
-  const partText = message.content
-    .map((part) => {
-      if (part.type === 'text') return part.text;
-      if (part.type === 'tool-call') return `[tool-call:${part.toolName}]`;
-      if (part.type === 'tool-result') return `[tool-result:${part.toolName}]`;
-      if (part.type === 'file') return `[file:${part.mimeType}]`;
-      if (part.type === 'image') return '[image]';
-      return '';
-    })
-    .filter(Boolean)
-    .join(' ');
-  return `${message.role}: ${partText}`.trim();
+  return `${message.role}: ${getMessageText(message)}`.trim();
 }
 
 function findLatestUserPrompt(messages: UnifiedMessage[]): string | undefined {
@@ -188,9 +177,5 @@ function findLatestUserPrompt(messages: UnifiedMessage[]): string | undefined {
   if (!latestUser) {
     return undefined;
   }
-  return latestUser.content
-    .map((part) => (part.type === 'text' ? part.text : ''))
-    .filter(Boolean)
-    .join(' ')
-    .trim();
+  return latestUser.type === 'text' ? latestUser.text.trim() : undefined;
 }

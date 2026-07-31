@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
-import type { ContentPart, FilePart, TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
+import type { FilePart, TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
 import {
   cancelChat,
   fetchSession,
@@ -70,12 +70,10 @@ function attachmentToFilePart(attachment: FileAttachment): FilePart | null {
   };
 }
 
-function createUserContent(text: string, attachments?: FileAttachment[]): ContentPart[] {
-  const content: ContentPart[] = [{ type: 'text', text }];
-  const fileParts = (attachments ?? [])
+function createUserAttachments(attachments?: FileAttachment[]): FilePart[] {
+  return (attachments ?? [])
     .map(attachmentToFilePart)
     .filter((part): part is FilePart => part !== null);
-  return fileParts.length ? [...content, ...fileParts] : content;
 }
 
 function toClientMessage(message: UnifiedMessage): UnifiedMessage {
@@ -91,7 +89,6 @@ function toClientMessage(message: UnifiedMessage): UnifiedMessage {
 
   return {
     ...message,
-    content: [...message.content],
     metadata: nextMetadata,
   };
 }
@@ -258,11 +255,14 @@ export function useChat(): UseChatReturn {
       }
 
       activeSessionRef.current = sessionId;
+      const attachmentParts = createUserAttachments(attachments);
       const userMsg: UnifiedMessage = {
         uuid: createMessageId(),
         parentUuid: null,
         role: 'user',
-        content: createUserContent(userInput, attachments),
+        type: 'text',
+        text: userInput,
+        ...(attachmentParts.length > 0 ? { attachments: attachmentParts } : {}),
         timestamp: new Date().toISOString(),
         metadata: model ? { modelId: String(model) } : {},
       };
@@ -278,10 +278,6 @@ export function useChat(): UseChatReturn {
 
       const controller = new AbortController();
       streamAbortRef.current = controller;
-
-      const attachmentParts = (attachments ?? [])
-        .map(attachmentToFilePart)
-        .filter((part): part is FilePart => part !== null);
 
       try {
         let lastSpecDocs: Partial<Record<SpecDocType, string>> = {};

@@ -51,12 +51,8 @@ function getSpecDocument(workflow: SpecWorkflowState | null): string {
   return workflow.documents?.[workflow.phase] ?? '';
 }
 
-function getMessageText(message: { content: Array<{ type: string; text?: string }> }): string {
-  return message.content
-    .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n')
-    .trim();
+function getMessageText(message: ChatMessage): string {
+  return message.type === 'text' ? message.text.trim() : '';
 }
 
 function isSpecDocumentMessage(message: ChatMessage): boolean {
@@ -173,7 +169,8 @@ function createOptimisticActionMessage(text: string): ChatMessage {
     uuid: createLocalMessageId(),
     parentUuid: null,
     role: 'user',
-    content: [{ type: 'text', text }],
+    type: 'text',
+    text,
     timestamp: new Date().toISOString(),
     metadata: {},
   };

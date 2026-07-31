@@ -1,10 +1,12 @@
-import './ToolResultRenderer.less';
+import './ToolExecutionRenderer.less';
 import { useState } from 'react';
 import type { ContentRendererProps } from '../registry';
-import type { ToolResultPart, RunnerFilesChangedPayload } from '@agent-flow/core/messages';
+import type { ToolExecutionPart } from '../types';
+import type { RunnerFilesChangedPayload } from '@agent-flow/core/messages';
 import { CodeDiffPreview } from './CodeDiffRenderer';
 
-function formatOutput(value: unknown): string {
+function formatPayload(value: unknown): string {
+  if (value === undefined || value === null) return '';
   if (typeof value === 'string') return value;
   try {
     return JSON.stringify(value, null, 2);
@@ -26,29 +28,35 @@ function asRunnerFilesChangedPayload(value: unknown): RunnerFilesChangedPayload 
   return value as unknown as RunnerFilesChangedPayload;
 }
 
-export function ToolResultRenderer({ part }: ContentRendererProps) {
-  const { toolName, output, isError } = part as ToolResultPart;
-  const [open, setOpen] = useState(false);
+function readCommand(input: unknown): string | null {
+  const task = isRecord(input) && isRecord(input.task) ? input.task : input;
+  if (!isRecord(task) || typeof task.command !== 'string') return null;
+  const args = Array.isArray(task.args) ? task.args.map((item) => String(item)) : [];
+  return `${task.command}${args.length ? ` ${args.join(' ')}` : ''}`;
+}
+
+function truncate(value: string, maxChars: number): string {
+  return value.length <= maxChars ? value : `${value.slice(0, maxChars)}...`;
+}
+
+export function ToolExecutionRenderer({ part }: ContentRendererProps) {
+  const message = part as ToolExecutionPart;
+  const { tool } = message;
+  const [open, setOpen] = useState(message.status === 'error');
   const [openFiles, setOpenFiles] = useState<Record<string, boolean>>({});
-  const filesChangedPayload = !isError ? asRunnerFilesChangedPayload(output) : null;
+  const output = tool.output;
+  const filesChangedPayload = message.status !== 'error' ? asRunnerFilesChangedPayload(output) : null;
 
   if (filesChangedPayload) {
     const { summary, files } = filesChangedPayload;
     const toggleFile = (path: string, index: number) => {
       const key = `${path}#${index}`;
-      setOpenFiles((prev) => ({
-        ...prev,
-        [key]: !prev[key],
-      }));
+      setOpenFiles((prev) => ({ ...prev, [key]: !prev[key] }));
     };
 
     return (
       <div className="chat-ui-tool-diff-card">
-        <button
-          onClick={() => setOpen(!open)}
-          className="chat-ui-tool-diff-header"
-          type="button"
-        >
+        <button onClick={() => setOpen(!open)} className="chat-ui-tool-diff-header" type="button">
           <span className="chat-ui-tool-arrow">{open ? 'v' : '>'}</span>
           <span className="chat-ui-tool-diff-title">Files changed</span>
           <span className="chat-ui-tool-diff-stats">
@@ -61,9 +69,7 @@ export function ToolResultRenderer({ part }: ContentRendererProps) {
         {open && (
           <div className="chat-ui-tool-diff-body">
             {summary.truncated && (
-              <div className="chat-ui-tool-diff-banner">
-                Diff preview was truncated due to output limits.
-              </div>
+              <div className="chat-ui-tool-diff-banner">Diff preview was truncated due to output limits.</div>
             )}
             {files.map((file, index) => {
               const fileKey = `${file.path}#${index}`;
@@ -103,9 +109,7 @@ export function ToolResultRenderer({ part }: ContentRendererProps) {
                       )}
 
                       {file.truncated && !file.unavailableReason && (
-                        <div className="chat-ui-tool-diff-banner is-warning">
-                          This file preview was truncated.
-                        </div>
+                        <div className="chat-ui-tool-diff-banner is-warning">This file preview was truncated.</div>
                       )}
                     </div>
                   )}
@@ -118,8 +122,12 @@ export function ToolResultRenderer({ part }: ContentRendererProps) {
     );
   }
 
-  const text = formatOutput(output);
-  const isLong = text.length > 200;
+  const command = readCommand(tool.input);
+  const title = command ? `${tool.name} :: ${truncate(command, 120)}` : (message.title ?? tool.name);
+  const inputText = formatPayload(tool.input);
+  const outputText = formatPayload(output);
+  const isLong = inputText.length + outputText.length > 240;
+  const isError = message.status === 'error';
 
   return (
     <div className="chat-ui-tool-block">
@@ -129,12 +137,21 @@ export function ToolResultRenderer({ part }: ContentRendererProps) {
         type="button"
       >
         <span className="chat-ui-tool-arrow">{open ? 'v' : '>'}</span>
-        <span>Result: {toolName}{isError ? ' (error)' : ''}</span>
+        <span>{tool.name} · {message.status}</span>
+        {title !== tool.name ? <span className="chat-ui-tool-hint">{truncate(title, 140)}</span> : null}
       </button>
 
-      {(open || !isLong) && <pre className={`chat-ui-tool-payload ${isError ? 'is-error' : ''}`}>{text}</pre>}
+      {(open || !isLong) && (
+        <pre className={`chat-ui-tool-payload ${isError ? 'is-error' : ''}`}>
+          {[
+            inputText ? `input\n${inputText}` : '',
+            outputText ? `output\n${outputText}` : '',
+            tool.error ? `error\n${tool.error}` : '',
+          ].filter(Boolean).join('\n\n')}
+        </pre>
+      )}
 
-      {!open && isLong && <span className="chat-ui-tool-hint">({text.length} chars - click to expand)</span>}
+      {!open && isLong && <span className="chat-ui-tool-hint">({inputText.length + outputText.length} chars)</span>}
     </div>
   );
 }

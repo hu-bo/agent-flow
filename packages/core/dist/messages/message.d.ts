@@ -14,20 +14,8 @@ export interface ImagePart {
     type: 'image';
     source: ImageSource;
 }
-export interface ToolCallPart {
-    type: 'tool-call';
-    toolCallId: string;
-    toolName: string;
-    input: unknown;
-}
-export interface ToolResultPart {
-    type: 'tool-result';
-    toolCallId: string;
-    toolName: string;
-    output: unknown;
-    isError?: boolean;
-}
 export type ThinkingStatus = 'pending' | 'running' | 'success' | 'error';
+export type MessageStatus = ThinkingStatus | 'blocked';
 export interface ThoughtChainItemPart {
     key: string;
     title?: string;
@@ -93,7 +81,6 @@ export interface FilePart {
     mimeType: string;
     data: string;
 }
-export type ContentPart = TextPart | ImagePart | ToolCallPart | ToolResultPart | ThinkingPart | FilePart;
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 export interface TokenUsage {
     promptTokens: number;
@@ -119,18 +106,52 @@ export interface MessageMetadata {
     toolDuration?: number;
     extensions?: Record<string, unknown>;
 }
-export interface UnifiedMessage {
+export interface BaseMessage {
     uuid: string;
     parentUuid: string | null;
     role: MessageRole;
-    content: ContentPart[];
+    type: 'text' | 'thinking' | 'image' | 'tool_execution';
     timestamp: string;
+    updatedAt?: string;
     metadata: MessageMetadata;
 }
-export interface SerializedMessage extends UnifiedMessage {
+export interface TextMessage extends BaseMessage {
+    type: 'text';
+    role: MessageRole;
+    text: string;
+    attachments?: FilePart[];
+}
+export interface ThinkingMessage extends BaseMessage, Omit<ThinkingPart, 'type'> {
+    type: 'thinking';
+    role: 'assistant';
+}
+export interface ImageMessage extends BaseMessage {
+    type: 'image';
+    role: MessageRole;
+    source: ImageSource;
+    text?: string;
+}
+export interface ToolExecution {
+    callId: string;
+    name: string;
+    input?: unknown;
+    output?: unknown;
+    error?: string | null;
+}
+export interface ToolExecutionMessage extends BaseMessage {
+    type: 'tool_execution';
+    role: 'tool';
+    status: MessageStatus;
+    title?: string;
+    stepId?: string;
+    durationMs?: number;
+    tool: ToolExecution;
+}
+export type UnifiedMessage = TextMessage | ThinkingMessage | ImageMessage | ToolExecutionMessage;
+export type SerializedMessage = UnifiedMessage & {
     sessionId: string;
     cwd: string;
     version: string;
     gitBranch?: string;
-}
+};
 //# sourceMappingURL=message.d.ts.map
