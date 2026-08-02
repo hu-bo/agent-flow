@@ -1,6 +1,5 @@
 import type { ChatMessage, FileAttachment, TokenUsageSummary } from '@agent-flow/chat-ui';
 import type { FilePart, TokenUsage } from '@agent-flow/core/messages';
-import type { RunnerRecord } from '../api';
 
 export type NoticeState = { kind: 'success' | 'error'; message: string } | null;
 
@@ -17,7 +16,7 @@ export function readErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function fileToDataUrl(file: File): Promise<string> {
+function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result ?? ''));
@@ -32,6 +31,7 @@ export function buildTokenUsage(
   tokenBudget: number | null,
 ): TokenUsageSummary {
   const usedTokens = messages.reduce((sum, message) => {
+    if (message.metadata?.isMeta) return sum;
     const usage = usageByMessageId[message.uuid];
     // Providers only report exact usage when a response has finished.  Fall
     // back to a lightweight estimate so the context indicator remains useful
@@ -66,24 +66,6 @@ function estimateFileTokens(files: FilePart[]): number {
 
 function estimateTextTokens(text: string): number {
   return text.length === 0 ? 0 : Math.ceil(text.length / 4);
-}
-
-export function buildRunnerLabel(runner: RunnerRecord): string {
-  const host = runner.hostName || runner.host || runner.hostIp;
-  if (host && host.trim()) {
-    return `${host} (${runner.runnerId})`;
-  }
-  return runner.runnerId;
-}
-
-export function extractAssistantMarkdown(messages: ChatMessage[]): string {
-  const target = [...messages]
-    .reverse()
-    .find((message) => message.role === 'assistant');
-  if (!target) {
-    return '';
-  }
-  return target.type === 'text' ? target.text.trim() : '';
 }
 
 function safeJsonStringify(value: unknown): string {

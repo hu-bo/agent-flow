@@ -56,7 +56,8 @@ Example config file:
 ```json
 {
   "runnerToken": "rtk_xxxxxxxxxxxxxxxxxxxx",
-  "serverAddr": "127.0.0.1:9201"
+  "serverAddr": "127.0.0.1:9201",
+  "maxConcurrentTasks": 4
 }
 ```
 
@@ -66,6 +67,20 @@ With the config file present, users can start the runner with:
 cd pkg/runner
 go run ./cmd start
 ```
+
+## Task concurrency
+
+The runner executes one task concurrently by default. Set `maxConcurrentTasks` in
+`config.json`, or override it at startup with `--max_concurrent_tasks`:
+
+```bash
+go run ./cmd start --max_concurrent_tasks 4
+```
+
+The startup flag takes precedence over `config.json`. `install-autostart` accepts
+the same flag and writes it into the generated startup entry. Increase this value
+gradually, using the runner host's CPU, memory, and the workload's process and
+network usage as the capacity limit.
 
 Optional legacy runner serve mode:
 

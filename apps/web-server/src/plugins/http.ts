@@ -35,6 +35,7 @@ export async function registerHttpRuntime(app: FastifyInstance) {
 
     if (error instanceof AppError) {
       sendError(reply, {
+        code: error.code,
         statusCode: error.statusCode,
         message: error.message,
         details: error.details,
@@ -45,6 +46,7 @@ export async function registerHttpRuntime(app: FastifyInstance) {
     if (error instanceof ZodError) {
       const validationError = new ValidationError('Invalid request payload', error.flatten());
       sendError(reply, {
+        code: validationError.code,
         statusCode: validationError.statusCode,
         message: validationError.message,
         details: validationError.details,
@@ -54,6 +56,7 @@ export async function registerHttpRuntime(app: FastifyInstance) {
 
     if (isFastifyClientError(error)) {
       sendError(reply, {
+        code: error.code,
         statusCode: error.statusCode,
         message: error.message,
       });
@@ -62,6 +65,7 @@ export async function registerHttpRuntime(app: FastifyInstance) {
 
     request.log.error({ err: error }, 'Unhandled request error');
     sendError(reply, {
+      code: 'INTERNAL_SERVER_ERROR',
       statusCode: 500,
       message: 'Internal Server Error',
     });
@@ -69,6 +73,7 @@ export async function registerHttpRuntime(app: FastifyInstance) {
 
   app.setNotFoundHandler((request, reply) => {
     sendError(reply, {
+      code: 'ROUTE_NOT_FOUND',
       statusCode: 404,
       message: `Route not found: ${request.method} ${request.url}`,
     });

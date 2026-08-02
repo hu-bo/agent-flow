@@ -6,6 +6,7 @@ import { MemoryService } from '@agent-flow/memory';
 import type { AppDataSource } from '../db/data-source.js';
 import { AuthService } from './auth-service.js';
 import { ChatService } from './chat-service.js';
+import { ChatModeStrategyRegistry } from './chat-mode-strategy.js';
 import { CompactService } from './compact-service.js';
 import { ModelAdminService } from './model-admin-service.js';
 import { ModelAdapterService } from './model-adapter-service.js';
@@ -18,15 +19,16 @@ import { RunnerRegistryService } from './runner-registry-service.js';
 import { RunnerDispatchService } from './runner-dispatch-service.js';
 import { RunnerApprovalService } from './runner-approval-service.js';
 import { RemoteRunner } from './remote-runner.js';
-import {
-  ModelBackedLlmStepExecutor,
-  ModelBackedWorkflowTriageAgent,
-  createCoreAgentRuntimeBundle,
-  createCoreRuntimeTurnEngine,
-} from './runtime-gateway.js';
+import { createCoreAgentRuntimeBundle } from '../runtime/core-runtime-factory.js';
+import { ModelBackedLlmStepExecutor } from '../runtime/llm-step-executor.js';
+import { ModelChatDriver } from '../runtime/model-chat-driver.js';
+import { ModelToolRunner } from '../runtime/model-tool-runner.js';
+import { RuntimeTurnEngine } from '../runtime/runtime-turn-engine.js';
+import { ModelBackedWorkflowTriageAgent } from '../runtime/workflow-triage-agent.js';
 import { DbCheckpointStore, DbReplayStore, DbSessionStore } from '../runtime/db-runtime-stores.js';
 import { SessionService } from './session-service.js';
 import { SpecWorkflowService } from './spec-workflow-service.js';
+import { SpecConversationService } from './spec-conversation-service.js';
 import { TaskService } from './task-service.js';
 import { PinoEventSink } from '../lib/pino-event-sink.js';
 
@@ -101,24 +103,31 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     replayStore: coreReplayStore,
   });
   const { runtime, toolRegistry, toolExecutor } = runtimeBundle;
-  const runtimeTurnEngine = createCoreRuntimeTurnEngine({
+  const modelToolRunner = new ModelToolRunner(toolRegistry, toolExecutor);
+  const modelChatDriver = new ModelChatDriver(modelAdapterService, modelToolRunner, logger);
+  const runtimeTurnEngine = new RuntimeTurnEngine({
     runtime,
     memoryService,
-    modelAdapterService,
-    toolRegistry,
-    toolExecutor,
+    modelChatDriver,
     logger,
     tracer,
   });
   const taskService = new TaskService(modelService, sessionService, runtime, logger, tracer);
   const compactService = new CompactService(sessionService, new AutoCompactor());
   const specWorkflowService = new SpecWorkflowService(sessionService);
+  const chatModeStrategies = new ChatModeStrategyRegistry(specWorkflowService);
   const chatService = new ChatService(
     sessionService,
     modelService,
     runtimeTurnEngine,
-    specWorkflowService,
+    chatModeStrategies,
     runnerRegistryService,
+    memoryService,
+  );
+  const specConversationService = new SpecConversationService(
+    chatService,
+    sessionService,
+    specWorkflowService,
     memoryService,
   );
   const authService = new AuthService(db, {
@@ -141,7 +150,10 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
     taskService,
     compactService,
     specWorkflowService,
+    specConversationService,
     chatService,
     authService,
   };
 }
+
+export type AppServices = Awaited<ReturnType<typeof createServices>>;

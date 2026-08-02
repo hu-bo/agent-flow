@@ -2,7 +2,7 @@ import 'fastify';
 import type { RequestContext } from '../contracts/api.js';
 import type { AppDataSource } from '../db/data-source.js';
 import type { UserRole, UserStatus } from '../db/entities/user.entity.js';
-import type { AppServices } from '../services/types.js';
+import type { AppServices } from '../services/service-container.js';
 
 declare module 'fastify' {
   interface FastifyInstance {

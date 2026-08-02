@@ -68,7 +68,3 @@ export function createCoreAgentRuntimeBundle(options: CreateCoreAgentRuntimeOpti
     toolExecutor,
   };
 }
-
-export function createCoreAgentRuntime(options: CreateCoreAgentRuntimeOptions = {}): AgentRuntime {
-  return createCoreAgentRuntimeBundle(options).runtime;
-}

@@ -79,6 +79,7 @@ export class ModelChatDriver {
     return createTextMessage('assistant', fallbackText, {
       parentUuid,
       metadata: {
+        turnId: input.turnId,
         modelId: String(input.modelId),
         provider: adapter.provider,
         tokenUsage: toUnifiedTokenUsage(result.usage),
@@ -109,6 +110,7 @@ export class ModelChatDriver {
     const message = createTextMessage('assistant', '', {
       parentUuid,
       metadata: {
+        turnId: input.turnId,
         modelId: String(input.modelId),
         provider: adapter.provider,
         extensions: {
@@ -136,6 +138,7 @@ export class ModelChatDriver {
         const currentMessage = round === 0 ? message : createTextMessage('assistant', '', {
           parentUuid,
           metadata: {
+            turnId: input.turnId,
             modelId: String(input.modelId),
             provider: adapter.provider,
             extensions: {

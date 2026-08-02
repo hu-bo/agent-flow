@@ -23,13 +23,6 @@ interface TokenResponse {
   id_token?: string;
 }
 
-interface VerifyResponse {
-  valid: boolean;
-  user?: CasdoorUser;
-  claims?: Record<string, unknown>;
-  error?: string;
-}
-
 interface UserResponse {
   user: CasdoorUser;
 }

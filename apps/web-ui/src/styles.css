@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+.route-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  color: var(--color-text-muted, #64748b);
+  background: var(--color-canvas, #f8fafc);
+  font: 500 0.875rem/1.5 Inter, sans-serif;
+}
+
 :root {
   --pg-canvas: #f3f7ff;
   --pg-surface: #ffffff;

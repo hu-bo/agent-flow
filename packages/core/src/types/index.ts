@@ -329,9 +329,8 @@ export interface RunnerApprovalResponseEvent extends RunnerEventBase {
   command: string;
   workingDir: string;
   approved: boolean;
-  ticketId?: string;
-  authorizationSource?: 'once' | 'persistent';
-  grantId?: string;
+  decision: 'once' | 'always' | 'deny';
+  persistentGrantId?: string;
   reason?: string;
 }
 
@@ -388,7 +387,7 @@ export interface Guardrails {
 }
 
 export interface JsonSchema {
-  type?: 'object' | 'string' | 'number' | 'boolean' | 'array';
+  type?: 'object' | 'string' | 'number' | 'integer' | 'boolean' | 'array';
   required?: string[];
   properties?: Record<string, JsonSchema>;
   items?: JsonSchema;

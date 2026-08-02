@@ -1,18 +1,37 @@
 import axios, { type AxiosRequestConfig } from 'axios';
-import type { FilePart, TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
+import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
+import {
+  chatStreamEventSchema,
+  type ChatStreamEvent,
+  type ModelDescriptor,
+  type ProjectRecord,
+  type RunnerApprovalGrant,
+  type RunnerDirectoryEntry,
+  type RunnerDownloadPlatform,
+  type RunnerRecord,
+  type RunnerTokenIssueResult,
+  type SessionRecord,
+  type SpecDocType,
+  type SpecWorkflowState,
+} from '@agent-flow/web-contracts';
+
+export type {
+  ModelDescriptor,
+  ProjectRecord,
+  RunnerApprovalGrant,
+  RunnerDirectoryEntry,
+  RunnerDownloadPlatform,
+  RunnerRecord,
+  RunnerTokenIssueResult,
+  SessionRecord,
+  SpecDocType,
+  SpecWorkflowState,
+};
 
 interface ApiErrorPayload {
   code?: string | number;
   message?: string;
   error?: string;
-  details?: unknown;
-}
-
-interface ApiSuccessEnvelope<T> {
-  code: number;
-  data: T;
-  message: string;
-  requestId: string;
   details?: unknown;
 }
 
@@ -23,7 +42,7 @@ export interface ApiBusinessErrorDetails {
   action?: string;
 }
 
-export class ApiBusinessError extends Error {
+class ApiBusinessError extends Error {
   readonly code: string | number;
   readonly details?: unknown;
 
@@ -35,112 +54,6 @@ export class ApiBusinessError extends Error {
   }
 }
 
-export interface SessionRecord {
-  sessionId: string;
-  projectId: string | null;
-  title?: string;
-  createdAt: string;
-  updatedAt: string;
-  modelId: number;
-  mode: 'vibe' | 'spec';
-  cwd: string;
-  messageCount: number;
-  systemPrompt?: string;
-  boundRunnerId?: string;
-  specWorkflow?: SpecWorkflowState;
-}
-
-export interface ProjectRecord {
-  projectId: string;
-  name: string;
-  rootPath: string;
-  defaultRunnerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  chatCount: number;
-  latestSession?: SessionRecord;
-}
-
-export interface SpecWorkflowState {
-  phase: 'requirements' | 'design' | 'tasks';
-  awaitingConfirm: boolean;
-  requirementsMsgId?: string;
-  designMsgId?: string;
-  taskListMsgId?: string;
-  documents?: Partial<Record<SpecDocType, string>>;
-}
-
-export type SpecDocType = SpecWorkflowState['phase'];
-
-export interface ModelDescriptor {
-  modelId: number;
-  model: string;
-  displayName: string;
-  provider: string;
-  providerType: string;
-  providerModel: string;
-  maxInputTokens: number;
-}
-
-export interface RunnerRecord {
-  runnerId: string;
-  ownerUserId: string;
-  tokenId: string | null;
-  kind: 'local' | 'remote' | 'sandbox';
-  status: 'online' | 'offline';
-  host: string | null;
-  hostName: string | null;
-  hostIp: string | null;
-  version: string | null;
-  capabilities: string[];
-  lastSeenAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RunnerTokenIssueResult {
-  runnerToken: string;
-  tokenId: string;
-  serverAddr: string;
-  grpcServerAddr: string;
-  downloadUrls: {
-    windows: string;
-    macos: string;
-    linux: string;
-  };
-}
-
-export interface RunnerApprovalTicketResult {
-  approval_ticket: string;
-  ticket_id: string;
-  expires_at: string;
-  scope: {
-    session_id: string;
-    cmd: string;
-    workdir: string;
-  };
-  approved_request_id?: string;
-  persistent_grant_id?: string;
-  decision?: 'once' | 'always';
-}
-
-export interface RunnerApprovalGrant {
-  grantId: string;
-  runnerId: string;
-  scopeType: 'project' | 'chat';
-  scopeId: string;
-  scopeLabel?: string;
-  coverage: 'all_high_risk';
-  createdAt: string;
-  lastUsedAt?: string;
-}
-
-export interface RunnerDirectoryEntry {
-  path: string;
-  name: string;
-  type: 'directory' | 'file';
-  size?: number;
-}
 
 const AUTH_APP_NAME = import.meta.env.VITE_CASDOOR_APP_NAME || 'aflow';
 const ACCESS_TOKEN_KEY = `af_webui_${AUTH_APP_NAME}_access_token`;
@@ -225,16 +138,8 @@ async function readFetchErrorMessage(response: Response): Promise<string> {
 
 async function requestJson<T>(config: AxiosRequestConfig): Promise<T> {
   try {
-    const response = await apiClient.request<ApiSuccessEnvelope<T>>(config);
-    const envelope = response.data;
-    if (typeof envelope?.code === 'number' && envelope.code !== 0) {
-      throw new ApiBusinessError(
-        envelope.message || 'Request failed',
-        envelope.code,
-        envelope.details,
-      );
-    }
-    return envelope.data;
+    const response = await apiClient.request<T>(config);
+    return response.data;
   } catch (error) {
     throw extractAxiosError(error);
   }
@@ -242,22 +147,10 @@ async function requestJson<T>(config: AxiosRequestConfig): Promise<T> {
 
 async function requestNoContent(config: AxiosRequestConfig): Promise<void> {
   try {
-    const response = await apiClient.request<ApiSuccessEnvelope<unknown>>(config);
-    const payload = response.data;
-    if (payload && typeof payload === 'object' && typeof payload.code === 'number' && payload.code !== 0) {
-      throw new ApiBusinessError(
-        payload.message || 'Request failed',
-        payload.code,
-        payload.details,
-      );
-    }
+    await apiClient.request(config);
   } catch (error) {
     throw extractAxiosError(error);
   }
-}
-
-export async function fetchHealth(): Promise<{ status: string; model: string }> {
-  return requestJson({ url: '/api/health', method: 'GET' });
 }
 
 export async function fetchSessions(): Promise<{ sessions: SessionRecord[] }> {
@@ -320,14 +213,6 @@ export async function createSession(opts?: {
 
 export async function deleteSession(id: string): Promise<void> {
   await requestNoContent({ url: `/api/sessions/${id}`, method: 'DELETE' });
-}
-
-export async function switchModel(modelId: string | number): Promise<{ model: number }> {
-  return requestJson({
-    url: '/api/model',
-    method: 'POST',
-    data: { modelId },
-  });
 }
 
 export async function triggerCompact(
@@ -423,25 +308,6 @@ export async function streamRunners({
   consumeSseBuffer(buffer, handleFrame);
 }
 
-export async function fetchRunnerDownloads(): Promise<{
-  downloadUrls: {
-    windows: string;
-    macos: string;
-    linux: string;
-  };
-}> {
-  return requestJson({ url: '/api/runners/downloads', method: 'GET' });
-}
-
-export type RunnerDownloadPlatform =
-  | 'windows-amd64'
-  | 'windows-arm64'
-  | 'darwin-arm64'
-  | 'darwin-amd64'
-  | 'macos-arm64'
-  | 'macos-amd64'
-  | 'linux-amd64';
-
 export async function downloadRunnerPackage(platform: RunnerDownloadPlatform): Promise<void> {
   const response = await apiClient.request<Blob>({
     url: `/api/runners/downloads/${platform}`,
@@ -485,26 +351,14 @@ function parseContentDispositionFilename(value: unknown): string | undefined {
   return asciiMatch?.[1]?.trim();
 }
 
-export async function rotateRunnerToken(): Promise<RunnerTokenIssueResult> {
+export async function decideRunnerApproval(
+  requestId: string,
+  decision: 'once' | 'always' | 'deny',
+): Promise<{ requestId: string; decision: 'once' | 'always' | 'deny'; approved: boolean; persistentGrantId?: string }> {
   return requestJson({
-    url: '/api/runners/token/rotate',
+    url: `/api/runner-approvals/${encodeURIComponent(requestId)}/decision`,
     method: 'POST',
-    data: {},
-  });
-}
-
-export async function issueRunnerApprovalTicket(input: {
-  session_id: string;
-  cmd: string;
-  workdir?: string;
-  request_id?: string;
-  ttl_sec?: number;
-  decision?: 'once' | 'always';
-}): Promise<RunnerApprovalTicketResult> {
-  return requestJson({
-    url: '/api/runners/approval-ticket',
-    method: 'POST',
-    data: input,
+    data: { decision },
   });
 }
 
@@ -517,13 +371,13 @@ export async function revokeRunnerApprovalGrant(grantId: string): Promise<void> 
 }
 
 export async function bindSessionRunner(sessionId: string, runnerId: string): Promise<{
-  session_id: string;
-  runner_id: string;
+  sessionId: string;
+  runnerId: string;
 }> {
   return requestJson({
     url: `/api/sessions/${sessionId}/runner-binding`,
     method: 'POST',
-    data: { runner_id: runnerId },
+    data: { runnerId },
   });
 }
 
@@ -551,54 +405,15 @@ export async function fetchRunnerDirectory(input: {
 }
 
 interface StreamChatOptions {
+  turnId?: string;
   message: string;
-  model_id?: string | number;
-  reasoning_effort?: 'low' | 'medium' | 'high';
-  session_id: string;
-  project_id?: string;
-  mode?: 'vibe' | 'spec';
-  approve_risky_ops?: boolean;
-  approval_ticket?: string;
+  modelId?: string | number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+  sessionId: string;
   attachments?: FilePart[];
   signal?: AbortSignal;
-  onDeltaApplied: (doc: StreamDoc) => void;
-  onUsage?: (usage: UsageFrame, doc: StreamDoc) => void;
+  onEvent: (event: ChatStreamEvent) => void;
 }
-
-export type ApprovalRiskLevel = 'low' | 'medium' | 'high';
-
-export interface ApprovalReqPayload {
-  request_id?: string;
-  session_id: string;
-  runner_id?: string;
-  scope_type?: 'project' | 'chat';
-  scope_id?: string;
-  scope_label?: string;
-  cmd: string;
-  workdir: string;
-  risk: ApprovalRiskLevel;
-  reason?: string;
-}
-
-export type StreamDoc = {
-  messages: Record<string, UnifiedMessage>;
-  order: string[];
-  spec_docs: Partial<Record<SpecDocType, string>>;
-  approval: null | ApprovalReqPayload;
-  usage_by_msg: Record<string, TokenUsage>;
-};
-
-export type UsageFrame = {
-  usage_by_msg: Record<string, TokenUsage>;
-};
-
-type FullDeltaFrame =
-  | { p: string; o: 'add' | 'replace' | 'remove'; v?: unknown }
-  | { p: string; o: 'append'; v: unknown };
-
-type DeltaPatchFrame = { o: 'patch'; v: FullDeltaFrame[] };
-type DeltaShorthandFrame = { v: string };
-type DeltaFrame = FullDeltaFrame | DeltaPatchFrame | DeltaShorthandFrame;
 
 type SseFrame = {
   event: string | null;
@@ -645,18 +460,14 @@ function consumeSseBuffer(buffer: string, onFrame: (frame: SseFrame) => void): s
 }
 
 export async function streamChat({
+  turnId,
   message,
-  model_id,
-  reasoning_effort,
-  session_id,
-  project_id,
-  mode,
-  approve_risky_ops,
-  approval_ticket,
+  modelId,
+  reasoningEffort,
+  sessionId,
   attachments,
   signal,
-  onDeltaApplied,
-  onUsage,
+  onEvent,
 }: StreamChatOptions): Promise<void> {
   const token = getAccessToken();
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
@@ -664,20 +475,15 @@ export async function streamChat({
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch('/api/chat', {
+  const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/turns/stream`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
+      turnId,
       message,
-      model_id,
-      reasoning_effort,
-      session_id,
-      project_id,
-      mode,
-      approve_risky_ops: Boolean(approve_risky_ops),
-      approval_ticket,
+      modelId,
+      reasoningEffort,
       attachments,
-      stream: true,
     }),
     signal,
   });
@@ -695,123 +501,16 @@ export async function streamChat({
   let buffer = '';
   let done = false;
 
-  let deltaEncoding: string | null = null;
-  let lastAppendPatch: { p: string; o: 'append' } | null = null;
-
-  let doc: StreamDoc = {
-    messages: {},
-    order: [],
-    spec_docs: {},
-    approval: null,
-    usage_by_msg: {},
-  };
-
-  const applyDelta = (nextDoc: StreamDoc, frame: DeltaFrame): StreamDoc => {
-    if (isDeltaShorthandFrame(frame)) {
-      if (!lastAppendPatch) {
-        throw new Error('Invalid delta shorthand frame: missing previous append operation');
-      }
-      return applyFullDelta(nextDoc, { p: lastAppendPatch.p, o: lastAppendPatch.o, v: frame.v });
-    }
-
-    if (isDeltaPatchFrame(frame)) {
-      lastAppendPatch = null;
-      return frame.v.reduce((acc, op) => applyFullDelta(acc, op), nextDoc);
-    }
-
-    if (frame.o === 'append') {
-      lastAppendPatch = { p: frame.p, o: 'append' };
-    } else {
-      lastAppendPatch = null;
-    }
-
-    return applyFullDelta(nextDoc, frame);
-  };
-
   const handleFrame = (frame: SseFrame) => {
     if (frame.data === '[DONE]') {
       done = true;
       return;
     }
-
-    if (frame.event === 'error') {
-      const payload = JSON.parse(frame.data) as { code?: string; message?: string };
-      throw new Error(payload.message || 'Streaming failed');
-    }
-
-    if (frame.event === 'delta_encoding') {
-      const parsed = JSON.parse(frame.data) as string;
-      deltaEncoding = parsed;
-      if (deltaEncoding !== 'v1') {
-        throw new Error(`Unsupported delta encoding: ${deltaEncoding}`);
-      }
-      return;
-    }
-
-    if (frame.event === 'usage') {
-      const usage = JSON.parse(frame.data) as UsageFrame;
-      doc = {
-        ...doc,
-        usage_by_msg: { ...doc.usage_by_msg, ...(usage.usage_by_msg ?? {}) },
-      };
-      onUsage?.(usage, doc);
-      onDeltaApplied(doc);
-      return;
-    }
-
-    if (frame.event === 'approval_request') {
-      const event = JSON.parse(frame.data) as {
-        payload?: {
-          requestId?: string;
-          session_id?: string;
-          runnerId?: string;
-          scopeType?: 'project' | 'chat';
-          scopeId?: string;
-          scopeLabel?: string;
-          cmd?: string;
-          workdir?: string;
-          risk?: ApprovalRiskLevel;
-          reason?: string;
-        };
-      };
-      const payload = event.payload ?? {};
-      doc = {
-        ...doc,
-        approval: {
-          request_id: payload.requestId,
-          session_id: payload.session_id ?? '',
-          runner_id: payload.runnerId,
-          scope_type: payload.scopeType === 'project' ? 'project' : 'chat',
-          scope_id: payload.scopeId,
-          scope_label: payload.scopeLabel,
-          cmd: payload.cmd ?? '',
-          workdir: payload.workdir ?? '',
-          risk: payload.risk === 'low' || payload.risk === 'medium' ? payload.risk : 'high',
-          reason: payload.reason,
-        },
-      };
-      onDeltaApplied(doc);
-      return;
-    }
-
-    if (frame.event === 'approval_response') {
-      doc = {
-        ...doc,
-        approval: null,
-      };
-      onDeltaApplied(doc);
-      return;
-    }
-
-    if (frame.event === 'delta') {
-      if (deltaEncoding !== 'v1') {
-        // Allow servers that send delta before delta_encoding, but still enforce v1 once seen.
-        deltaEncoding = deltaEncoding ?? 'v1';
-      }
-      const delta = JSON.parse(frame.data) as DeltaFrame;
-      doc = applyDelta(doc, delta);
-      onDeltaApplied(doc);
-    }
+    if (!frame.data) return;
+    const event = chatStreamEventSchema.parse(JSON.parse(frame.data)) as ChatStreamEvent;
+    onEvent(event);
+    if (event.type === 'done') done = true;
+    if (event.type === 'error') throw new Error(event.error.message);
   };
 
   while (!done) {
@@ -827,225 +526,33 @@ export async function streamChat({
 
 export async function cancelChat(sessionId: string): Promise<{ cancelled: boolean }> {
   return requestJson({
-    url: `/api/chat/${encodeURIComponent(sessionId)}/cancel`,
+    url: `/api/sessions/${encodeURIComponent(sessionId)}/turns/cancel`,
     method: 'POST',
   });
 }
 
-function isDeltaPatchFrame(frame: DeltaFrame): frame is DeltaPatchFrame {
-  return (frame as DeltaPatchFrame).o === 'patch' && Array.isArray((frame as DeltaPatchFrame).v);
-}
-
-function isDeltaShorthandFrame(frame: DeltaFrame): frame is DeltaShorthandFrame {
-  return (
-    (frame as DeltaShorthandFrame).v !== undefined &&
-    typeof (frame as DeltaShorthandFrame).v === 'string' &&
-    (frame as Partial<FullDeltaFrame>).p === undefined
-  );
-}
-
-function decodeJsonPointer(pointer: string): string[] {
-  if (!pointer) return [];
-  if (!pointer.startsWith('/')) {
-    throw new Error(`Invalid JSON pointer: ${pointer}`);
-  }
-  return pointer
-    .slice(1)
-    .split('/')
-    .map((token) => token.replace(/~1/g, '/').replace(/~0/g, '~'));
-}
-
-function isArrayIndexToken(token: string): boolean {
-  return /^[0-9]+$/.test(token);
-}
-
-function cloneOrCreateContainer(value: unknown, wantArray: boolean): any {
-  if (wantArray) {
-    return Array.isArray(value) ? value.slice() : [];
-  }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return { ...(value as Record<string, unknown>) };
-  }
-  return {};
-}
-
-function getChild(container: any, token: string): any {
-  if (Array.isArray(container)) {
-    const index = Number(token);
-    if (!Number.isFinite(index)) return undefined;
-    return container[index];
-  }
-  if (container && typeof container === 'object') {
-    return container[token];
-  }
-  return undefined;
-}
-
-function setChild(container: any, token: string, value: any): void {
-  if (Array.isArray(container)) {
-    const index = Number(token);
-    if (!Number.isFinite(index)) {
-      throw new Error(`Invalid array index token: ${token}`);
-    }
-    container[index] = value;
-    return;
-  }
-  if (container && typeof container === 'object') {
-    container[token] = value;
-    return;
-  }
-  throw new Error(`Cannot set child on non-container value: ${String(container)}`);
-}
-
-function removeChild(container: any, token: string): void {
-  if (Array.isArray(container)) {
-    const index = Number(token);
-    if (!Number.isFinite(index)) return;
-    container.splice(index, 1);
-    return;
-  }
-  if (container && typeof container === 'object') {
-    delete container[token];
-  }
-}
-
-function getAtPointer(root: any, tokens: string[]): any {
-  let current = root;
-  for (const token of tokens) {
-    if (current == null) return undefined;
-    current = getChild(current, token);
-  }
-  return current;
-}
-
-function setAtPointer<T>(root: T, pointer: string, value: unknown): T {
-  const tokens = decodeJsonPointer(pointer);
-  if (tokens.length === 0) {
-    return value as T;
-  }
-
-  const nextRoot = cloneOrCreateContainer(root as unknown, Array.isArray(root));
-  let nextCursor: any = nextRoot;
-  let prevCursor: any = root;
-
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    const isLast = index === tokens.length - 1;
-
-    if (isLast) {
-      setChild(nextCursor, token, value);
-      break;
-    }
-
-    const nextToken = tokens[index + 1];
-    const wantArray = isArrayIndexToken(nextToken);
-    const prevChild = getChild(prevCursor, token);
-    const ensuredPrevChild = wantArray
-      ? (Array.isArray(prevChild) ? prevChild : [])
-      : (prevChild && typeof prevChild === 'object' && !Array.isArray(prevChild) ? prevChild : {});
-    const clonedChild = cloneOrCreateContainer(ensuredPrevChild, wantArray);
-    setChild(nextCursor, token, clonedChild);
-    nextCursor = clonedChild;
-    prevCursor = ensuredPrevChild;
-  }
-
-  return nextRoot as T;
-}
-
-function removeAtPointer<T>(root: T, pointer: string): T {
-  const tokens = decodeJsonPointer(pointer);
-  if (tokens.length === 0) {
-    return root;
-  }
-
-  const nextRoot = cloneOrCreateContainer(root as unknown, Array.isArray(root));
-  let nextCursor: any = nextRoot;
-  let prevCursor: any = root;
-
-  for (let index = 0; index < tokens.length - 1; index += 1) {
-    const token = tokens[index];
-    const nextToken = tokens[index + 1];
-    const wantArray = isArrayIndexToken(nextToken);
-    const prevChild = getChild(prevCursor, token);
-    const ensuredPrevChild = wantArray
-      ? (Array.isArray(prevChild) ? prevChild : [])
-      : (prevChild && typeof prevChild === 'object' && !Array.isArray(prevChild) ? prevChild : {});
-    const clonedChild = cloneOrCreateContainer(ensuredPrevChild, wantArray);
-    setChild(nextCursor, token, clonedChild);
-    nextCursor = clonedChild;
-    prevCursor = ensuredPrevChild;
-  }
-
-  removeChild(nextCursor, tokens[tokens.length - 1]);
-  return nextRoot as T;
-}
-
-function appendAtPointer<T>(root: T, pointer: string, value: unknown): T {
-  const tokens = decodeJsonPointer(pointer);
-  const current = getAtPointer(root, tokens);
-
-  if (typeof current === 'string') {
-    return setAtPointer(root, pointer, `${current}${String(value ?? '')}`);
-  }
-
-  if (Array.isArray(current)) {
-    if (Array.isArray(value)) {
-      return setAtPointer(root, pointer, [...current, ...value]);
-    }
-    return setAtPointer(root, pointer, [...current, value]);
-  }
-
-  if (current === undefined || current === null) {
-    if (typeof value === 'string') {
-      return setAtPointer(root, pointer, value);
-    }
-    if (Array.isArray(value)) {
-      return setAtPointer(root, pointer, [...value]);
-    }
-    return setAtPointer(root, pointer, value);
-  }
-
-  if (typeof current === 'object') {
-    // Fallback: treat append as replace for non-string/object values.
-    return setAtPointer(root, pointer, value);
-  }
-
-  return setAtPointer(root, pointer, value);
-}
-
-function applyFullDelta(doc: StreamDoc, frame: FullDeltaFrame): StreamDoc {
-  if (frame.o === 'remove') {
-    return removeAtPointer(doc, frame.p);
-  }
-  if (frame.o === 'append') {
-    return appendAtPointer(doc, frame.p, frame.v);
-  }
-  return setAtPointer(doc, frame.p, frame.v);
-}
-
 export async function retrySessionMessage(input: {
-  session_id: string;
-  msg_id: string;
-  model_id?: string | number;
-  reasoning_effort?: 'low' | 'medium' | 'high';
+  sessionId: string;
+  messageId: string;
+  modelId?: string | number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
 }): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
   return requestJson({
-    url: `/api/chat/${input.session_id}/retry`,
+    url: `/api/sessions/${input.sessionId}/messages/${input.messageId}/retry`,
     method: 'POST',
     data: {
-      msg_id: input.msg_id,
-      model_id: input.model_id,
-      reasoning_effort: input.reasoning_effort,
+      modelId: input.modelId,
+      reasoningEffort: input.reasoningEffort,
     },
   });
 }
 
 export async function deleteSessionMessage(
-  session_id: string,
-  msg_id: string,
+  sessionId: string,
+  messageId: string,
 ): Promise<{ session: SessionRecord; messages: UnifiedMessage[] }> {
   return requestJson({
-    url: `/api/chat/${session_id}/messages/${msg_id}`,
+    url: `/api/sessions/${sessionId}/messages/${messageId}`,
     method: 'DELETE',
   });
 }
@@ -1074,8 +581,8 @@ export async function confirmSpecPhase(
     url: `/api/spec/${sessionId}/confirm`,
     method: 'POST',
     data: {
-      selected_artifacts: input?.selectedArtifacts,
-      action_answer: input?.actionAnswer,
+      selectedArtifacts: input?.selectedArtifacts,
+      actionAnswer: input?.actionAnswer,
     },
   });
 }

@@ -27,7 +27,7 @@ export interface CreateMessageOptions {
   metadata?: MessageMetadata;
 }
 
-export function createUnifiedMessage({
+function createUnifiedMessage({
   role,
   type = 'text',
   text = '',

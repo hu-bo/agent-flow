@@ -212,7 +212,7 @@ export function extractRuntimeStepTraces(result: AgentRunResult): RuntimeStepTra
   return out;
 }
 
-export function renderRuntimeSummary(context: RuntimeModelContext): string {
+function renderRuntimeSummary(context: RuntimeModelContext): string {
   const { result, eventCountByType, runnerDirective } = context;
   const steps = extractRuntimeSteps(result);
   const outputEntries = Object.entries(result.outputs);

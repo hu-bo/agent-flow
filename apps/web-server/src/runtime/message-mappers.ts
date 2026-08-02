@@ -11,7 +11,6 @@ import type {
   ChatStreamMessageDeltaEvent,
   RuntimeChatInput,
 } from '../contracts/api.js';
-import type { ApprovalRequiredPayload } from '../lib/approval.js';
 import { createToolExecutionMessage } from '../lib/messages.js';
 import { isRuntimeDiagnosticMessage } from './runtime-diagnostics.js';
 
@@ -161,15 +160,6 @@ export function toThinkingEvent(message: UnifiedMessage): ChatStreamEvent {
   };
 }
 
-export function toApprovalRequiredEvent(
-  approval: ApprovalRequiredPayload,
-): ChatStreamEvent {
-  return {
-    type: 'approval_req',
-    approval,
-  };
-}
-
 export function toRuntimeEvent(event: AgentEvent): ChatStreamEvent | undefined {
   if (event.type !== 'approval_request' && event.type !== 'approval_response') {
     return undefined;
@@ -195,7 +185,7 @@ export function toMessageDeltaEvent(
   };
 }
 
-export function cloneMessageMetadata(metadata: UnifiedMessage['metadata']): UnifiedMessage['metadata'] {
+function cloneMessageMetadata(metadata: UnifiedMessage['metadata']): UnifiedMessage['metadata'] {
   return {
     ...metadata,
     extensions:
@@ -265,9 +255,9 @@ export function toProgressMessage(
       {
         status: 'pending',
         requestId: readString(payload.requestId),
-        session_id: readString(payload.session_id),
-        cmd: readString(payload.cmd),
-        workdir: readString(payload.workdir),
+        sessionId: readString(payload.sessionId),
+        command: readString(payload.command),
+        workingDir: readString(payload.workingDir),
         risk: readString(payload.risk) ?? 'high',
         reason: readString(payload.reason),
       },
@@ -289,12 +279,11 @@ export function toProgressMessage(
       {
         status: payload.approved === true ? 'approved' : 'denied',
         requestId: readString(payload.requestId),
-        session_id: readString(payload.session_id),
-        cmd: readString(payload.cmd),
-        workdir: readString(payload.workdir),
-        ticketId: readString(payload.ticketId),
-        authorizationSource: readString(payload.authorizationSource),
-        grantId: readString(payload.grantId),
+        sessionId: readString(payload.sessionId),
+        command: readString(payload.command),
+        workingDir: readString(payload.workingDir),
+        decision: readString(payload.decision),
+        persistentGrantId: readString(payload.persistentGrantId),
         reason: readString(payload.reason),
       },
       payload.approved !== true,
@@ -394,6 +383,7 @@ function createProgressToolCallMessage(
       modelId: String(input.modelId),
       provider: 'core-runtime',
       isMeta: true,
+      turnId: input.turnId,
       extensions: {
         modelId: input.modelId,
         model: input.model,
@@ -430,6 +420,7 @@ function createProgressToolResultMessage(
       modelId: String(input.modelId),
       provider: 'core-runtime',
       isMeta: true,
+      turnId: input.turnId,
       extensions: {
         modelId: input.modelId,
         model: input.model,

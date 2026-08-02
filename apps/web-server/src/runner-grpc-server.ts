@@ -4,25 +4,21 @@ import {
   ServerCredentials,
   status as GrpcStatus,
 } from '@grpc/grpc-js';
-import type {
-  handleServerStreamingCall,
-  sendUnaryData,
-  ServerDuplexStream,
-  ServerUnaryCall,
-  ServerWritableStream,
-  UntypedServiceImplementation,
-} from '@grpc/grpc-js';
+import type { ServerDuplexStream } from '@grpc/grpc-js';
+import {
+  ExecutionState,
+  RunnerServiceService,
+  executionStateToJSON,
+  type RunnerEnvelope,
+  type RunnerServiceServer,
+  type ServerEnvelope,
+} from '@agent-flow/runner-protocol';
 import {
   toInboundTaskEvent,
   toRunnerHeartbeatInput,
   toRunnerRegisterInput,
   toServerEnvelope,
 } from './grpc/runner-message-mappers.js';
-import {
-  loadRunnerServiceDefinition,
-  type RunnerEnvelopeMessage,
-  type ServerEnvelopeMessage,
-} from './grpc/runner-protocol.js';
 import type {
   RunnerDispatchService,
   RunnerOutboundMessage,
@@ -41,20 +37,7 @@ interface RunnerGrpcServerDeps {
 }
 
 interface RunnerServiceConnectCall
-  extends ServerDuplexStream<RunnerEnvelopeMessage, ServerEnvelopeMessage> {}
-
-interface RunnerServiceHandlers {
-  Connect: (call: RunnerServiceConnectCall) => void;
-  RunTask: handleServerStreamingCall<Record<string, unknown>, Record<string, unknown>>;
-  CancelTask: (
-    call: ServerUnaryCall<Record<string, unknown>, Record<string, unknown>>,
-    callback: sendUnaryData<Record<string, unknown>>,
-  ) => void;
-  HealthCheck: (
-    call: ServerUnaryCall<Record<string, unknown>, Record<string, unknown>>,
-    callback: sendUnaryData<Record<string, unknown>>,
-  ) => void;
-}
+  extends ServerDuplexStream<RunnerEnvelope, ServerEnvelope> {}
 
 interface StartedRunnerGrpcServer {
   address: string;
@@ -68,16 +51,16 @@ export async function startRunnerGrpcServer(
   options: RunnerGrpcServerOptions,
 ): Promise<StartedRunnerGrpcServer> {
   const server = new Server();
-  const handlers: RunnerServiceHandlers = {
-    Connect: (call) => {
+  const handlers: RunnerServiceServer = {
+    connect: (call) => {
       void handleConnectStream(call, deps, options.logger);
     },
-    RunTask: (_call: ServerWritableStream<Record<string, unknown>, Record<string, unknown>>) => {
+    runTask: (call) => {
       // The bidirectional Connect stream is the primary control-plane path.
+      call.end();
     },
-    CancelTask: (call, callback) => {
-      const request = call.request as { taskId?: string; reason?: string };
-      const taskId = typeof request.taskId === 'string' ? request.taskId.trim() : '';
+    cancelTask: (call, callback) => {
+      const taskId = call.request.taskId.trim();
       if (!taskId) {
         callback(
           {
@@ -91,14 +74,17 @@ export async function startRunnerGrpcServer(
       }
       const accepted = deps.runnerDispatchService.requestCancellation(
         taskId,
-        request.reason ?? 'grpc cancel request',
+        call.request.reason || 'grpc cancel request',
       );
       callback(null, {
         accepted,
         message: accepted ? 'cancellation enqueued' : 'task not found',
+        state: accepted
+          ? ExecutionState.EXECUTION_STATE_ACCEPTED
+          : ExecutionState.EXECUTION_STATE_TERMINAL,
       });
     },
-    HealthCheck: (_call, callback) => {
+    healthCheck: (_call, callback) => {
       callback(null, {
         status: 'ok',
         version: 'web-server-runner-bridge',
@@ -107,10 +93,7 @@ export async function startRunnerGrpcServer(
     },
   };
 
-  server.addService(
-    loadRunnerServiceDefinition(),
-    handlers as unknown as UntypedServiceImplementation,
-  );
+  server.addService(RunnerServiceService, handlers);
   const bindAddress = `${options.host}:${options.port}`;
   await new Promise<void>((resolveBind, rejectBind) => {
     server.bindAsync(bindAddress, ServerCredentials.createInsecure(), (error) => {
@@ -169,7 +152,7 @@ async function handleConnectStream(
   });
 
   let incomingQueue = Promise.resolve();
-  call.on('data', (message: RunnerEnvelopeMessage) => {
+  call.on('data', (message: RunnerEnvelope) => {
     incomingQueue = incomingQueue
       .then(async () => {
         if (closed) return;
@@ -248,7 +231,12 @@ async function handleConnectStream(
           await deps.runnerDispatchService.acceptDispatchAck({
             runnerId,
             runnerToken,
-            ...message.dispatchAck,
+            taskId: message.dispatchAck.taskId,
+            executionId: message.dispatchAck.executionId,
+            attempt: message.dispatchAck.attempt,
+            accepted: message.dispatchAck.accepted,
+            state: executionStateToJSON(message.dispatchAck.state),
+            message: message.dispatchAck.message,
             lastEventSequence: normalizeOptionalSafeUint(
               message.dispatchAck.lastEventSequence,
               'dispatchAck.lastEventSequence',
@@ -264,7 +252,11 @@ async function handleConnectStream(
           await deps.runnerDispatchService.acceptCancelAck({
             runnerId,
             runnerToken,
-            ...message.cancelAck,
+            taskId: message.cancelAck.taskId,
+            executionId: message.cancelAck.executionId,
+            attempt: message.cancelAck.attempt,
+            accepted: message.cancelAck.accepted,
+            message: message.cancelAck.message,
           });
         }
       })
@@ -272,13 +264,12 @@ async function handleConnectStream(
   });
 }
 
-function normalizeOptionalSafeUint(value: number | string | undefined, field: string): number | undefined {
-  if (value === undefined || value === '') return undefined;
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+function normalizeOptionalSafeUint(value: number | undefined, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${field} must be a safe unsigned integer`);
   }
-  return parsed;
+  return value;
 }
 
 async function pumpOutboundToRunner(

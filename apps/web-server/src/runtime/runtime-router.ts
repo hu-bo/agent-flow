@@ -45,7 +45,7 @@ export function resolveRuntimeMode(input: RuntimeChatInput, runnerDirective: Run
   return 'autonomous';
 }
 
-export function isCasualChat(message: string): boolean {
+function isCasualChat(message: string): boolean {
   return CASUAL_CHAT_PATTERNS.some((pattern) => pattern.test(message.trim()));
 }
 

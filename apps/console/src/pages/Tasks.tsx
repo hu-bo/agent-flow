@@ -35,7 +35,7 @@ export function Tasks() {
     if (!prompt.trim()) return;
     setCreateError(null);
     setCreateResult(null);
-    createTask({ prompt: prompt.trim(), model: model.trim() || undefined })
+    createTask({ prompt: prompt.trim(), modelId: model.trim() ? Number(model) : undefined })
       .then((result) => {
         setCreateResult(result);
         setPrompt('');
@@ -111,13 +111,13 @@ export function Tasks() {
             />
           </div>
           <div className="form-group">
-            <label htmlFor="task-model">Model (optional)</label>
+            <label htmlFor="task-model">Model ID (optional)</label>
             <input
               id="task-model"
-              type="text"
+              type="number"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="e.g. claude-sonnet-4-20250514"
+              placeholder="e.g. 1"
             />
           </div>
           <button className="btn" type="submit">Create Task</button>

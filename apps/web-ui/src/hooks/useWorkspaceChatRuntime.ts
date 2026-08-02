@@ -1,38 +1,14 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type Dispatch,
-  type SetStateAction,
-} from 'react';
-import type { ChatMessage, FileAttachment, ReasoningEffort } from '@agent-flow/chat-ui';
-import {
-  bindSessionRunner,
-  fetchModels,
-  issueRunnerApprovalTicket,
-  streamRunners,
-  switchModel,
-  type RunnerRecord,
-  type SessionRecord,
-} from '../api';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import type { ChatMessage, FileAttachment } from '@agent-flow/chat-ui';
+import { bindSessionRunner, decideRunnerApproval, type SessionRecord } from '../api';
 import { useChat } from './useChat';
 import { useChatStore } from '../store/chat-store';
-import {
-  buildTokenUsage,
-  prepareFileAttachments,
-  readErrorMessage,
-  type ModelSelectOption,
-  type NoticeState,
-} from '../pages/chat-page-utils';
+import { buildTokenUsage, prepareFileAttachments, readErrorMessage } from '../pages/chat-page-utils';
+import { useWorkspaceResources } from '../workspace-provider';
 
 interface UseWorkspaceChatRuntimeOptions {
   routeSessionId?: string;
 }
-
-const SELECTED_MODEL_STORAGE_KEY = 'agent-flow:selected-model-id';
 
 interface UseWorkspaceChatRuntimeResult {
   messages: ChatMessage[];
@@ -43,22 +19,19 @@ interface UseWorkspaceChatRuntimeResult {
   isApprovingPendingApproval: boolean;
   activeSession: string | null;
   setActiveSession: (sessionId: string | null) => void;
-  runtimeTraceEnabled: boolean;
-  setRuntimeTraceEnabled: (enabled: boolean) => void;
-  toggleRuntimeTraceEnabled: () => void;
   refreshSessionMessages: ReturnType<typeof useChat>['refreshSessionMessages'];
   sendMessage: ReturnType<typeof useChat>['sendMessage'];
   stopGenerating: ReturnType<typeof useChat>['stopGenerating'];
   isConnecting: boolean;
   isStreaming: boolean;
-  modelOptions: ModelSelectOption[];
+  modelOptions: ReturnType<typeof useWorkspaceResources>['modelOptions'];
   selectedModelId: number | null;
   handleModelChange: (value: string) => Promise<void>;
-  reasoningEffort: ReasoningEffort;
-  setReasoningEffort: (value: ReasoningEffort) => void;
-  notice: NoticeState;
-  setNotice: Dispatch<SetStateAction<NoticeState>>;
-  onlineRunners: RunnerRecord[];
+  reasoningEffort: ReturnType<typeof useWorkspaceResources>['reasoningEffort'];
+  setReasoningEffort: ReturnType<typeof useWorkspaceResources>['setReasoningEffort'];
+  notice: ReturnType<typeof useWorkspaceResources>['notice'];
+  setNotice: ReturnType<typeof useWorkspaceResources>['setNotice'];
+  onlineRunners: ReturnType<typeof useWorkspaceResources>['onlineRunners'];
   runnerOnlineCount: number;
   selectedRunnerId: string;
   runnerSwitchDisabled: boolean;
@@ -66,176 +39,45 @@ interface UseWorkspaceChatRuntimeResult {
   bindRunnerToSession: (sessionId: string, runnerId: string) => Promise<void>;
   handleFileSelect: (files: File[]) => Promise<FileAttachment[]>;
   tokenUsage: ReturnType<typeof buildTokenUsage>;
-  rendererContext: {
-    chatUiTypingMessageId: string | null;
-  };
 }
 
 export function useWorkspaceChatRuntime({
   routeSessionId,
 }: UseWorkspaceChatRuntimeOptions): UseWorkspaceChatRuntimeResult {
-  const {
-    messages,
-    sessionRecord,
-    sendMessage,
-    stopGenerating,
-    dismissPendingApproval,
-    pendingApproval,
-    refreshSessionMessages,
-    isConnecting,
-    isStreaming,
-    typingMessageId,
-    loadSessionMessages,
-    usageByMessageId,
-  } = useChat();
+  const chat = useChat();
+  const resources = useWorkspaceResources();
   const activeSession = useChatStore((state) => state.activeSessionId);
   const setActiveSession = useChatStore((state) => state.setActiveSession);
   const setActiveProject = useChatStore((state) => state.setActiveProject);
-  const runtimeTraceEnabled = useChatStore((state) => state.runtimeTraceEnabled);
-  const setRuntimeTraceEnabled = useChatStore((state) => state.setRuntimeTraceEnabled);
-  const toggleRuntimeTraceEnabled = useChatStore((state) => state.toggleRuntimeTraceEnabled);
-  const [modelOptions, setModelOptions] = useState<ModelSelectOption[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<number | null>(null);
-  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>('medium');
-  const [notice, setNotice] = useState<NoticeState>(null);
-  const [runners, setRunners] = useState<RunnerRecord[]>([]);
-  const [selectedRunnerId, setSelectedRunnerId] = useState('');
   const [isBindingRunner, setIsBindingRunner] = useState(false);
   const [isApprovingPendingApproval, setIsApprovingPendingApproval] = useState(false);
   const boundRunnerBySessionRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     const nextSessionId = routeSessionId ?? null;
-    if (activeSession !== nextSessionId) {
-      setActiveSession(nextSessionId);
-    }
+    if (activeSession !== nextSessionId) setActiveSession(nextSessionId);
   }, [activeSession, routeSessionId, setActiveSession]);
 
   useEffect(() => {
-    async function syncSessionMessages() {
-      try {
-        await loadSessionMessages(activeSession);
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to load session'),
-        });
-      }
+    void chat.loadSessionMessages(activeSession).catch((error: unknown) => resources.setNotice({
+      kind: 'error',
+      message: readErrorMessage(error, 'Failed to load session'),
+    }));
+  }, [activeSession, chat.loadSessionMessages, resources.setNotice]);
+
+  useEffect(() => {
+    if (chat.sessionRecord?.projectId) setActiveProject(chat.sessionRecord.projectId);
+  }, [chat.sessionRecord?.projectId, setActiveProject]);
+
+  useEffect(() => {
+    const bound = chat.sessionRecord?.boundRunnerId;
+    if (bound && resources.onlineRunners.some((runner) => runner.runnerId === bound)) {
+      resources.setSelectedRunnerId(bound);
     }
-
-    void syncSessionMessages();
-  }, [activeSession, loadSessionMessages]);
-
-  useEffect(() => {
-    if (sessionRecord?.projectId) {
-      setActiveProject(sessionRecord.projectId);
-    }
-  }, [sessionRecord?.projectId, setActiveProject]);
-
-  useEffect(() => {
-    async function syncModels() {
-      try {
-        const payload = await fetchModels();
-        const options = payload.models.map((model) => ({
-          value: String(model.modelId),
-          label: `${model.provider}-${model.displayName}`,
-          maxInputTokens: model.maxInputTokens,
-        }));
-        setModelOptions(options);
-        setSelectedModelId((current) => {
-          if (current !== null && options.some((option) => Number(option.value) === current)) {
-            return current;
-          }
-          const cachedModelId = readSelectedModelId();
-          if (cachedModelId !== null && options.some((option) => Number(option.value) === cachedModelId)) {
-            return cachedModelId;
-          }
-          if (options.some((option) => Number(option.value) === payload.currentModel)) {
-            return payload.currentModel;
-          }
-          return options[0] ? Number(options[0].value) : null;
-        });
-      } catch (error: unknown) {
-        setNotice({
-          kind: 'error',
-          message: readErrorMessage(error, 'Failed to load models'),
-        });
-      }
-    }
-
-    void syncModels();
-  }, []);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => {
-      setNotice(null);
-    }, 3600);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let retryTimer: number | null = null;
-    let controller: AbortController | null = null;
-
-    const connect = () => {
-      if (cancelled) return;
-      controller = new AbortController();
-
-      void streamRunners({
-        signal: controller.signal,
-        onRunners: (next) => {
-          if (cancelled) return;
-          setRunners(next);
-        },
-      })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          if (error instanceof Error && error.name === 'AbortError') {
-            return;
-          }
-        })
-        .finally(() => {
-          if (cancelled) return;
-          retryTimer = window.setTimeout(connect, 1500);
-        });
-    };
-
-    connect();
-
-    return () => {
-      cancelled = true;
-      controller?.abort();
-      if (retryTimer !== null) {
-        window.clearTimeout(retryTimer);
-      }
-    };
-  }, []);
-
-  const onlineRunners = useMemo(
-    () => runners.filter((runner) => runner.status === 'online'),
-    [runners],
-  );
-  const runnerOnlineCount = onlineRunners.length;
-
-  useEffect(() => {
-    setSelectedRunnerId((current) => {
-      if (sessionRecord?.boundRunnerId && onlineRunners.some((runner) => runner.runnerId === sessionRecord.boundRunnerId)) {
-        return sessionRecord.boundRunnerId;
-      }
-      if (current && onlineRunners.some((runner) => runner.runnerId === current)) {
-        return current;
-      }
-      return onlineRunners[0]?.runnerId ?? '';
-    });
-  }, [onlineRunners, sessionRecord?.boundRunnerId]);
+  }, [chat.sessionRecord?.boundRunnerId, resources.onlineRunners, resources.setSelectedRunnerId]);
 
   const bindRunnerToSession = useCallback(async (sessionId: string, runnerId: string) => {
-    const boundRunnerId = boundRunnerBySessionRef.current.get(sessionId);
-    if (boundRunnerId === runnerId) {
-      return;
-    }
+    if (boundRunnerBySessionRef.current.get(sessionId) === runnerId) return;
     setIsBindingRunner(true);
     try {
       await bindSessionRunner(sessionId, runnerId);
@@ -246,159 +88,94 @@ export function useWorkspaceChatRuntime({
   }, []);
 
   useEffect(() => {
-    if (!activeSession || !selectedRunnerId || sessionRecord?.sessionId !== activeSession) return;
-    if (sessionRecord.boundRunnerId === selectedRunnerId) return;
-    let cancelled = false;
-
-    const bindOnSessionInit = async () => {
-      try {
-        await bindRunnerToSession(activeSession, selectedRunnerId);
-      } catch (error: unknown) {
-        if (!cancelled) {
-          setNotice({
-            kind: 'error',
-            message: readErrorMessage(error, 'Failed to bind session runner'),
-          });
-        }
-      }
-    };
-
-    void bindOnSessionInit();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSession, bindRunnerToSession, selectedRunnerId, sessionRecord?.boundRunnerId, sessionRecord?.sessionId]);
+    if (!activeSession || !resources.selectedRunnerId || chat.sessionRecord?.sessionId !== activeSession) return;
+    if (chat.sessionRecord.boundRunnerId === resources.selectedRunnerId) return;
+    void bindRunnerToSession(activeSession, resources.selectedRunnerId).catch((error: unknown) => resources.setNotice({
+      kind: 'error',
+      message: readErrorMessage(error, 'Failed to bind session runner'),
+    }));
+  }, [
+    activeSession,
+    bindRunnerToSession,
+    chat.sessionRecord?.boundRunnerId,
+    chat.sessionRecord?.sessionId,
+    resources.selectedRunnerId,
+    resources.setNotice,
+  ]);
 
   const approvePendingApproval = useCallback(async (decision: 'once' | 'always') => {
-    if (!pendingApproval) {
-      throw new Error('No pending approval request');
-    }
-
+    if (!chat.pendingApproval) throw new Error('No pending approval request');
     setIsApprovingPendingApproval(true);
     try {
-      const ticket = await issueRunnerApprovalTicket({
-        session_id: pendingApproval.approval.session_id,
-        cmd: pendingApproval.approval.cmd,
-        workdir: pendingApproval.approval.workdir,
-        request_id: pendingApproval.approval.request_id,
-        decision,
-      });
-      void ticket;
-      dismissPendingApproval();
+      await decideRunnerApproval(chat.pendingApproval.requestId, decision);
     } catch (error: unknown) {
-      dismissPendingApproval();
-      setNotice({
+      resources.setNotice({
         kind: 'error',
-        message: readErrorMessage(error, 'Failed to run approved risky operation'),
+        message: readErrorMessage(error, 'Failed to approve risky operation'),
       });
       throw error;
     } finally {
       setIsApprovingPendingApproval(false);
     }
-  }, [dismissPendingApproval, pendingApproval]);
+  }, [chat.pendingApproval, resources.setNotice]);
 
   const cancelPendingApproval = useCallback(() => {
-    dismissPendingApproval();
-    setNotice({
-      kind: 'success',
-      message: 'Risky operation was canceled.',
-    });
-  }, [dismissPendingApproval]);
-
-  const handleFileSelect = useCallback(prepareFileAttachments, []);
+    if (!chat.pendingApproval) return;
+    void decideRunnerApproval(chat.pendingApproval.requestId, 'deny')
+      .then(() => resources.setNotice({ kind: 'success', message: 'Risky operation was canceled.' }))
+      .catch((error: unknown) => resources.setNotice({
+        kind: 'error',
+        message: readErrorMessage(error, 'Failed to deny risky operation'),
+      }));
+  }, [chat.pendingApproval, resources.setNotice]);
 
   const handleModelChange = useCallback(async (value: string) => {
-    try {
-      const modelId = Number(value);
-      await switchModel(modelId);
-      setSelectedModelId(modelId);
-      writeSelectedModelId(modelId);
-    } catch (error: unknown) {
-      setNotice({
-        kind: 'error',
-        message: readErrorMessage(error, 'Failed to switch model'),
-      });
-    }
-  }, []);
+    const modelId = Number(value);
+    if (Number.isInteger(modelId) && modelId > 0) resources.selectModel(modelId);
+  }, [resources.selectModel]);
 
   const handleRunnerChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    setSelectedRunnerId(event.target.value);
-  }, []);
+    resources.setSelectedRunnerId(event.target.value);
+  }, [resources.setSelectedRunnerId]);
 
   const tokenBudget = useMemo(
-    () => modelOptions.find((model) => Number(model.value) === selectedModelId)?.maxInputTokens ?? null,
-    [modelOptions, selectedModelId],
+    () => resources.modelOptions.find((model) => Number(model.value) === resources.selectedModelId)?.maxInputTokens ?? null,
+    [resources.modelOptions, resources.selectedModelId],
   );
-  const chatMessages = useMemo(() => {
-    if (runtimeTraceEnabled) {
-      return messages as unknown as ChatMessage[];
-    }
-    return messages.filter((message) => message.role !== 'tool') as unknown as ChatMessage[];
-  }, [messages, runtimeTraceEnabled]);
+  const messages = chat.messages as ChatMessage[];
   const tokenUsage = useMemo(
-    () => buildTokenUsage(chatMessages, usageByMessageId, tokenBudget),
-    [chatMessages, usageByMessageId, tokenBudget],
-  );
-  const rendererContext = useMemo(
-    () => ({
-      chatUiTypingMessageId: typingMessageId,
-    }),
-    [typingMessageId],
+    () => buildTokenUsage(messages, chat.usageByMessageId, tokenBudget),
+    [chat.usageByMessageId, messages, tokenBudget],
   );
 
   return {
-    messages: chatMessages,
-    sessionRecord,
-    pendingApproval,
+    messages,
+    sessionRecord: chat.sessionRecord,
+    pendingApproval: chat.pendingApproval,
     approvePendingApproval,
     cancelPendingApproval,
     isApprovingPendingApproval,
     activeSession,
     setActiveSession,
-    runtimeTraceEnabled,
-    setRuntimeTraceEnabled,
-    toggleRuntimeTraceEnabled,
-    refreshSessionMessages,
-    sendMessage,
-    stopGenerating,
-    isConnecting,
-    isStreaming,
-    modelOptions,
-    selectedModelId,
+    refreshSessionMessages: chat.refreshSessionMessages,
+    sendMessage: chat.sendMessage,
+    stopGenerating: chat.stopGenerating,
+    isConnecting: chat.isConnecting,
+    isStreaming: chat.isStreaming,
+    modelOptions: resources.modelOptions,
+    selectedModelId: resources.selectedModelId,
     handleModelChange,
-    reasoningEffort,
-    setReasoningEffort,
-    notice,
-    setNotice,
-    onlineRunners,
-    runnerOnlineCount,
-    selectedRunnerId,
-    runnerSwitchDisabled: onlineRunners.length === 0 || isBindingRunner,
+    reasoningEffort: resources.reasoningEffort,
+    setReasoningEffort: resources.setReasoningEffort,
+    notice: resources.notice,
+    setNotice: resources.setNotice,
+    onlineRunners: resources.onlineRunners,
+    runnerOnlineCount: resources.onlineRunners.length,
+    selectedRunnerId: resources.selectedRunnerId,
+    runnerSwitchDisabled: resources.onlineRunners.length === 0 || isBindingRunner,
     handleRunnerChange,
     bindRunnerToSession,
-    handleFileSelect,
+    handleFileSelect: prepareFileAttachments,
     tokenUsage,
-    rendererContext,
   };
-}
-
-function readSelectedModelId(): number | null {
-  try {
-    const rawValue = window.localStorage.getItem(SELECTED_MODEL_STORAGE_KEY);
-    if (rawValue === null) {
-      return null;
-    }
-    const modelId = Number(rawValue);
-    return Number.isInteger(modelId) && modelId > 0 ? modelId : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeSelectedModelId(modelId: number): void {
-  try {
-    window.localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, String(modelId));
-  } catch {
-    // Model selection still works when browser storage is unavailable.
-  }
 }

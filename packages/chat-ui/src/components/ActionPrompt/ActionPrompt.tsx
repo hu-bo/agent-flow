@@ -1,5 +1,6 @@
-import './ActionPrompt.less';
+import { CircleHelp } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Badge, Button, RadioGroup, RadioGroupItem, Switch, Textarea } from '../ui/primitives';
 
 export interface ActionPromptToggle {
   id: string;
@@ -104,13 +105,13 @@ export function ActionPrompt({
   );
   const submitDisabled = Boolean(disabled || !selectedOption || selectedOption.disabled || customInputMissing);
 
-  const handleToggle = (optionId: string, toggle: ActionPromptToggle) => {
+  const handleToggle = (optionId: string, toggle: ActionPromptToggle, checked: boolean) => {
     if (disabled || toggle.disabled) return;
     setToggleState((current) => ({
       ...current,
       [optionId]: {
         ...(current[optionId] ?? {}),
-        [toggle.id]: !(current[optionId]?.[toggle.id] ?? toggle.defaultSelected ?? true),
+        [toggle.id]: checked,
       },
     }));
   };
@@ -127,16 +128,20 @@ export function ActionPrompt({
   return (
     <section className={`chat-ui-action-prompt ${className ?? ''}`} aria-label={title}>
       <header className="chat-ui-action-prompt-header">
-        <span className="chat-ui-action-prompt-icon" aria-hidden="true">
-          ?
-        </span>
+        <CircleHelp className="chat-ui-action-prompt-icon" aria-hidden="true" />
         <span>{title}</span>
       </header>
 
       <div className="chat-ui-action-prompt-body">
         <p className="chat-ui-action-prompt-question">{question}</p>
 
-        <div className="chat-ui-action-prompt-options" role="radiogroup" aria-label={question}>
+        <RadioGroup
+          className="chat-ui-action-prompt-options"
+          aria-label={question}
+          value={selectedOptionId}
+          onValueChange={setSelectedOptionId}
+          disabled={disabled}
+        >
           {options.map((option) => {
             const selected = selectedOptionId === option.id;
             return (
@@ -144,14 +149,10 @@ export function ActionPrompt({
                 key={option.id}
                 className={`chat-ui-action-option${selected ? ' is-selected' : ''}${option.disabled ? ' is-disabled' : ''}`}
               >
-                <button
-                  type="button"
+                <label
                   className="chat-ui-action-option-main"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={disabled || option.disabled}
-                  onClick={() => setSelectedOptionId(option.id)}
                 >
+                  <RadioGroupItem value={option.id} disabled={option.disabled} aria-label={option.title} />
                   <span className="chat-ui-action-option-copy">
                     <span className="chat-ui-action-option-title">{option.title}</span>
                     {option.description && (
@@ -159,9 +160,9 @@ export function ActionPrompt({
                     )}
                   </span>
                   {option.recommended && (
-                    <span className="chat-ui-action-option-badge">Recommended</span>
+                    <Badge className="chat-ui-action-option-badge">Recommended</Badge>
                   )}
-                </button>
+                </label>
 
                 {selected && option.toggles && option.toggles.length > 0 && (
                   <div className="chat-ui-action-toggle-group">
@@ -171,23 +172,20 @@ export function ActionPrompt({
                     {option.toggles.map((toggle) => {
                       const checked = toggleState[option.id]?.[toggle.id] ?? toggle.defaultSelected ?? true;
                       return (
-                        <button
-                          key={toggle.id}
-                          type="button"
-                          role="switch"
-                          aria-checked={checked}
-                          className={`chat-ui-action-toggle${checked ? ' is-on' : ''}`}
-                          disabled={disabled || toggle.disabled}
-                          onClick={() => handleToggle(option.id, toggle)}
-                        >
-                          <span className="chat-ui-action-toggle-control" aria-hidden="true" />
+                        <label key={toggle.id} className="chat-ui-action-toggle">
+                          <Switch
+                            checked={checked}
+                            disabled={disabled || toggle.disabled}
+                            onCheckedChange={(nextChecked) => handleToggle(option.id, toggle, nextChecked)}
+                            aria-label={toggle.label}
+                          />
                           <span className="chat-ui-action-toggle-copy">
                             <span className="chat-ui-action-toggle-label">{toggle.label}</span>
                             {toggle.description && (
                               <span className="chat-ui-action-toggle-description">{toggle.description}</span>
                             )}
                           </span>
-                        </button>
+                        </label>
                       );
                     })}
                   </div>
@@ -198,7 +196,7 @@ export function ActionPrompt({
                     {option.customInput.label && (
                       <span className="chat-ui-action-custom-label">{option.customInput.label}</span>
                     )}
-                    <textarea
+                    <Textarea
                       className="chat-ui-action-custom-textarea"
                       rows={option.customInput.minRows ?? 4}
                       placeholder={option.customInput.placeholder}
@@ -216,13 +214,15 @@ export function ActionPrompt({
               </article>
             );
           })}
-        </div>
+        </RadioGroup>
       </div>
 
       <footer className="chat-ui-action-prompt-footer">
         {onCancel && (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             className="chat-ui-action-prompt-cancel"
             disabled={disabled}
             onClick={() => {
@@ -230,16 +230,17 @@ export function ActionPrompt({
             }}
           >
             {cancelLabel}
-          </button>
+          </Button>
         )}
-        <button
+        <Button
           type="button"
+          size="sm"
           className="chat-ui-action-prompt-submit"
           disabled={submitDisabled}
           onClick={handleSubmit}
         >
           {submitLabel}
-        </button>
+        </Button>
       </footer>
     </section>
   );

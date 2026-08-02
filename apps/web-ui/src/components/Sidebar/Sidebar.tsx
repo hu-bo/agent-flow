@@ -1,40 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  ArrowUp,
   Bot,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Folder,
   FolderOpen,
   HardDrive,
   LogOut,
   MessageSquare,
   MoreHorizontal,
   Plus,
-  RefreshCw,
   Trash2,
   Workflow,
   X,
 } from 'lucide-react';
 import { useCasdoor } from '@hquant/casdoor/client/react';
 import {
-  createProject,
   deleteProject,
   deleteSession,
   fetchProjectSessions,
   fetchProjects,
   fetchSessions,
-  fetchRunnerDirectory,
-  fetchRunnerRoots,
-  fetchRunners,
   type ProjectRecord,
-  type RunnerDirectoryEntry,
-  type RunnerRecord,
   type SessionRecord,
 } from '../../api';
 import { useChatStore } from '../../store/chat-store';
+import { ProjectCreateDialog } from './ProjectCreateDialog';
 import './Sidebar.less';
 
 const AUTO_COLLAPSE_MAX_WIDTH = 1120;
@@ -57,12 +49,6 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
-interface ProjectCreateDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onCreated: (project: ProjectRecord) => void;
-}
-
 export function Sidebar({ activeSessionId, onSelectSession, mobileOpen, onMobileClose }: SidebarProps) {
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
@@ -83,11 +69,6 @@ export function Sidebar({ activeSessionId, onSelectSession, mobileOpen, onMobile
   });
   const { user, logout } = useCasdoor();
   const isCollapsed = manualOverrideCollapsed ?? isAutoCollapsed;
-
-  const activeProject = useMemo(
-    () => projects.find((project) => project.projectId === activeProjectId) ?? null,
-    [activeProjectId, projects],
-  );
 
   const loadProjects = useCallback(async () => {
     try {
@@ -395,39 +376,16 @@ export function Sidebar({ activeSessionId, onSelectSession, mobileOpen, onMobile
                 </div>
 
                 {expanded && (
-                  <div className="project-session-list">
-                    {projectSessions.map((session) => (
-                      <div
-                        key={session.sessionId}
-                        className={`session-item project-session-item ${
-                          session.sessionId === activeSessionId ? 'session-active' : ''
-                        }`}
-                        onClick={() => onSelectSession(session.sessionId, session.mode)}
-                      >
-                        <div className="session-meta">
-                          <span className="session-title" title={session.title ?? 'Untitled session'}>
-                            {session.title ?? 'Untitled session'}
-                          </span>
-                          <span className="session-count">
-                            {session.mode.toUpperCase()} 路 {session.messageCount} msgs
-                          </span>
-                        </div>
-                        <button
-                          className="session-delete"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void handleDelete(session.sessionId);
-                          }}
-                          aria-label={`Delete session ${session.sessionId}`}
-                        >
-                          <Trash2 size={13} aria-hidden />
-                        </button>
-                      </div>
-                    ))}
-                    {projectSessions.length === 0 && (
-                      <div className="project-session-empty">No project chats</div>
-                    )}
-                  </div>
+                  <SessionGroup
+                    sessions={projectSessions}
+                    activeSessionId={activeSessionId}
+                    onSelect={onSelectSession}
+                    onDelete={handleDelete}
+                    className="project-session-list"
+                    itemClassName="project-session-item"
+                    emptyClassName="project-session-empty"
+                    emptyMessage="No project chats"
+                  />
                 )}
               </section>
             );
@@ -458,38 +416,15 @@ export function Sidebar({ activeSessionId, onSelectSession, mobileOpen, onMobile
           </div>
         </div>
 
-        <div className="session-list">
-          {sessions.map((session) => (
-            <div
-              key={session.sessionId}
-              className={`session-item ${session.sessionId === activeSessionId ? 'session-active' : ''}`}
-              onClick={() => onSelectSession(session.sessionId, session.mode)}
-            >
-              <div className="session-meta">
-                <span className="session-title" title={session.title ?? 'Untitled session'}>
-                  {session.title ?? 'Untitled session'}
-                </span>
-                <span className="session-count">
-                  {session.mode.toUpperCase()} · {session.messageCount} msgs
-                </span>
-              </div>
-              <button
-                className="session-delete"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void handleDelete(session.sessionId);
-                }}
-                aria-label={`Delete session ${session.sessionId}`}
-              >
-                <Trash2 size={13} aria-hidden />
-              </button>
-            </div>
-          ))}
-
-          {sessions.length === 0 && (
-            <div className="sidebar-empty">No ordinary chats yet</div>
-          )}
-        </div>
+        <SessionGroup
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelect={onSelectSession}
+          onDelete={handleDelete}
+          className="session-list"
+          emptyClassName="sidebar-empty"
+          emptyMessage="No ordinary chats yet"
+        />
 
         <div className="sidebar-account">
           <div className="sidebar-account-name">{user?.displayName || user?.name || 'Unknown User'}</div>
@@ -509,246 +444,59 @@ export function Sidebar({ activeSessionId, onSelectSession, mobileOpen, onMobile
   );
 }
 
-function ProjectCreateDialog({ open, onClose, onCreated }: ProjectCreateDialogProps) {
-  const [runners, setRunners] = useState<RunnerRecord[]>([]);
-  const [runnerId, setRunnerId] = useState('');
-  const [projectName, setProjectName] = useState('');
-  const [roots, setRoots] = useState<RunnerDirectoryEntry[]>([]);
-  const [entries, setEntries] = useState<RunnerDirectoryEntry[]>([]);
-  const [currentPath, setCurrentPath] = useState('');
-  const [includeHidden, setIncludeHidden] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+interface SessionGroupProps {
+  sessions: SessionRecord[];
+  activeSessionId: string | null;
+  onSelect: (sessionId: string, mode: 'vibe' | 'spec') => void;
+  onDelete: (sessionId: string) => Promise<void>;
+  className: string;
+  itemClassName?: string;
+  emptyClassName: string;
+  emptyMessage: string;
+}
 
-  const onlineRunners = useMemo(() => runners.filter((runner) => runner.status === 'online'), [runners]);
-  const sortedEntries = useMemo(
-    () => [...entries].sort((left, right) => {
-      if (left.type !== right.type) return left.type === 'directory' ? -1 : 1;
-      return left.name.localeCompare(right.name);
-    }),
-    [entries],
-  );
-
-  const loadDirectory = useCallback(async (nextPath: string, nextRunnerId: string) => {
-    if (!nextRunnerId || !nextPath) return;
-    setLoading(true);
-    setError('');
-    try {
-      const payload = await fetchRunnerDirectory({
-        runnerId: nextRunnerId,
-        path: nextPath,
-        includeHidden,
-      });
-      setCurrentPath(payload.path || nextPath);
-      setEntries(payload.entries ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to list directory');
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [includeHidden]);
-
-  const loadRoots = useCallback(async (nextRunnerId: string) => {
-    if (!nextRunnerId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const payload = await fetchRunnerRoots(nextRunnerId);
-      const nextRoots = payload.roots ?? [];
-      setRoots(nextRoots);
-      const firstRoot = nextRoots[0]?.path ?? '';
-      setCurrentPath(firstRoot);
-      setEntries([]);
-      if (firstRoot) {
-        await loadDirectory(firstRoot, nextRunnerId);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load runner roots');
-      setRoots([]);
-      setEntries([]);
-      setCurrentPath('');
-    } finally {
-      setLoading(false);
-    }
-  }, [loadDirectory]);
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    const boot = async () => {
-      setError('');
-      try {
-        const payload = await fetchRunners();
-        if (cancelled) return;
-        setRunners(payload.runners ?? []);
-        const nextRunnerId = (payload.runners ?? []).find((runner) => runner.status === 'online')?.runnerId ?? '';
-        setRunnerId(nextRunnerId);
-        if (nextRunnerId) {
-          await loadRoots(nextRunnerId);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load runners');
-        }
-      }
-    };
-    void boot();
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !runnerId) return;
-    void loadRoots(runnerId);
-  }, [includeHidden, loadRoots, open, runnerId]);
-
-  if (!open) return null;
-
-  const parentPath = getParentPath(currentPath);
-
-  const handleCreate = async () => {
-    if (!runnerId || !currentPath) return;
-    setSaving(true);
-    setError('');
-    try {
-      const payload = await createProject({
-        runnerId,
-        rootPath: currentPath,
-        name: projectName.trim() || undefined,
-      });
-      onCreated(payload.project);
-      setProjectName('');
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project');
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function SessionGroup({
+  sessions,
+  activeSessionId,
+  onSelect,
+  onDelete,
+  className,
+  itemClassName = '',
+  emptyClassName,
+  emptyMessage,
+}: SessionGroupProps) {
   return (
-    <div className="project-dialog-backdrop" role="presentation">
-      <div className="project-dialog" role="dialog" aria-modal="true" aria-label="Create project">
-        <header className="project-dialog-header">
-          <div>
-            <h3>Create Project</h3>
-            <p>Select a runner directory to use as the project root.</p>
+    <div className={className}>
+      {sessions.map((session) => (
+        <div
+          key={session.sessionId}
+          className={`session-item${itemClassName ? ` ${itemClassName}` : ''}${
+            session.sessionId === activeSessionId ? ' session-active' : ''
+          }`}
+          onClick={() => onSelect(session.sessionId, session.mode)}
+        >
+          <div className="session-meta">
+            <span className="session-title" title={session.title ?? 'Untitled session'}>
+              {session.title ?? 'Untitled session'}
+            </span>
+            <span className="session-count">
+              {session.mode.toUpperCase()} · {session.messageCount} msgs
+            </span>
           </div>
-          <button type="button" className="sidebar-icon-btn" onClick={onClose} aria-label="Close">
-            <X size={15} aria-hidden />
-          </button>
-        </header>
-
-        <div className="project-dialog-controls">
-          <label>
-            <span>Runner</span>
-            <select value={runnerId} onChange={(event) => setRunnerId(event.target.value)}>
-              {onlineRunners.length === 0 ? (
-                <option value="">No online runner</option>
-              ) : (
-                onlineRunners.map((runner) => (
-                  <option key={runner.runnerId} value={runner.runnerId}>
-                    {runner.hostName || runner.host || runner.runnerId}
-                  </option>
-                ))
-              )}
-            </select>
-          </label>
-          <label>
-            <span>Name</span>
-            <input
-              value={projectName}
-              onChange={(event) => setProjectName(event.target.value)}
-              placeholder="Derived from directory"
-            />
-          </label>
-        </div>
-
-        <div className="directory-manager">
-          <div className="directory-toolbar">
-            <button
-              type="button"
-              className="directory-tool-btn"
-              disabled={!parentPath || loading}
-              onClick={() => parentPath && void loadDirectory(parentPath, runnerId)}
-              aria-label="Go to parent directory"
-            >
-              <ArrowUp size={14} aria-hidden />
-            </button>
-            <button
-              type="button"
-              className="directory-tool-btn"
-              disabled={!currentPath || loading}
-              onClick={() => void loadDirectory(currentPath, runnerId)}
-              aria-label="Refresh directory"
-            >
-              <RefreshCw size={14} aria-hidden />
-            </button>
-            <label className="directory-hidden-toggle">
-              <input
-                type="checkbox"
-                checked={includeHidden}
-                onChange={(event) => setIncludeHidden(event.target.checked)}
-              />
-              hidden
-            </label>
-          </div>
-
-          <div className="directory-breadcrumb" title={currentPath || 'No directory selected'}>
-            {currentPath || 'No directory selected'}
-          </div>
-
-          {roots.length > 1 && (
-            <div className="directory-roots">
-              {roots.map((root) => (
-                <button
-                  key={root.path}
-                  type="button"
-                  className={`directory-root${root.path === currentPath ? ' is-active' : ''}`}
-                  onClick={() => void loadDirectory(root.path, runnerId)}
-                >
-                  {root.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="directory-list">
-            {loading && <div className="directory-state">Loading directory...</div>}
-            {!loading && error && <div className="directory-state is-error">{error}</div>}
-            {!loading && !error && sortedEntries.length === 0 && <div className="directory-state">Empty directory</div>}
-            {!loading && !error && sortedEntries.map((entry) => (
-              <button
-                key={entry.path}
-                type="button"
-                className={`directory-entry${entry.type === 'file' ? ' is-file' : ''}`}
-                disabled={entry.type !== 'directory'}
-                onClick={() => entry.type === 'directory' && void loadDirectory(entry.path, runnerId)}
-              >
-                {entry.type === 'directory' ? <Folder size={15} aria-hidden /> : <span className="file-dot" />}
-                <span>{entry.name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <footer className="project-dialog-footer">
-          <button type="button" className="project-dialog-cancel" onClick={onClose}>
-            Cancel
-          </button>
           <button
             type="button"
-            className="project-dialog-create"
-            disabled={!runnerId || !currentPath || saving}
-            onClick={handleCreate}
+            className="session-delete"
+            onClick={(event) => {
+              event.stopPropagation();
+              void onDelete(session.sessionId);
+            }}
+            aria-label={`Delete session ${session.sessionId}`}
           >
-            {saving ? 'Creating...' : 'Create Project'}
+            <Trash2 size={13} aria-hidden />
           </button>
-        </footer>
-      </div>
+        </div>
+      ))}
+      {sessions.length === 0 && <div className={emptyClassName}>{emptyMessage}</div>}
     </div>
   );
 }
@@ -757,16 +505,4 @@ function orderSessions(sessions: SessionRecord[]): SessionRecord[] {
   return [...sessions].sort((a, b) => {
     return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
   });
-}
-
-function getParentPath(path: string): string | null {
-  const trimmed = path.trim();
-  if (!trimmed || trimmed === '/') return null;
-  const normalized = trimmed.replace(/[\\/]+$/, '');
-  if (/^[A-Za-z]:$/.test(normalized)) return null;
-  const slash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
-  if (slash < 0) return null;
-  if (slash === 0) return '/';
-  const parent = normalized.slice(0, slash);
-  return /^[A-Za-z]:$/.test(parent) ? `${parent}\\` : parent;
 }

@@ -34,12 +34,13 @@ import (
 )
 
 const (
-	defaultAddr       = ":8091"
-	defaultRunnerKind = "local"
-	defaultGRPCServer = "127.0.0.1:9201"
-	defaultCaps       = "shell.exec,fs.roots,fs.read,fs.stat,fs.write,fs.patch,fs.multiPatch,fs.applyPatch,fs.list,fs.glob,fs.search,git.status,git.diff,git.show,git.apply"
-	reconnectBaseWait = time.Second
-	reconnectMaxWait  = 30 * time.Second
+	defaultAddr                      = ":8091"
+	defaultRunnerKind                = "local"
+	defaultGRPCServer                = "127.0.0.1:9201"
+	defaultCaps                      = "shell.exec,fs.roots,fs.read,fs.stat,fs.write,fs.patch,fs.multiPatch,fs.applyPatch,fs.list,fs.glob,fs.search,git.status,git.diff,git.show,git.apply"
+	reconnectBaseWait                = time.Second
+	reconnectMaxWait                 = 30 * time.Second
+	defaultMaxConcurrentTasks uint32 = 8
 )
 
 var (
@@ -150,6 +151,7 @@ func runStart(args []string) error {
 	version := fs.String("version", resolveVersion(), "runner version")
 	capabilities := fs.String("capabilities", defaultCaps, "comma-separated capability list")
 	dockerBinary := fs.String("docker_bin", os.Getenv("RUNNER_DOCKER_BIN"), "docker binary path")
+	maxConcurrentTasks := fs.Uint("max_concurrent_tasks", uint(defaultMaxConcurrentTasksValue(cfg.MaxConcurrentTasks)), "maximum tasks to execute concurrently")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -157,6 +159,12 @@ func runStart(args []string) error {
 
 	if strings.TrimSpace(*rpcToken) == "" {
 		return errors.New("rpc_token is required")
+	}
+	if uint64(*maxConcurrentTasks) > uint64(^uint32(0)) {
+		return fmt.Errorf("max_concurrent_tasks must be between 1 and %d", uint64(^uint32(0)))
+	}
+	if *maxConcurrentTasks == 0 {
+		return errors.New("max_concurrent_tasks must be at least 1")
 	}
 
 	controller, err := newController(*dockerBinary)
@@ -179,9 +187,13 @@ func runStart(args []string) error {
 		}
 		registeredRunnerID = resultRunnerID
 		saveErr := model.SaveLocalConfig(model.LocalConfig{
-			RunnerID:    resultRunnerID,
-			RunnerToken: runnerTokenValue,
-			ServerAddr:  rpcHostValue,
+			RunnerID:           resultRunnerID,
+			RunnerToken:        runnerTokenValue,
+			ServerAddr:         rpcHostValue,
+			GRPCServerAddr:     cfg.GRPCServerAddr,
+			HTTPServerAddr:     cfg.HTTPServerAddr,
+			MaxConcurrentTasks: uint32(*maxConcurrentTasks),
+			Platform:           cfg.Platform,
 		})
 		if saveErr != nil {
 			slog.Warn("failed to persist local runner config", "err", saveErr)
@@ -191,23 +203,24 @@ func runStart(args []string) error {
 	}
 
 	connectOptions := grpcclient.StartLoopOptions{
-		RunnerID:          resolvedRunnerID,
-		RunnerToken:       runnerTokenValue,
-		ServerAddr:        rpcHostValue,
-		Kind:              strings.TrimSpace(*kind),
-		Host:              strings.TrimSpace(*hostLabel),
-		HostName:          strings.TrimSpace(*hostName),
-		HostIP:            strings.TrimSpace(*hostIP),
-		Version:           strings.TrimSpace(*version),
-		Capabilities:      normalizeCapabilities(parseCSV(*capabilities)),
-		OS:                platform.OS,
-		Arch:              platform.Arch,
-		DefaultShell:      platform.DefaultShell,
-		PathSeparator:     platform.PathSeparator,
-		LineEnding:        platform.LineEnding,
-		WorkspaceRoots:    platform.WorkspaceRoots,
-		AvailableCommands: platform.AvailableCommands,
-		OnRegistered:      persistRegistration,
+		RunnerID:           resolvedRunnerID,
+		RunnerToken:        runnerTokenValue,
+		ServerAddr:         rpcHostValue,
+		Kind:               strings.TrimSpace(*kind),
+		Host:               strings.TrimSpace(*hostLabel),
+		HostName:           strings.TrimSpace(*hostName),
+		HostIP:             strings.TrimSpace(*hostIP),
+		Version:            strings.TrimSpace(*version),
+		Capabilities:       normalizeCapabilities(parseCSV(*capabilities)),
+		OS:                 platform.OS,
+		Arch:               platform.Arch,
+		DefaultShell:       platform.DefaultShell,
+		PathSeparator:      platform.PathSeparator,
+		LineEnding:         platform.LineEnding,
+		WorkspaceRoots:     platform.WorkspaceRoots,
+		AvailableCommands:  platform.AvailableCommands,
+		MaxConcurrentTasks: uint32(*maxConcurrentTasks),
+		OnRegistered:       persistRegistration,
 	}
 
 	reconnectAttempt := 0
@@ -398,16 +411,17 @@ func normalizeCapabilities(values []string) []string {
 }
 
 type startOptions struct {
-	RPCHost      string
-	RPCToken     string
-	RunnerID     string
-	Kind         string
-	Host         string
-	HostName     string
-	HostIP       string
-	Version      string
-	Capabilities []string
-	DockerBinary string
+	RPCHost            string
+	RPCToken           string
+	RunnerID           string
+	Kind               string
+	Host               string
+	HostName           string
+	HostIP             string
+	Version            string
+	Capabilities       []string
+	DockerBinary       string
+	MaxConcurrentTasks uint32
 }
 
 func parseStartOptions(args []string) (startOptions, error) {
@@ -437,40 +451,56 @@ func parseStartOptions(args []string) (startOptions, error) {
 	version := fs.String("version", resolveVersion(), "runner version")
 	capabilities := fs.String("capabilities", defaultCaps, "comma-separated capability list")
 	dockerBinary := fs.String("docker_bin", os.Getenv("RUNNER_DOCKER_BIN"), "docker binary path")
+	maxConcurrentTasks := fs.Uint("max_concurrent_tasks", uint(defaultMaxConcurrentTasksValue(cfg.MaxConcurrentTasks)), "maximum tasks to execute concurrently")
 
 	if err := fs.Parse(args); err != nil {
 		return startOptions{}, err
+	}
+	if uint64(*maxConcurrentTasks) > uint64(^uint32(0)) {
+		return startOptions{}, fmt.Errorf("max_concurrent_tasks must be between 1 and %d", uint64(^uint32(0)))
+	}
+	if *maxConcurrentTasks == 0 {
+		return startOptions{}, errors.New("max_concurrent_tasks must be at least 1")
 	}
 
 	resolvedRunnerID := resolveRunnerID(strings.TrimSpace(*runnerID), strings.TrimSpace(*hostName))
 
 	return startOptions{
-		RPCHost:      strings.TrimSpace(*rpcHost),
-		RPCToken:     strings.TrimSpace(*rpcToken),
-		RunnerID:     resolvedRunnerID,
-		Kind:         strings.TrimSpace(*kind),
-		Host:         strings.TrimSpace(*hostLabel),
-		HostName:     strings.TrimSpace(*hostName),
-		HostIP:       strings.TrimSpace(*hostIP),
-		Version:      strings.TrimSpace(*version),
-		Capabilities: normalizeCapabilities(parseCSV(*capabilities)),
-		DockerBinary: strings.TrimSpace(*dockerBinary),
+		RPCHost:            strings.TrimSpace(*rpcHost),
+		RPCToken:           strings.TrimSpace(*rpcToken),
+		RunnerID:           resolvedRunnerID,
+		Kind:               strings.TrimSpace(*kind),
+		Host:               strings.TrimSpace(*hostLabel),
+		HostName:           strings.TrimSpace(*hostName),
+		HostIP:             strings.TrimSpace(*hostIP),
+		Version:            strings.TrimSpace(*version),
+		Capabilities:       normalizeCapabilities(parseCSV(*capabilities)),
+		DockerBinary:       strings.TrimSpace(*dockerBinary),
+		MaxConcurrentTasks: uint32(*maxConcurrentTasks),
 	}, nil
 }
 
 func toAutostartOptions(opts startOptions) autostart.Options {
 	return autostart.Options{
-		RPCHost:      opts.RPCHost,
-		RPCToken:     opts.RPCToken,
-		RunnerID:     opts.RunnerID,
-		Kind:         opts.Kind,
-		Host:         opts.Host,
-		HostName:     opts.HostName,
-		HostIP:       opts.HostIP,
-		Version:      opts.Version,
-		Capabilities: opts.Capabilities,
-		DockerBinary: opts.DockerBinary,
+		RPCHost:            opts.RPCHost,
+		RPCToken:           opts.RPCToken,
+		RunnerID:           opts.RunnerID,
+		Kind:               opts.Kind,
+		Host:               opts.Host,
+		HostName:           opts.HostName,
+		HostIP:             opts.HostIP,
+		Version:            opts.Version,
+		Capabilities:       opts.Capabilities,
+		DockerBinary:       opts.DockerBinary,
+		MaxConcurrentTasks: opts.MaxConcurrentTasks,
 	}
+}
+
+func defaultMaxConcurrentTasksValue(value uint32) uint32 {
+	if value == 0 {
+		return defaultMaxConcurrentTasks
+	}
+	return value
 }
 
 type platformProfile struct {

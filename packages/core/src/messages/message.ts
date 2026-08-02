@@ -21,6 +21,7 @@ export interface ImagePart {
 
 export type ThinkingStatus = 'pending' | 'running' | 'success' | 'error';
 export type MessageStatus = ThinkingStatus | 'blocked';
+export type ThinkingKind = 'summary' | 'reasoning' | 'step' | 'recovery' | 'verification' | 'status';
 
 export interface ThoughtChainItemPart {
   key: string;
@@ -35,6 +36,7 @@ export interface ThoughtChainItemPart {
 
 export interface ThinkingPart {
   type: 'thinking';
+  kind?: ThinkingKind;
   text: string;
   title?: string;
   description?: string;
@@ -113,6 +115,8 @@ export interface CompactBoundaryInfo {
 }
 
 export interface MessageMetadata {
+  /** Stable identifier shared by every message produced by one user turn. */
+  turnId?: string;
   modelId?: string | number;
   model?: string;
   provider?: string;

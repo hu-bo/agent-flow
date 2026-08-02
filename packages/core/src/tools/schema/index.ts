@@ -15,6 +15,13 @@ function assertType(value: unknown, expected: NonNullable<JsonSchema['type']>, p
     return;
   }
 
+  if (expected === 'integer') {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      throw new Error(`Schema validation failed at "${pointer}": expected integer.`);
+    }
+    return;
+  }
+
   if (typeof value !== expected) {
     throw new Error(`Schema validation failed at "${pointer}": expected ${expected}.`);
   }

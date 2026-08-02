@@ -9,7 +9,7 @@ interface PendingApprovalPromptProps {
 }
 
 function buildApprovalQuestion(pendingApproval: PendingApprovalRequest): string {
-  const { risk, reason } = pendingApproval.approval;
+  const { risk, reason } = pendingApproval;
   const normalizedRisk = risk.toUpperCase();
   if (reason?.trim()) {
     return `The agent needs ${normalizedRisk.toLowerCase()}-risk approval to continue: ${reason.trim()}`;
@@ -18,8 +18,8 @@ function buildApprovalQuestion(pendingApproval: PendingApprovalRequest): string 
 }
 
 function buildApprovalDescription(pendingApproval: PendingApprovalRequest): string {
-  const { cmd, workdir, risk } = pendingApproval.approval;
-  return `Risk: ${risk.toUpperCase()} | Command: ${cmd} | Working directory: ${workdir}`;
+  const { command, workingDir, risk } = pendingApproval;
+  return `Risk: ${risk.toUpperCase()} | Command: ${command} | Working directory: ${workingDir}`;
 }
 
 export function PendingApprovalPrompt({
@@ -29,9 +29,9 @@ export function PendingApprovalPrompt({
   onCancel,
 }: PendingApprovalPromptProps) {
   const promptKey = [
-    pendingApproval.approval.session_id,
-    pendingApproval.approval.cmd,
-    pendingApproval.approval.workdir,
+    pendingApproval.sessionId,
+    pendingApproval.command,
+    pendingApproval.workingDir,
   ].join(':');
 
   return (
@@ -48,10 +48,10 @@ export function PendingApprovalPrompt({
         },
         {
           id: 'always',
-          title: pendingApproval.approval.scope_type === 'project'
+          title: pendingApproval.scopeType === 'project'
             ? 'Always allow in this project'
             : 'Always allow in this chat',
-          description: `Remember this permission for Runner ${pendingApproval.approval.runner_id ?? 'current'} in ${pendingApproval.approval.scope_label ?? pendingApproval.approval.scope_id ?? 'this scope'}.`,
+          description: `Remember this permission for Runner ${pendingApproval.runnerId || 'current'} in ${pendingApproval.scopeLabel ?? pendingApproval.scopeId}.`,
         },
       ]}
       defaultOptionId="once"

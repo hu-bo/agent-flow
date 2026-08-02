@@ -1,105 +1,34 @@
-import './ChatPanel.less';
 import type { ReactNode } from 'react';
-import type {
-  ChatMessage,
-  ChatOption,
-  ChatSuggestion,
-  FileAttachment,
-  ReasoningEffort,
-  TokenUsageSummary,
-} from '../../types';
-import { ContentRendererRegistry, type ContentRendererContext } from '../../registry';
+import type { ChatMessage, FileAttachment } from '../../types';
+import { cn } from '../../lib/utils';
 import { MessageList } from '../MessageList/MessageList';
-import { InputArea } from '../InputArea/InputArea';
+import { Composer, type ComposerConfig } from '../Composer/Composer';
 
-export interface ChatPanelProps {
-  messages: ChatMessage[];
+export interface ChatPanelActions {
   onSend: (text: string, attachments?: FileAttachment[]) => void;
   onStop?: () => void;
   onRetryMessage?: (message: ChatMessage) => void | Promise<void>;
   onCopyMessage?: (message: ChatMessage) => void | Promise<void>;
   onDeleteMessage?: (message: ChatMessage) => void | Promise<void>;
   messageActionDisabled?: boolean;
-  selectedModel?: string;
-  modelOptions?: ChatOption[];
-  onModelChange?: (value: string) => void;
-  reasoningEffort?: ReasoningEffort;
-  onReasoningEffortChange?: (effort: ReasoningEffort) => void;
-  tokenUsage?: TokenUsageSummary;
-  isStreaming?: boolean;
-  isConnecting?: boolean;
-  onCompactContext?: () => void | Promise<void>;
-  compactContextDisabled?: boolean;
-  compactContextLabel?: string;
-  suggestions?: ChatSuggestion[];
-  onSuggestionSelect?: (suggestion: ChatSuggestion) => void;
+}
+
+export interface ChatPanelProps {
+  messages: ChatMessage[];
+  status?: 'idle' | 'connecting' | 'streaming';
+  composer?: ComposerConfig;
+  actions: ChatPanelActions;
   actionPrompt?: ReactNode;
   theme?: 'light' | 'dark';
-  registry?: ContentRendererRegistry;
-  rendererContext?: ContentRendererContext;
-  onFileSelect?: (files: File[]) => Promise<FileAttachment[]>;
   className?: string;
 }
 
-export function ChatPanel({
-  messages,
-  onSend,
-  onStop,
-  onRetryMessage,
-  onCopyMessage,
-  onDeleteMessage,
-  messageActionDisabled,
-  selectedModel,
-  modelOptions,
-  onModelChange,
-  reasoningEffort = 'medium',
-  onReasoningEffortChange,
-  tokenUsage,
-  isStreaming,
-  isConnecting,
-  onCompactContext,
-  compactContextDisabled,
-  compactContextLabel,
-  suggestions,
-  onSuggestionSelect,
-  actionPrompt,
-  theme = 'light',
-  registry,
-  rendererContext,
-  onFileSelect,
-  className,
-}: ChatPanelProps) {
+export function ChatPanel({ messages, status = 'idle', composer = {}, actions, actionPrompt, theme = 'light', className }: ChatPanelProps) {
   return (
-    <div className={`chat-ui-root flex flex-1 min-w-0 flex-col ${className ?? ''}`} data-theme={theme}>
-      <MessageList
-        messages={messages}
-        isStreaming={isStreaming}
-        registry={registry}
-        rendererContext={rendererContext}
-        onRetryMessage={onRetryMessage}
-        onCopyMessage={onCopyMessage}
-        onDeleteMessage={onDeleteMessage}
-        messageActionDisabled={messageActionDisabled}
-      />
+    <div className={cn('chat-v2-root', className)} data-theme={theme}>
+      <MessageList messages={messages} onRetryMessage={actions.onRetryMessage} onCopyMessage={actions.onCopyMessage} onDeleteMessage={actions.onDeleteMessage} messageActionDisabled={actions.messageActionDisabled} />
       {actionPrompt}
-      <InputArea
-        onSend={onSend}
-        onStop={onStop}
-        selectedModel={selectedModel}
-        modelOptions={modelOptions}
-        onModelChange={onModelChange}
-        reasoningEffort={reasoningEffort}
-        onReasoningEffortChange={onReasoningEffortChange}
-        tokenUsage={tokenUsage}
-        isStreaming={isStreaming}
-        isConnecting={isConnecting}
-        onCompactContext={onCompactContext}
-        compactContextDisabled={compactContextDisabled}
-        compactContextLabel={compactContextLabel}
-        onFileSelect={onFileSelect}
-        suggestions={suggestions}
-        onSuggestionSelect={onSuggestionSelect}
-      />
+      <Composer {...composer} status={status} onSend={actions.onSend} onStop={actions.onStop} />
     </div>
   );
 }

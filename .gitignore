@@ -6,8 +6,15 @@ temp/
 
 # build artifacts
 apps/**/dist
+packages/**/dist
+packages/runner-protocol/src/generated/
 pkg/**/dist
+pkg/**/test-output.log
 .env
 # local caches
 .vscode
 .DS_Store
+.playwright-cli/
+output/
+playwright-report/
+test-results/

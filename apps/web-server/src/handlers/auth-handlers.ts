@@ -1,8 +1,19 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { AppError } from '../lib/errors.js';
 import { sendSuccess } from '../lib/response.js';
 import { parseWithSchema } from '../lib/validation.js';
-import { oauthUrlBodySchema, tokenExchangeBodySchema, tokenRefreshBodySchema } from '../schemas/auth.js';
+
+const tokenExchangeBodySchema = z.object({
+  code: z.string().trim().min(1),
+  state: z.string().trim().min(1),
+});
+const tokenRefreshBodySchema = z.object({ refresh_token: z.string().trim().min(1) });
+const oauthUrlBodySchema = z.object({
+  redirect_uri: z.string().trim().min(1),
+  state: z.string().trim().min(1),
+  enable_password: z.boolean().optional(),
+});
 
 type AppAuthRequest = FastifyRequest<{
   Params: {

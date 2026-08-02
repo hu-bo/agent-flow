@@ -6,20 +6,28 @@ import type {
   RunnerHeartbeatInput,
   RunnerRegisterInput,
 } from '../services/runner-registry-service.js';
-import type {
-  ConnectHeartbeatMessage,
-  ConnectRegisterMessage,
-  RunnerTaskEventMessage,
-  ServerEnvelopeMessage,
-} from './runner-protocol.js';
+import {
+  Engine,
+  FailureType,
+  TerminalStatus,
+  engineToJSON,
+  failureTypeToJSON,
+  isolationLevelToJSON,
+  taskEventTypeToJSON,
+  terminalStatusToJSON,
+  type ConnectHeartbeat,
+  type ConnectRegister,
+  type ServerEnvelope,
+  type TaskEvent,
+} from '@agent-flow/runner-protocol';
 
-type GrpcTaskRequest = NonNullable<ServerEnvelopeMessage['runTask']>;
+type GrpcTaskRequest = NonNullable<ServerEnvelope['runTask']>;
 
-export function toRunnerRegisterInput(message: ConnectRegisterMessage): RunnerRegisterInput {
+export function toRunnerRegisterInput(message: ConnectRegister): RunnerRegisterInput {
   return {
     runnerToken: message.runnerToken,
     runnerId: message.runnerId,
-    kind: message.kind,
+    kind: normalizeRunnerKind(message.kind),
     host: message.host,
     hostName: message.hostName,
     hostIp: message.hostIp,
@@ -42,7 +50,7 @@ export function toRunnerRegisterInput(message: ConnectRegisterMessage): RunnerRe
   };
 }
 
-export function toRunnerHeartbeatInput(message: ConnectHeartbeatMessage): RunnerHeartbeatInput {
+export function toRunnerHeartbeatInput(message: ConnectHeartbeat): RunnerHeartbeatInput {
   return {
     runnerId: message.runnerId,
     runnerToken: message.runnerToken,
@@ -51,7 +59,7 @@ export function toRunnerHeartbeatInput(message: ConnectHeartbeatMessage): Runner
   };
 }
 
-export function toServerEnvelope(outbound: RunnerOutboundMessage): ServerEnvelopeMessage {
+export function toServerEnvelope(outbound: RunnerOutboundMessage): ServerEnvelope {
   if (outbound.type === 'run_task') {
     return {
       runTask: toGrpcTaskRequest(outbound.task),
@@ -67,8 +75,8 @@ export function toServerEnvelope(outbound: RunnerOutboundMessage): ServerEnvelop
   };
 }
 
-export function toGrpcTaskRequest(task: PendingRunnerTask): GrpcTaskRequest {
-  const inputJson = task.input ? Buffer.from(JSON.stringify(task.input), 'utf8') : undefined;
+function toGrpcTaskRequest(task: PendingRunnerTask): GrpcTaskRequest {
+  const inputJson = task.input ? Buffer.from(JSON.stringify(task.input), 'utf8') : Buffer.alloc(0);
   return {
     taskId: task.taskId,
     sessionId: task.sessionId,
@@ -79,8 +87,9 @@ export function toGrpcTaskRequest(task: PendingRunnerTask): GrpcTaskRequest {
     workingDir: task.workingDir ?? '',
     timeoutMs: task.timeoutMs ?? 0,
     stream: task.stream ?? true,
+    authToken: '',
     inputJson,
-    engine: task.engine === 'docker' ? 'ENGINE_DOCKER' : 'ENGINE_HOST',
+    engine: task.engine === 'docker' ? Engine.ENGINE_DOCKER : Engine.ENGINE_HOST,
     executionId: task.executionId,
     attempt: task.attempt,
     deadline: task.deadline,
@@ -97,30 +106,28 @@ export function toGrpcTaskRequest(task: PendingRunnerTask): GrpcTaskRequest {
       allowedEnvKeys: task.sandboxPolicy?.allowedEnvKeys ?? [],
       deniedEnvKeys: task.sandboxPolicy?.deniedEnvKeys ?? [],
     },
-    ...(task.docker
+    docker: task.docker
       ? {
-          docker: {
-            image: task.docker.image,
-            workDir: task.docker.workDir ?? '',
-            user: task.docker.user ?? '',
-            networkDisabled: task.docker.networkDisabled ?? true,
-            readOnlyRootFs: task.docker.readOnlyRootFs ?? true,
-            mounts: (task.docker.mounts ?? []).map((mount) => ({
-              ...mount,
-              readOnly: mount.readOnly ?? false,
-            })),
-            cpuLimitMillis: task.docker.cpuLimitMillis ?? 0,
-            memoryLimitBytes: task.docker.memoryLimitBytes ?? 0,
-            pidsLimit: task.docker.pidsLimit ?? 0,
-            diskLimitBytes: task.docker.diskLimitBytes ?? 0,
-          },
+          image: task.docker.image,
+          workDir: task.docker.workDir ?? '',
+          user: task.docker.user ?? '',
+          networkDisabled: task.docker.networkDisabled ?? true,
+          readOnlyRootFs: task.docker.readOnlyRootFs ?? true,
+          mounts: (task.docker.mounts ?? []).map((mount) => ({
+            ...mount,
+            readOnly: mount.readOnly ?? false,
+          })),
+          cpuLimitMillis: task.docker.cpuLimitMillis ?? 0,
+          memoryLimitBytes: task.docker.memoryLimitBytes ?? 0,
+          pidsLimit: task.docker.pidsLimit ?? 0,
+          diskLimitBytes: task.docker.diskLimitBytes ?? 0,
         }
-      : {}),
+      : undefined,
   };
 }
 
-export function toInboundTaskEvent(event: RunnerTaskEventMessage) {
-  const timestamp = event.timestamp ?? new Date().toISOString();
+export function toInboundTaskEvent(event: TaskEvent) {
+  const timestamp = event.timestamp || new Date().toISOString();
   const runnerId = event.runnerId;
   const normalizedType = normalizeTaskEventType(event.type);
   const identity = {
@@ -203,19 +210,18 @@ export function toInboundTaskEvent(event: RunnerTaskEventMessage) {
   }
 }
 
-function parseOptionalSafeUint(value: number | string | undefined, field: string): number | undefined {
-  if (value === undefined || value === '') return undefined;
-  const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+function parseOptionalSafeUint(value: number | undefined, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`${field} must be a safe unsigned integer`);
   }
-  return parsed;
+  return value;
 }
 
-export function normalizeTaskEventType(
-  type: string | undefined,
+function normalizeTaskEventType(
+  type: TaskEvent['type'],
 ): 'started' | 'stdout' | 'stderr' | 'progress' | 'result' | 'error' | 'completed' {
-  switch (type) {
+  switch (taskEventTypeToJSON(type)) {
     case 'TASK_EVENT_TYPE_STDOUT':
       return 'stdout';
     case 'TASK_EVENT_TYPE_STDERR':
@@ -234,8 +240,11 @@ export function normalizeTaskEventType(
   }
 }
 
-function normalizeTerminalStatus(value: string | undefined, exitCode: number) {
-  switch (value) {
+function normalizeTerminalStatus(
+  value: NonNullable<TaskEvent['completed']>['status'] | undefined,
+  exitCode: number,
+) {
+  switch (terminalStatusToJSON(value ?? TerminalStatus.TERMINAL_STATUS_UNSPECIFIED)) {
     case 'TERMINAL_STATUS_FAILED':
       return 'failed' as const;
     case 'TERMINAL_STATUS_CANCELLED':
@@ -251,15 +260,18 @@ function normalizeTerminalStatus(value: string | undefined, exitCode: number) {
   }
 }
 
-function normalizeFailureType(value: string | undefined): string | undefined {
-  if (!value || value === 'FAILURE_TYPE_UNSPECIFIED') return undefined;
-  return value.replace(/^FAILURE_TYPE_/, '').toLowerCase();
+function normalizeFailureType(
+  value: NonNullable<TaskEvent['error']>['failureType'] | undefined,
+): string | undefined {
+  const normalized = failureTypeToJSON(value ?? FailureType.FAILURE_TYPE_UNSPECIFIED);
+  if (normalized === 'FAILURE_TYPE_UNSPECIFIED' || normalized === 'UNRECOGNIZED') return undefined;
+  return normalized.replace(/^FAILURE_TYPE_/, '').toLowerCase();
 }
 
 function normalizeIsolationLevel(
-  value: string | undefined,
+  value: ConnectRegister['isolationLevel'],
 ): 'guarded-host' | 'container' | 'os-sandbox' {
-  switch (value) {
+  switch (isolationLevelToJSON(value)) {
     case 'ISOLATION_LEVEL_CONTAINER':
       return 'container';
     case 'ISOLATION_LEVEL_OS_SANDBOX':
@@ -269,19 +281,24 @@ function normalizeIsolationLevel(
   }
 }
 
-function normalizeAvailableEngines(values: string[] | undefined): Array<'host' | 'docker'> {
+function normalizeRunnerKind(value: string): 'local' | 'remote' | 'sandbox' | undefined {
+  return value === 'local' || value === 'remote' || value === 'sandbox' ? value : undefined;
+}
+
+function normalizeAvailableEngines(values: ConnectRegister['availableEngines']): Array<'host' | 'docker'> {
   const engines = new Set<'host' | 'docker'>();
-  for (const value of values ?? []) {
-    if (value === 'ENGINE_HOST') engines.add('host');
-    if (value === 'ENGINE_DOCKER') engines.add('docker');
+  for (const value of values) {
+    const normalized = engineToJSON(value);
+    if (normalized === 'ENGINE_HOST') engines.add('host');
+    if (normalized === 'ENGINE_DOCKER') engines.add('docker');
   }
   return engines.size > 0 ? [...engines] : ['host'];
 }
 
-function decodeResultPayload(raw: Uint8Array | string | undefined): unknown {
-  if (!raw) return null;
+function decodeResultPayload(raw: Uint8Array | undefined): unknown {
+  if (!raw || raw.byteLength === 0) return null;
   try {
-    const text = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+    const text = Buffer.from(raw).toString('utf8');
     if (!text.trim()) return null;
     return JSON.parse(text) as unknown;
   } catch {

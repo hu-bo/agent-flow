@@ -6,6 +6,7 @@ import type {
   ToolSchema,
 } from '@agent-flow/core';
 import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { RunnerDispatchService } from './runner-dispatch-service.js';
 
 type RunnerBackedToolName =
@@ -28,7 +29,6 @@ interface RunnerBackedToolOptions {
   dispatchService: RunnerDispatchService;
   name: RunnerBackedToolName;
   description: string;
-  input: ToolSchema['input'];
   risk: NonNullable<ToolSchema['risk']>;
   access: NonNullable<ToolSchema['access']>;
   approval: NonNullable<ToolSchema['approval']>;
@@ -42,7 +42,7 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
     this.schema = {
       name: options.name,
       description: options.description,
-      input: options.input,
+      input: toToolInputSchema(options.zodInput),
       risk: options.risk,
       access: options.access,
       approval: options.approval,
@@ -79,9 +79,9 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
       if (event.type === 'approval_request') {
         await context.onEvent?.('approval_request', {
           requestId: event.requestId,
-          session_id: event.sessionId,
-          cmd: event.command,
-          workdir: event.workingDir,
+          sessionId: event.sessionId,
+          command: event.command,
+          workingDir: event.workingDir,
           risk: event.risk,
           reason: event.reason,
           runnerId: event.runnerId,
@@ -92,13 +92,12 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
       } else if (event.type === 'approval_response') {
         await context.onEvent?.('approval_response', {
           requestId: event.requestId,
-          session_id: event.sessionId,
-          cmd: event.command,
-          workdir: event.workingDir,
+          sessionId: event.sessionId,
+          command: event.command,
+          workingDir: event.workingDir,
           approved: event.approved,
-          ticketId: event.ticketId,
-          authorizationSource: event.authorizationSource,
-          grantId: event.grantId,
+          decision: event.decision,
+          persistentGrantId: event.persistentGrantId,
           reason: event.reason,
           runnerId: event.runnerId,
         });
@@ -117,18 +116,6 @@ class RunnerBackedTool implements ToolDefinition<Record<string, unknown>, unknow
 
     return latestResult ?? null;
   }
-}
-
-function resolveWorkingDir(metadata: Record<string, unknown> | undefined): string {
-  const cwd = metadata?.cwd;
-  if (typeof cwd === 'string' && cwd.trim().length > 0) {
-    return cwd.trim();
-  }
-  const sessionCwd = metadata?.sessionCwd;
-  if (typeof sessionCwd === 'string' && sessionCwd.trim().length > 0) {
-    return sessionCwd.trim();
-  }
-  return process.cwd();
 }
 
 const runnerBackedInputSchemas = {
@@ -223,214 +210,30 @@ export function registerRunnerBackedTools(
 }
 
 function createRunnerBackedTools(dispatchService: RunnerDispatchService): ToolDefinition<Record<string, unknown>, unknown>[] {
-  return [
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.read',
-      description: 'Read a UTF-8 file from the bound runner workspace.',
-      zodInput: runnerBackedInputSchemas.fsRead,
-      risk: 'low',
-      access: 'read',
-      approval: 'never',
-      input: {
-        type: 'object',
-        required: ['path'],
-        properties: {
-          path: { type: 'string', description: 'Workspace-relative file path.' },
-          encoding: { type: 'string', description: 'Encoding. Only utf8 is supported.' },
-          maxBytes: { type: 'number', description: 'Maximum readable file size in bytes.' },
-          allowMissing: { type: 'boolean', description: 'Return an empty result when the file is missing.' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.stat',
-      description: 'Inspect file metadata and content identity in the bound runner workspace.',
-      zodInput: runnerBackedInputSchemas.fsStat,
-      risk: 'low',
-      access: 'read',
-      approval: 'never',
-      input: { type: 'object', required: ['path'], properties: { path: { type: 'string' } } },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.write',
-      description: 'Write a UTF-8 file inside the bound runner workspace.',
-      zodInput: runnerBackedInputSchemas.fsWrite,
-      risk: 'high',
-      access: 'write',
-      approval: 'on_write',
-      input: {
-        type: 'object',
-        required: ['path', 'content'],
-        properties: {
-          path: { type: 'string', description: 'Workspace-relative file path.' },
-          content: { type: 'string', description: 'File content to write.' },
-          encoding: { type: 'string', description: 'Encoding. Only utf8 is supported.' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.patch',
-      description: 'Patch a UTF-8 file inside the bound runner workspace by replacing text.',
-      zodInput: runnerBackedInputSchemas.fsPatch,
-      risk: 'high',
-      access: 'write',
-      approval: 'on_write',
-      input: {
-        type: 'object',
-        required: ['path', 'search', 'replace'],
-        properties: {
-          path: { type: 'string', description: 'Workspace-relative file path.' },
-          search: { type: 'string', description: 'Text to search for.' },
-          replace: { type: 'string', description: 'Replacement text.' },
-          replaceAll: { type: 'boolean', description: 'Replace all matches instead of the first match.' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.multiPatch',
-      description: 'Apply multiple text replacements to one UTF-8 file inside the bound runner workspace.',
-      zodInput: runnerBackedInputSchemas.fsMultiPatch,
-      risk: 'high',
-      access: 'write',
-      approval: 'on_write',
-      input: {
-        type: 'object',
-        required: ['path', 'edits'],
-        properties: {
-          path: { type: 'string', description: 'Workspace-relative file path.' },
-          edits: {
-            type: 'array',
-            description: 'Ordered text replacements to apply atomically.',
-            items: {
-              type: 'object',
-              required: ['search', 'replace'],
-              properties: {
-                search: { type: 'string', description: 'Text to search for.' },
-                replace: { type: 'string', description: 'Replacement text.' },
-                replaceAll: { type: 'boolean', description: 'Replace all matches instead of the first match.' },
-              },
-            },
-          },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.list',
-      description: 'List files under a directory in the bound runner workspace.',
-      zodInput: runnerBackedInputSchemas.fsList,
-      risk: 'low',
-      access: 'read',
-      approval: 'never',
-      input: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'Workspace-relative directory path. Defaults to current directory.' },
-          recursive: { type: 'boolean', description: 'Whether to list recursively.' },
-          maxEntries: { type: 'number', description: 'Maximum number of entries to return.' },
-          includeHidden: { type: 'boolean', description: 'Whether to include hidden files.' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.applyPatch',
-      description: 'Atomically apply a unified diff with optional content preconditions.',
-      zodInput: runnerBackedInputSchemas.fsApplyPatch,
-      risk: 'high',
-      access: 'write',
-      approval: 'on_write',
-      input: {
-        type: 'object',
-        required: ['path', 'patch'],
-        properties: {
-          path: { type: 'string' }, patch: { type: 'string' }, expectedSha256: { type: 'string' }, expectedContent: { type: 'string' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.glob',
-      description: 'Find workspace files by path pattern with bounded results.',
-      zodInput: runnerBackedInputSchemas.fsGlob,
-      risk: 'low',
-      access: 'read',
-      approval: 'never',
-      input: {
-        type: 'object', required: ['pattern'],
-        properties: { path: { type: 'string' }, pattern: { type: 'string' }, maxEntries: { type: 'number' } },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'fs.search',
-      description: 'Search files under a directory in the bound runner workspace.',
-      zodInput: runnerBackedInputSchemas.fsSearch,
-      risk: 'low',
-      access: 'read',
-      approval: 'never',
-      input: {
-        type: 'object',
-        required: ['pattern'],
-        properties: {
-          path: { type: 'string', description: 'Workspace-relative directory path. Defaults to current directory.' },
-          pattern: { type: 'string', description: 'String or regular expression pattern to search for.' },
-          recursive: { type: 'boolean', description: 'Whether to search recursively.' },
-          maxMatches: { type: 'number', description: 'Maximum number of matches to return.' },
-          includeHidden: { type: 'boolean', description: 'Whether to include hidden files.' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService,
-      name: 'shell.exec',
-      description: 'Execute a shell command through the bound runner.',
-      zodInput: runnerBackedInputSchemas.shellExec,
-      risk: 'high',
-      access: 'execute',
-      approval: 'always',
-      input: {
-        type: 'object',
-        required: ['command'],
-        properties: {
-          command: { type: 'string', description: 'Command executable or script to run.' },
-          args: {
-            type: 'array',
-            description: 'Command arguments.',
-            items: { type: 'string' },
-          },
-          workingDir: { type: 'string', description: 'Optional working directory inside the runner workspace.' },
-          timeoutMs: { type: 'number', description: 'Timeout in milliseconds.' },
-          env: { type: 'object', description: 'Additional environment variables.' },
-        },
-      },
-    }),
-    new RunnerBackedTool({
-      dispatchService, name: 'git.status', description: 'Read structured Git worktree status from the bound workspace.',
-      zodInput: runnerBackedInputSchemas.gitStatus, risk: 'low', access: 'git', approval: 'never',
-      input: { type: 'object', properties: { pathspec: { type: 'array', items: { type: 'string' } } } },
-    }),
-    new RunnerBackedTool({
-      dispatchService, name: 'git.diff', description: 'Read a bounded Git patch from the bound workspace.',
-      zodInput: runnerBackedInputSchemas.gitDiff, risk: 'low', access: 'git', approval: 'never',
-      input: { type: 'object', properties: { cached: { type: 'boolean' }, base: { type: 'string' }, pathspec: { type: 'array', items: { type: 'string' } } } },
-    }),
-    new RunnerBackedTool({
-      dispatchService, name: 'git.show', description: 'Inspect a revision or path through Git in the bound workspace.',
-      zodInput: runnerBackedInputSchemas.gitShow, risk: 'low', access: 'git', approval: 'never',
-      input: { type: 'object', properties: { revision: { type: 'string' }, path: { type: 'string' } } },
-    }),
-    new RunnerBackedTool({
-      dispatchService, name: 'git.apply', description: 'Validate and apply a Git patch in the bound workspace.',
-      zodInput: runnerBackedInputSchemas.gitApply, risk: 'high', access: 'git', approval: 'on_write',
-      input: { type: 'object', required: ['patch'], properties: { patch: { type: 'string' }, reverse: { type: 'boolean' } } },
-    }),
+  const catalog: Array<Omit<RunnerBackedToolOptions, 'dispatchService'>> = [
+    { name: 'fs.read', description: 'Read a UTF-8 file from the bound runner workspace.', zodInput: runnerBackedInputSchemas.fsRead, risk: 'low', access: 'read', approval: 'never' },
+    { name: 'fs.stat', description: 'Inspect file metadata and content identity in the bound runner workspace.', zodInput: runnerBackedInputSchemas.fsStat, risk: 'low', access: 'read', approval: 'never' },
+    { name: 'fs.write', description: 'Write a UTF-8 file inside the bound runner workspace.', zodInput: runnerBackedInputSchemas.fsWrite, risk: 'high', access: 'write', approval: 'on_write' },
+    { name: 'fs.patch', description: 'Patch a UTF-8 file inside the bound runner workspace by replacing text.', zodInput: runnerBackedInputSchemas.fsPatch, risk: 'high', access: 'write', approval: 'on_write' },
+    { name: 'fs.multiPatch', description: 'Apply multiple text replacements to one UTF-8 file inside the bound runner workspace.', zodInput: runnerBackedInputSchemas.fsMultiPatch, risk: 'high', access: 'write', approval: 'on_write' },
+    { name: 'fs.applyPatch', description: 'Atomically apply a unified diff with optional content preconditions.', zodInput: runnerBackedInputSchemas.fsApplyPatch, risk: 'high', access: 'write', approval: 'on_write' },
+    { name: 'fs.list', description: 'List files under a directory in the bound runner workspace.', zodInput: runnerBackedInputSchemas.fsList, risk: 'low', access: 'read', approval: 'never' },
+    { name: 'fs.glob', description: 'Find workspace files by path pattern with bounded results.', zodInput: runnerBackedInputSchemas.fsGlob, risk: 'low', access: 'read', approval: 'never' },
+    { name: 'fs.search', description: 'Search files under a directory in the bound runner workspace.', zodInput: runnerBackedInputSchemas.fsSearch, risk: 'low', access: 'read', approval: 'never' },
+    { name: 'shell.exec', description: 'Execute a shell command through the bound runner.', zodInput: runnerBackedInputSchemas.shellExec, risk: 'high', access: 'execute', approval: 'always' },
+    { name: 'git.status', description: 'Read structured Git worktree status from the bound workspace.', zodInput: runnerBackedInputSchemas.gitStatus, risk: 'low', access: 'git', approval: 'never' },
+    { name: 'git.diff', description: 'Read a bounded Git patch from the bound workspace.', zodInput: runnerBackedInputSchemas.gitDiff, risk: 'low', access: 'git', approval: 'never' },
+    { name: 'git.show', description: 'Inspect a revision or path through Git in the bound workspace.', zodInput: runnerBackedInputSchemas.gitShow, risk: 'low', access: 'git', approval: 'never' },
+    { name: 'git.apply', description: 'Validate and apply a Git patch in the bound workspace.', zodInput: runnerBackedInputSchemas.gitApply, risk: 'high', access: 'git', approval: 'on_write' },
   ];
+
+  return catalog.map((tool) => new RunnerBackedTool({ ...tool, dispatchService }));
+}
+
+function toToolInputSchema(schema: z.ZodType<Record<string, unknown>>): ToolSchema['input'] {
+  const generated = zodToJsonSchema(schema, { $refStrategy: 'none' }) as Record<string, unknown>;
+  const { $schema: _schemaVersion, definitions: _definitions, ...input } = generated;
+  return input as ToolSchema['input'];
 }
 
 function parseRunnerBackedToolInput(

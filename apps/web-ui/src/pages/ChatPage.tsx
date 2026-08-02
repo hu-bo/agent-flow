@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ChatPanel } from '@agent-flow/chat-ui';
 import type { FileAttachment } from '@agent-flow/chat-ui';
-import { Activity, MessageCircle, NotebookPen } from 'lucide-react';
+import { MessageCircle, NotebookPen } from 'lucide-react';
 
 import { PendingApprovalPrompt } from '../components/PendingApprovalPrompt';
+import { ConversationShell } from '../components/ConversationShell';
 import { createSession, triggerCompact } from '../api';
 import { useMessageActions } from '../hooks/useMessageActions';
 import { useWorkspaceChatRuntime } from '../hooks/useWorkspaceChatRuntime';
 import { useChatStore } from '../store/chat-store';
-import { buildRunnerLabel, readErrorMessage } from './chat-page-utils';
+import { readErrorMessage } from './chat-page-utils';
 import './pages.less';
 
 export function ChatPage() {
@@ -45,9 +46,6 @@ export function ChatPage() {
     bindRunnerToSession,
     handleFileSelect,
     tokenUsage,
-    rendererContext,
-    runtimeTraceEnabled,
-    toggleRuntimeTraceEnabled,
   } = runtime;
   const [pendingMode, setPendingMode] = useState<'vibe' | 'spec'>('vibe');
   const [isCompacting, setIsCompacting] = useState(false);
@@ -222,50 +220,16 @@ export function ChatPage() {
   ) : null;
 
   return (
-    <>
-      <header className="workspace-header">
-        <div className="workspace-header-left">
-          <span className="workspace-path">Pages / Chat</span>
-          <h1 className="workspace-title">AGENT_COLLAB_LIGHT</h1>
-        </div>
-        <div className="workspace-header-right">
-          <button
-            type="button"
-            className={`workspace-action-btn workspace-toggle-btn${runtimeTraceEnabled ? ' is-active' : ''}`}
-            onClick={toggleRuntimeTraceEnabled}
-            aria-pressed={runtimeTraceEnabled}
-            title="Trace / 执行轨迹"
-          >
-            <Activity size={14} />
-            <span>Trace</span>
-          </button>
-          <select
-            className="workspace-runner-select"
-            value={selectedRunnerId}
-            onChange={handleRunnerChange}
-            disabled={runnerSwitchDisabled}
-            aria-label="Runner selection"
-          >
-            {onlineRunners.length === 0 ? (
-              <option value="">RUNNER_OFFLINE</option>
-            ) : (
-              onlineRunners.map((runner) => (
-                <option key={runner.runnerId} value={runner.runnerId}>
-                  {buildRunnerLabel(runner)}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-      </header>
-      <section className="workspace-canvas">
-        {runnerOnlineCount === 0 && (
-          <div className="chat-runner-hint">
-            No online runner is available. Go to <Link to="/runners">Runner page</Link> to start one.
-          </div>
-        )}
-        {notice && <div className={`workspace-notice workspace-notice-${notice.kind}`}>{notice.message}</div>}
-
+    <ConversationShell
+      page="Chat"
+      title="AGENT_COLLAB_LIGHT"
+      runners={onlineRunners}
+      runnerOnlineCount={runnerOnlineCount}
+      selectedRunnerId={selectedRunnerId}
+      runnerSwitchDisabled={runnerSwitchDisabled}
+      notice={notice}
+      onRunnerChange={handleRunnerChange}
+    >
         <div className="chat-entry-shell">
           {showModeGate && (
             <div className="mode-gate-overlay">
@@ -305,28 +269,29 @@ export function ChatPage() {
           <ChatPanel
             className="playground-chat-panel"
             messages={messages}
-            rendererContext={rendererContext}
-            onSend={handleSend}
-            onStop={stopGenerating}
-            onRetryMessage={handleRetryMessage}
-            onCopyMessage={handleCopyMessage}
-            onDeleteMessage={handleDeleteMessage}
-            messageActionDisabled={messageActionsDisabled}
-            selectedModel={selectedModelId === null ? undefined : String(selectedModelId)}
-            modelOptions={modelOptions}
-            onModelChange={handleModelChange}
-            reasoningEffort={reasoningEffort}
-            onReasoningEffortChange={setReasoningEffort}
-            tokenUsage={tokenUsage}
-            isStreaming={isStreaming}
-            isConnecting={isConnecting}
-            onCompactContext={handleCompact}
-            compactContextDisabled={compactDisabled}
-            onFileSelect={handleFileSelect}
+            status={isStreaming ? 'streaming' : isConnecting ? 'connecting' : 'idle'}
+            actions={{
+              onSend: handleSend,
+              onStop: stopGenerating,
+              onRetryMessage: handleRetryMessage,
+              onCopyMessage: handleCopyMessage,
+              onDeleteMessage: handleDeleteMessage,
+              messageActionDisabled: messageActionsDisabled,
+            }}
+            composer={{
+              selectedModel: selectedModelId === null ? undefined : String(selectedModelId),
+              modelOptions,
+              onModelChange: handleModelChange,
+              reasoningEffort,
+              onReasoningEffortChange: setReasoningEffort,
+              tokenUsage,
+              onCompactContext: handleCompact,
+              compactContextDisabled: compactDisabled,
+              onFileSelect: handleFileSelect,
+            }}
             actionPrompt={approvalPrompt}
           />
         </div>
-      </section>
-    </>
+    </ConversationShell>
   );
 }

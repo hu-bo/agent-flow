@@ -109,11 +109,6 @@ export function buildToolContextMetadata(input: RuntimeChatInput): Record<string
     cwd: input.session.cwd,
     userMessage: input.message,
     preferredRunnerId: input.preferredRunnerId,
-    approveRiskyOps: Boolean(input.approveRiskyOps),
-    approvalTicket:
-      typeof input.approvalTicket === 'string' && input.approvalTicket.trim().length > 0
-        ? input.approvalTicket.trim()
-        : undefined,
     reasoningEffort: input.reasoningEffort ?? 'medium',
     attachmentCount: input.attachments.length,
   };

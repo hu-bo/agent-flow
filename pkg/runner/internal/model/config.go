@@ -14,12 +14,13 @@ const (
 )
 
 type LocalConfig struct {
-	RunnerID       string           `json:"runnerId"`
-	RunnerToken    string           `json:"runnerToken"`
-	ServerAddr     string           `json:"serverAddr"`
-	GRPCServerAddr string           `json:"grpcServerAddr"`
-	HTTPServerAddr string           `json:"httpServerAddr"`
-	Platform       *PlatformProfile `json:"platform,omitempty"`
+	RunnerID           string           `json:"runnerId"`
+	RunnerToken        string           `json:"runnerToken"`
+	ServerAddr         string           `json:"serverAddr"`
+	GRPCServerAddr     string           `json:"grpcServerAddr"`
+	HTTPServerAddr     string           `json:"httpServerAddr"`
+	MaxConcurrentTasks uint32           `json:"maxConcurrentTasks"`
+	Platform           *PlatformProfile `json:"platform,omitempty"`
 }
 
 type PlatformProfile struct {

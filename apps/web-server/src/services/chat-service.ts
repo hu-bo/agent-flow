@@ -2,11 +2,12 @@ import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { MemoryService } from '@agent-flow/memory';
 import type { ChatStreamEvent, ReasoningEffort, RunnerPlatformProfile, SessionRecord } from '../contracts/api.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
-import { createUserTextMessage, getMessageText } from '../lib/messages.js';
+import { createUserTextMessage } from '../lib/messages.js';
 import type { RuntimeTurnEngine } from '../runtime/runtime-turn-engine.js';
 import type { RunnerRegistryService } from './runner-registry-service.js';
-import { createSpecPromptMessage, type SpecWorkflowService } from './spec-workflow-service.js';
+import type { ChatModeStrategyRegistry } from './chat-mode-strategy.js';
 import type { ModelService } from './model-service.js';
+import { recordSessionMessage } from './session-memory-recorder.js';
 import type { SessionService } from './session-service.js';
 
 export interface ChatTurnInput {
@@ -20,9 +21,8 @@ export interface ChatTurnInput {
   modelId?: number;
   reasoningEffort?: ReasoningEffort;
   attachments?: FilePart[];
-  approveRiskyOps?: boolean;
-  approvalTicket?: string;
   requestId: string;
+  turnId?: string;
   /** Set when the client closes the stream or explicitly stops generation. */
   signal?: AbortSignal;
 }
@@ -30,13 +30,6 @@ export interface ChatTurnInput {
 export interface ChatTurnResult {
   session: SessionRecord;
   messages: UnifiedMessage[];
-}
-
-export interface SpecConfirmResult {
-  session: SessionRecord;
-  messages: UnifiedMessage[];
-  workflow: SessionRecord['specWorkflow'];
-  progressed: boolean;
 }
 
 export interface RetryChatMessageInput {
@@ -55,6 +48,7 @@ interface PreparedTurn {
   modelId: number;
   model: string;
   attachments: FilePart[];
+  turnId: string;
 }
 
 export class ChatService {
@@ -64,7 +58,7 @@ export class ChatService {
     private readonly sessionService: SessionService,
     private readonly modelService: ModelService,
     private readonly runtimeTurnEngine: RuntimeTurnEngine,
-    private readonly specWorkflowService: SpecWorkflowService,
+    private readonly modeStrategies: ChatModeStrategyRegistry,
     private readonly runnerRegistryService: RunnerRegistryService,
     private readonly memoryService?: MemoryService,
   ) {}
@@ -86,11 +80,19 @@ export class ChatService {
     this.activeTurnControllers.set(turnKey, controller);
 
     try {
-    const specDocBuffers = new Map<string, string>();
-    let attemptedTaskValidationRegenerate = 0;
+    const eventProcessor = this.modeStrategies.forSession(prepared.session).createEventProcessor({
+      session: prepared.session,
+      persistMessage: (message) => this.sessionService.upsertMessage(prepared.session.sessionId, message),
+      listPersistedMessages: () => this.sessionService.listMessages(prepared.session.sessionId),
+      recordMemory: (message) => recordSessionMessage(
+        this.memoryService,
+        prepared.session.sessionId,
+        message,
+      ),
+    });
 
-    await this.sessionService.appendMessage(prepared.session.sessionId, prepared.userMessage);
-    await this.recordMemory(prepared.session.sessionId, prepared.userMessage);
+    await this.sessionService.upsertMessage(prepared.session.sessionId, prepared.userMessage);
+    await recordSessionMessage(this.memoryService, prepared.session.sessionId, prepared.userMessage);
     yield {
       type: 'msg',
       msg: prepared.userMessage,
@@ -98,131 +100,6 @@ export class ChatService {
 
     let history = [...prepared.history, prepared.userMessage];
     let requestMessage = input.message;
-
-    const specDeltaStage = (event: ChatStreamEvent): ChatStreamEvent | null => {
-      if (!isSpecDocumentDelta(prepared.session, event)) {
-        return null;
-      }
-
-      const content = `${specDocBuffers.get(event.msg_id) ?? ''}${event.delta}`;
-      specDocBuffers.set(event.msg_id, content);
-      return {
-        type: 'spec_doc_update',
-        msg_id: event.msg_id,
-        doc_type: prepared.session.specWorkflow?.phase ?? 'requirements',
-        content,
-        delta: event.delta,
-        done: false,
-      };
-    };
-
-    const tryBuildRegenerateRestart = async (
-      error: unknown,
-      parentUuid: string,
-      includeMessage?: UnifiedMessage,
-    ): Promise<SpecStreamRestart | null> => {
-      if (
-        prepared.session.mode !== 'spec' ||
-        !this.specWorkflowService.shouldAutoRegenerateForTaskValidationFailure(
-          error,
-          attemptedTaskValidationRegenerate,
-        )
-      ) {
-        return null;
-      }
-
-      attemptedTaskValidationRegenerate += 1;
-      const regenPrompt = this.specWorkflowService.buildTaskRegeneratePromptFromValidation(
-        error as ValidationError,
-      );
-      const persistedHistory = await this.sessionService.listMessages(prepared.session.sessionId);
-      const nextHistory = includeMessage
-        ? [...persistedHistory, includeMessage, createSpecPromptMessage(regenPrompt, parentUuid)]
-        : [...persistedHistory, createSpecPromptMessage(regenPrompt, parentUuid)];
-      specDocBuffers.delete(parentUuid);
-
-      return {
-        restart: true,
-        history: nextHistory,
-        requestMessage: regenPrompt,
-      };
-    };
-
-    const validateFinalSpecAssistantMessage = async (message: UnifiedMessage): Promise<SpecStreamDecision> => {
-      try {
-        this.specWorkflowService.ensureTaskContractOrThrow(message);
-        return { restart: false, events: [] };
-      } catch (error) {
-        const restart = await tryBuildRegenerateRestart(error, message.uuid, message);
-        if (restart) {
-          return restart;
-        }
-        throw error;
-      }
-    };
-
-    const validatePersistedAssistantMessage = async (message: UnifiedMessage): Promise<SpecStreamDecision> => {
-      try {
-        if (prepared.session.mode === 'spec') {
-          this.specWorkflowService.ensureTaskContractOrThrow(message);
-        }
-        return { restart: false, events: [] };
-      } catch (error) {
-        const restart = await tryBuildRegenerateRestart(error, message.uuid);
-        if (restart) {
-          return restart;
-        }
-        throw error;
-      }
-    };
-
-    const specMessageStage = async (
-      event: Extract<ChatStreamEvent, { type: 'msg' }>,
-    ): Promise<SpecStreamDecision> => {
-      if (isFinalSpecAssistantMessage(prepared.session, event.msg)) {
-        const validation = await validateFinalSpecAssistantMessage(event.msg);
-        if (validation.restart) {
-          return validation;
-        }
-
-        const captured = await this.specWorkflowService.captureAssistantDocument(prepared.session.sessionId, event.msg);
-        if (captured) {
-          const upsertedSummary = await this.sessionService.upsertMessage(prepared.session.sessionId, captured.summary);
-          await this.recordMemory(prepared.session.sessionId, upsertedSummary);
-          return {
-            restart: false,
-            events: [
-              {
-                type: 'spec_doc_update',
-                msg_id: event.msg.uuid,
-                doc_type: captured.docType,
-                content: captured.content,
-                done: true,
-              },
-              {
-                type: 'msg',
-                msg: upsertedSummary,
-              },
-            ],
-          };
-        }
-      }
-
-      const upserted = await this.sessionService.upsertMessage(prepared.session.sessionId, event.msg);
-      if (!isStreamingMessage(upserted)) {
-        const validation = await validatePersistedAssistantMessage(upserted);
-        if (validation.restart) {
-          return validation;
-        }
-        await this.specWorkflowService.onAssistantMessageCreated(prepared.session.sessionId, upserted);
-        await this.recordMemory(prepared.session.sessionId, upserted);
-      }
-
-      return {
-        restart: false,
-        events: [event],
-      };
-    };
 
     while (true) {
       const preferredRunnerId = await this.sessionService.getBoundRunner(prepared.session.sessionId);
@@ -236,22 +113,21 @@ export class ChatService {
         modelId: prepared.modelId,
         model: prepared.model,
         requestId: input.requestId,
+        turnId: prepared.turnId,
         reasoningEffort: input.reasoningEffort,
         attachments: prepared.attachments,
         preferredRunnerId,
         runnerPlatform,
-        approveRiskyOps: input.approveRiskyOps,
-        approvalTicket: input.approvalTicket,
         signal: controller.signal,
       })) {
-        const specDeltaEvent = specDeltaStage(event);
-        if (specDeltaEvent) {
-          yield specDeltaEvent;
+        const modeDeltaEvent = eventProcessor.mapDelta(event);
+        if (modeDeltaEvent) {
+          yield modeDeltaEvent;
           continue;
         }
 
         if (event.type === 'msg') {
-          const decision = await specMessageStage(event);
+          const decision = await eventProcessor.handleMessage(event);
           if (decision.restart) {
             history = decision.history;
             requestMessage = decision.requestMessage;
@@ -347,61 +223,6 @@ export class ChatService {
     return this.sessionService.truncateMessages(sessionId, targetIndex);
   }
 
-  async confirmSpecPhase(input: {
-    userId: string;
-    sessionId: string;
-    selectedArtifacts?: string[];
-    actionAnswer?: string;
-    requestId: string;
-  }): Promise<SpecConfirmResult> {
-    const phaseBeforeConfirm = (await this.specWorkflowService.ensureSpecState(input.sessionId)).workflow.phase;
-    const confirm = await this.specWorkflowService.confirm(input.sessionId, {
-      selectedArtifacts: input.selectedArtifacts,
-    });
-    const actionAnswerMessage = input.actionAnswer?.trim()
-      ? createUserTextMessage(input.actionAnswer.trim(), [], {
-          parentUuid: (await this.sessionService.listMessages(input.sessionId)).at(-1)?.uuid ?? null,
-          metadata: {
-            extensions: {
-              specActionAnswer: true,
-              specPhase: phaseBeforeConfirm,
-              selectedArtifacts: input.selectedArtifacts ?? [],
-            },
-          },
-        })
-      : null;
-    if (actionAnswerMessage) {
-      await this.sessionService.appendMessage(input.sessionId, actionAnswerMessage);
-      await this.recordMemory(input.sessionId, actionAnswerMessage);
-    }
-
-    if (!confirm.autoPrompt) {
-      return {
-        session: confirm.session,
-        messages: actionAnswerMessage ? [actionAnswerMessage] : [],
-        workflow: confirm.workflow,
-        progressed: false,
-      };
-    }
-
-    const result = await this.runTurn({
-      userId: input.userId,
-      sessionId: input.sessionId,
-      mode: 'spec',
-      specAutoPrompt: true,
-      message: confirm.autoPrompt,
-      modelId: confirm.session.modelId,
-      requestId: input.requestId,
-    });
-
-    return {
-      session: result.session,
-      messages: actionAnswerMessage ? [actionAnswerMessage, ...result.messages] : result.messages,
-      workflow: confirm.workflow,
-      progressed: true,
-    };
-  }
-
   private async prepareTurn(input: ChatTurnInput): Promise<PreparedTurn> {
     const modelId = input.modelId ?? this.modelService.resolveModelIdForProfile(input.profileId);
     const model = this.modelService.getModel(modelId);
@@ -420,8 +241,10 @@ export class ChatService {
 
     const history = await this.sessionService.listMessages(session.sessionId);
     const baseUserMessage = createUserTextMessage(input.message, input.attachments ?? [], {
+      ...(input.turnId ? { uuid: input.turnId } : {}),
       parentUuid: history.at(-1)?.uuid ?? null,
       metadata: {
+        ...(input.turnId ? { turnId: input.turnId } : {}),
         modelId: String(modelId),
         provider: model.provider,
         extensions: {
@@ -430,10 +253,15 @@ export class ChatService {
         },
       },
     });
-    const userMessage = await this.decorateSpecMessageIfNeeded(
+    const turnId = input.turnId ?? baseUserMessage.uuid;
+    const identifiedUserMessage: UnifiedMessage = {
+      ...baseUserMessage,
+      metadata: { ...baseUserMessage.metadata, turnId },
+    };
+    const userMessage = await this.modeStrategies.forSession(session).decorateUserMessage(
       session,
-      baseUserMessage,
-      Boolean(input.specAutoPrompt),
+      identifiedUserMessage,
+      { autoPrompt: Boolean(input.specAutoPrompt) },
     );
 
     return {
@@ -443,80 +271,12 @@ export class ChatService {
       modelId,
       model: model.model,
       attachments: input.attachments ?? [],
+      turnId,
     };
   }
 
   private getTurnKey(userId: string, sessionId: string): string {
     return `${userId}:${sessionId}`;
-  }
-
-  private async decorateSpecMessageIfNeeded(
-    session: SessionRecord,
-    message: UnifiedMessage,
-    specAutoPrompt: boolean,
-  ): Promise<UnifiedMessage> {
-    if (session.mode !== 'spec') {
-      return message;
-    }
-
-    const workflow = (await this.specWorkflowService.ensureSpecState(session.sessionId)).workflow;
-    if (specAutoPrompt) {
-      return {
-        ...message,
-        metadata: {
-          ...message.metadata,
-          isMeta: true,
-          extensions: {
-            ...(message.metadata.extensions ?? {}),
-            specAutoPrompt: true,
-            specPhase: workflow.phase,
-          },
-        },
-      };
-    }
-
-    const phasePrompt = this.specWorkflowService.buildSpecPrompt({
-      session,
-      phase: workflow.phase,
-    });
-    const original = message.type === 'text' ? message.text.trim() : '';
-    const wrapped = [phasePrompt, '', 'User input:', original || '(empty)'].join('\n');
-
-    return {
-      ...message,
-      ...(message.type === 'text' ? { text: wrapped } : {}),
-      metadata: {
-        ...message.metadata,
-        extensions: {
-          ...(message.metadata.extensions ?? {}),
-          specPhase: workflow.phase,
-        },
-      },
-    };
-  }
-
-  private async recordMemory(sessionId: string, message: UnifiedMessage): Promise<void> {
-    if (!this.memoryService) {
-      return;
-    }
-    if (message.metadata?.isMeta) {
-      return;
-    }
-
-    const text = extractMemoryText(message);
-    if (!text) {
-      return;
-    }
-
-    try {
-      await this.memoryService.rememberSession(sessionId, text, {
-        role: message.role,
-        messageId: message.uuid,
-        timestamp: message.timestamp,
-      });
-    } catch {
-      // Memory writes are best-effort; chat must continue if the backend is unavailable.
-    }
   }
 
   private async resolveRunnerPlatform(
@@ -541,10 +301,6 @@ export class ChatService {
       return undefined;
     }
   }
-}
-
-function extractMemoryText(message: UnifiedMessage): string {
-  return getMessageText(message).trim();
 }
 
 interface RetryRequestParts {
@@ -591,32 +347,4 @@ function extractRetryText(message: UnifiedMessage): string {
     throw new ValidationError('The selected message does not contain retryable text');
   }
   return text;
-}
-
-interface SpecStreamRestart {
-  restart: true;
-  history: UnifiedMessage[];
-  requestMessage: string;
-}
-
-interface SpecStreamContinue {
-  restart: false;
-  events: ChatStreamEvent[];
-}
-
-type SpecStreamDecision = SpecStreamRestart | SpecStreamContinue;
-
-function isStreamingMessage(message: UnifiedMessage): boolean {
-  return message.metadata?.extensions?.streamState === 'streaming';
-}
-
-function isSpecDocumentDelta(
-  session: SessionRecord,
-  event: ChatStreamEvent,
-): event is Extract<ChatStreamEvent, { type: 'msg_delta' }> {
-  return session.mode === 'spec' && event.type === 'msg_delta';
-}
-
-function isFinalSpecAssistantMessage(session: SessionRecord, message: UnifiedMessage): boolean {
-  return session.mode === 'spec' && message.role === 'assistant' && !isStreamingMessage(message);
 }

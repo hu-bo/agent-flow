@@ -4,7 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import './pages/pages.less';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { useChatStore } from './store/chat-store';
-import { AuthToolbar } from './auth';
+import { WorkspaceProvider } from './workspace-provider';
 
 export function App() {
   const activeSessionId = useChatStore((state) => state.activeSessionId);
@@ -67,7 +67,8 @@ export function App() {
   };
 
   return (
-    <div className="playground-shell">
+    <WorkspaceProvider>
+      <div className="playground-shell">
       {mobileMenuOpen && <button type="button" className="mobile-menu-backdrop" aria-label="Close workspace menu" onClick={() => setMobileMenuOpen(false)} />}
       <Sidebar
         activeSessionId={activeSessionId}
@@ -96,6 +97,7 @@ export function App() {
         </header>
         <Outlet></Outlet>
       </main>
-    </div>
+      </div>
+    </WorkspaceProvider>
   );
 }

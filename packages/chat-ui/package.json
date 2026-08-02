@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Extensible chat panel component with Markdown, code highlighting, thinking chain, image, diff, and file upload support",
+  "description": "Chat panel for agent turns, streaming execution, approvals, images, files, and Runner diffs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,12 +19,19 @@
     "dev": "vite build --watch --emitDeclarationOnly",
     "build": "vite build && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@agent-flow/core": "workspace:*",
-    "diff": "^7.0.0",
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-radio-group": "^1.3.8",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
+    "lucide-react": "^0.468.0",
     "react-markdown": "^9.0.3",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.1"
@@ -34,14 +41,11 @@
     "react-dom": ">=18"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.1.4",
-    "@types/diff": "^7.0.2",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
-    "less": "^4.4.0",
-    "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vitest": "^3.2.1"
   }
 }

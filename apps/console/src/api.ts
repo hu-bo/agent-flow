@@ -1,133 +1,38 @@
 import axios, { type AxiosRequestConfig } from 'axios';
+import type {
+  ModelProfileRecord,
+  ProviderModelRecord,
+  ProviderRecord,
+  RoutingPolicyRecord,
+  SessionRecord,
+  TaskRecord,
+} from '@agent-flow/web-contracts';
+
+export type {
+  ModelProfileRecord,
+  ProviderModelRecord,
+  ProviderRecord,
+  RoutingPolicyRecord,
+};
 
 export interface HealthResponse {
   status: string;
   model: string;
 }
 
-export interface RuntimeModelDescriptor {
-  modelId: number;
-  model: string;
-  displayName: string;
-  provider: string;
-  providerType: string;
-  providerModel: string;
-  maxInputTokens: number;
-}
-
-export interface Session {
-  sessionId: string;
-  modelId: number;
-  messageCount: number;
-  createdAt: string;
-}
-
-export interface TaskState {
-  taskId: string;
-  sessionId: string;
-  status: 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
-  createdAt: string;
-  updatedAt: string;
-  latestCheckpointId: string;
-  error?: string;
-  retryCount: number;
-  maxRetries: number;
-  outputs?: unknown;
-}
+export type Session = SessionRecord;
+export type TaskState = TaskRecord;
 
 export interface CreateTaskResult {
   taskId: string;
   status: string;
 }
 
-export interface ProviderRecord {
-  providerId: number;
-  name: string;
-  type: string;
-  status: 'active' | 'disabled';
-  metadata: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-  activeModelCount: number;
-  credentialCount: number;
-}
-
-export interface ProviderModelRecord {
-  modelId: number;
-  model: string;
-  displayName: string;
-  providerId: number;
-  providerName: string;
-  providerType: string;
-  providerStatus: 'active' | 'disabled';
-  tokenLimit: number;
-  status: 'active' | 'disabled';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface RoutingPolicyRecord {
-  policyId: string;
-  profileId: string;
-  primaryModelId: number;
-  fallbacks: number[];
-  strategy: string;
-  status: 'active' | 'disabled';
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ModelProfileRecord {
-  profileId: string;
-  displayName: string;
-  intentTags: string[];
-  sla: Record<string, unknown> | null;
-  status: 'active' | 'disabled';
-  createdAt: string;
-  updatedAt: string;
-  routingPolicy: RoutingPolicyRecord | null;
-}
-
-export interface AuditLogRecord {
-  auditId: string;
-  actor: string | null;
-  action: string;
-  resource: string;
-  resourceId: string | null;
-  requestId: string | null;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-  createdAt: string;
-}
-
-interface ApiSuccessEnvelope<T> {
-  code: number;
-  data: T;
-  message: string;
-  requestId: string;
-}
-
 interface ApiErrorEnvelope {
   code?: string | number;
-  data?: null;
   message?: string;
   error?: string;
-  requestId?: string;
   details?: unknown;
-}
-
-function isApiSuccessEnvelope<T>(value: unknown): value is ApiSuccessEnvelope<T> {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const payload = value as Partial<ApiSuccessEnvelope<T>>;
-  return (
-    typeof payload.code === 'number' &&
-    'data' in payload &&
-    typeof payload.message === 'string' &&
-    typeof payload.requestId === 'string'
-  );
 }
 
 const AUTH_APP_NAME = import.meta.env.VITE_CASDOOR_APP_NAME || 'aflow';
@@ -180,12 +85,7 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
       return undefined as T;
     }
 
-    const payload = res.data as unknown;
-    if (isApiSuccessEnvelope<T>(payload)) {
-      return payload.data;
-    }
-
-    return payload as T;
+    return res.data as T;
   } catch (error) {
     throw new Error(readErrorMessage(error));
   }
@@ -193,10 +93,6 @@ async function request<T>(config: AxiosRequestConfig): Promise<T> {
 
 export function fetchHealth(): Promise<HealthResponse> {
   return request({ url: '/api/health', method: 'GET' });
-}
-
-export function fetchModels(): Promise<{ currentModel: number; models: RuntimeModelDescriptor[] }> {
-  return request({ url: '/api/models', method: 'GET' });
 }
 
 export async function fetchSessions(): Promise<Session[]> {
@@ -227,18 +123,10 @@ export async function fetchTask(id: string): Promise<TaskState> {
 
 export function createTask(opts: {
   prompt: string;
-  model?: string;
+  modelId?: number;
   config?: Record<string, unknown>;
 }): Promise<CreateTaskResult> {
   return request({ url: '/api/tasks', method: 'POST', data: opts });
-}
-
-export function switchModel(modelId: number): Promise<unknown> {
-  return request({ url: '/api/model', method: 'POST', data: { modelId } });
-}
-
-export function triggerCompact(): Promise<unknown> {
-  return request({ url: '/api/compact', method: 'POST', data: {} });
 }
 
 export async function fetchAdminProviders(): Promise<ProviderRecord[]> {
@@ -354,20 +242,6 @@ export async function fetchModelProfiles(): Promise<ModelProfileRecord[]> {
   return payload.profiles;
 }
 
-export async function createModelProfile(input: {
-  profileId: string;
-  displayName: string;
-  intentTags?: string[];
-  status?: 'active' | 'disabled';
-}): Promise<ModelProfileRecord> {
-  const payload = await request<{ profile: ModelProfileRecord }>({
-    url: '/api/admin/model-profiles',
-    method: 'POST',
-    data: input,
-  });
-  return payload.profile;
-}
-
 export async function upsertRoutingPolicy(
   profileId: string,
   input: {
@@ -383,12 +257,4 @@ export async function upsertRoutingPolicy(
     data: input,
   });
   return payload.policy;
-}
-
-export async function fetchAuditLogs(limit = 30): Promise<AuditLogRecord[]> {
-  const payload = await request<{ auditLogs: AuditLogRecord[] }>({
-    url: `/api/admin/audit-logs?limit=${limit}`,
-    method: 'GET',
-  });
-  return payload.auditLogs;
 }

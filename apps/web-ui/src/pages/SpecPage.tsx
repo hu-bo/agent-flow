@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ActionPrompt, ChatPanel } from '@agent-flow/chat-ui';
 import MDEditor from '@uiw/react-md-editor';
 import type {
@@ -9,8 +9,8 @@ import type {
   FileAttachment,
   ReasoningEffort,
 } from '@agent-flow/chat-ui';
-import { Activity } from 'lucide-react';
 import { PendingApprovalPrompt } from '../components/PendingApprovalPrompt';
+import { ConversationShell } from '../components/ConversationShell';
 import {
   confirmSpecPhase,
   createSession,
@@ -21,10 +21,7 @@ import {
 import { useMessageActions } from '../hooks/useMessageActions';
 import { useWorkspaceChatRuntime } from '../hooks/useWorkspaceChatRuntime';
 import { useChatStore } from '../store/chat-store';
-import {
-  buildRunnerLabel,
-  readErrorMessage,
-} from './chat-page-utils';
+import { readErrorMessage } from './chat-page-utils';
 import './pages.less';
 import '@uiw/react-md-editor/markdown-editor.css';
 
@@ -241,10 +238,7 @@ export function SpecPage() {
     handleRunnerChange,
     handleFileSelect,
     tokenUsage,
-    rendererContext,
     bindRunnerToSession,
-    runtimeTraceEnabled,
-    toggleRuntimeTraceEnabled,
   } = runtime;
   const [isConfirmingSpec, setIsConfirmingSpec] = useState(false);
   const [specState, setSpecState] = useState<SpecWorkflowState | null>(null);
@@ -327,19 +321,19 @@ export function SpecPage() {
   }, [specState?.documents, specState?.phase]);
 
   const handleSpecDocUpdate = useCallback(
-    (event: { doc_type: SpecDocType; content: string }) => {
+    (event: { docType: SpecDocType; content: string }) => {
       setSpecState((current) => {
         if (!current) return current;
         return {
           ...current,
           documents: {
             ...(current.documents ?? {}),
-            [event.doc_type]: event.content,
+            [event.docType]: event.content,
           },
         };
       });
 
-      if (!specState || specState.phase === event.doc_type) {
+      if (!specState || specState.phase === event.docType) {
         setDraftMarkdown(event.content);
       }
     },
@@ -544,50 +538,16 @@ export function SpecPage() {
   const actionPrompt = approvalPrompt ?? specActionPrompt;
 
   return (
-    <>
-      <header className="workspace-header">
-        <div className="workspace-header-left">
-          <span className="workspace-path">Pages / Spec</span>
-          <h1 className="workspace-title">SPEC_WORKBENCH</h1>
-        </div>
-        <div className="workspace-header-right">
-          <button
-            type="button"
-            className={`workspace-action-btn workspace-toggle-btn${runtimeTraceEnabled ? ' is-active' : ''}`}
-            onClick={toggleRuntimeTraceEnabled}
-            aria-pressed={runtimeTraceEnabled}
-            title="Trace / 执行轨迹"
-          >
-            <Activity size={14} />
-            <span>Trace</span>
-          </button>
-          <select
-            className="workspace-runner-select"
-            value={selectedRunnerId}
-            onChange={handleRunnerChange}
-            disabled={runnerSwitchDisabled}
-            aria-label="Runner selection"
-          >
-            {onlineRunners.length === 0 ? (
-              <option value="">RUNNER_OFFLINE</option>
-            ) : (
-              onlineRunners.map((runner) => (
-                <option key={runner.runnerId} value={runner.runnerId}>
-                  {buildRunnerLabel(runner)}
-                </option>
-              ))
-            )}
-          </select>
-        </div>
-      </header>
-      <section className="workspace-canvas">
-        {runnerOnlineCount === 0 && (
-          <div className="chat-runner-hint">
-            No online runner is available. Go to <Link to="/runners">Runner page</Link> to start one.
-          </div>
-        )}
-        {notice && <div className={`workspace-notice workspace-notice-${notice.kind}`}>{notice.message}</div>}
-
+    <ConversationShell
+      page="Spec"
+      title="SPEC_WORKBENCH"
+      runners={onlineRunners}
+      runnerOnlineCount={runnerOnlineCount}
+      selectedRunnerId={selectedRunnerId}
+      runnerSwitchDisabled={runnerSwitchDisabled}
+      notice={notice}
+      onRunnerChange={handleRunnerChange}
+    >
         {specState && (
           <div className="spec-workflow-panel">
             <div className="spec-workflow-track" aria-label="Spec workflow phases">
@@ -655,27 +615,28 @@ export function SpecPage() {
             <ChatPanel
               className="playground-chat-panel"
               messages={chatMessages}
-              rendererContext={rendererContext}
-              onSend={handleSend}
-              onStop={stopGenerating}
-              onRetryMessage={handleRetryMessage}
-              onCopyMessage={handleCopyMessage}
-              onDeleteMessage={handleDeleteMessage}
-              messageActionDisabled={messageActionsDisabled}
-              selectedModel={selectedModelId === null ? undefined : String(selectedModelId)}
-              modelOptions={modelOptions}
-              onModelChange={handleModelChange}
-              reasoningEffort={reasoningEffort}
-              onReasoningEffortChange={setReasoningEffort}
-              tokenUsage={tokenUsage}
-              isStreaming={isStreaming}
-              isConnecting={isConnecting}
-              onFileSelect={handleFileSelect}
+              status={isStreaming ? 'streaming' : isConnecting ? 'connecting' : 'idle'}
+              actions={{
+                onSend: handleSend,
+                onStop: stopGenerating,
+                onRetryMessage: handleRetryMessage,
+                onCopyMessage: handleCopyMessage,
+                onDeleteMessage: handleDeleteMessage,
+                messageActionDisabled: messageActionsDisabled,
+              }}
+              composer={{
+                selectedModel: selectedModelId === null ? undefined : String(selectedModelId),
+                modelOptions,
+                onModelChange: handleModelChange,
+                reasoningEffort,
+                onReasoningEffortChange: setReasoningEffort,
+                tokenUsage,
+                onFileSelect: handleFileSelect,
+              }}
               actionPrompt={actionPrompt}
             />
           </section>
         </div>
-      </section>
-    </>
+    </ConversationShell>
   );
 }

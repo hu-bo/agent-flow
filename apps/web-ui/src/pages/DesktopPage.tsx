@@ -29,6 +29,7 @@ interface ButtonProps {
   children: ReactNode;
   className?: string;
   onClick?: () => void;
+  variant?: 'primary' | 'secondary' | 'inverted';
 }
 
 interface FeatureCardProps {
@@ -48,29 +49,50 @@ const WORKSPACE_LINKS = [
 const SURFACE_LINKS = [
   {
     title: 'Chat Workspace',
-    description: 'Conversational execution with tools, streaming traces, and checkpointed sessions.',
     route: '/chat',
     icon: MessageSquare,
   },
   {
     title: 'Spec Workflow',
-    description: 'Plan requirements, design, and task breakdown before code execution starts.',
     route: '/spec',
     icon: NotebookPen,
   },
   {
     title: 'Runner Control',
-    description: 'Register runners, issue tokens, and manage approval-aware execution surfaces.',
     route: '/runners',
     icon: HardDrive,
   },
   {
     title: 'Flow Surface',
-    description: 'Keep room for DAG and agent-team orchestration as the flow workspace grows.',
     route: '/flow',
     icon: Bot,
   },
 ] as const;
+
+const FEATURE_CARDS = [
+  {
+    icon: GitMerge,
+    title: 'Conversation + DAG orchestration',
+    description: 'Blend interactive chat turns with planner-driven DAG and loop execution in the same runtime.',
+    colSpan: 2,
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Approval-aware runners',
+    description: 'High-risk shell execution flows through the runner approval path instead of hidden browser confirms.',
+  },
+  {
+    icon: BrainCircuit,
+    title: 'Memory and compaction',
+    description: 'Support long conversations with semantic compaction, session persistence, and replay-friendly state.',
+  },
+  {
+    icon: Activity,
+    title: 'Workspace surfaces',
+    description: 'Chat, spec, runner, and future flow pages live under one authenticated web UI.',
+    colSpan: 2,
+  },
+] satisfies FeatureCardProps[];
 
 const DESKTOP_PREVIEW_IMAGES = [
   {
@@ -95,24 +117,18 @@ function NavAction({ children, onClick }: NavActionProps) {
   );
 }
 
-function ButtonPrimary({ children, className = '', onClick }: ButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex h-10 items-center justify-center rounded-full bg-slate-900 px-6 text-sm font-medium text-white shadow-sm transition-all duration-300 hover:bg-slate-800 hover:shadow-md ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
+const BUTTON_VARIANTS = {
+  primary: 'bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md',
+  secondary: 'border border-slate-200/60 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+  inverted: 'bg-white text-slate-900 shadow-sm hover:bg-slate-100 hover:shadow-md',
+} as const;
 
-function ButtonSecondary({ children, className = '', onClick }: ButtonProps) {
+function ActionButton({ children, className = '', onClick, variant = 'primary' }: ButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-10 items-center justify-center rounded-full border border-slate-200/60 bg-white px-6 text-sm font-medium text-slate-700 transition-all duration-300 hover:border-slate-300 hover:bg-slate-50 ${className}`}
+      className={`inline-flex h-10 items-center justify-center rounded-full px-6 text-sm font-medium transition-all duration-300 ${BUTTON_VARIANTS[variant]} ${className}`}
     >
       {children}
     </button>
@@ -222,9 +238,9 @@ export function DesktopPage() {
                 Sign in
               </button>
             )}
-            <ButtonPrimary className="h-9 px-5" onClick={handleOpenWorkspace}>
+            <ActionButton className="h-9 px-5" onClick={handleOpenWorkspace}>
               Go to Console
-            </ButtonPrimary>
+            </ActionButton>
             <button
               type="button"
               className="desktop-mobile-nav-toggle md:hidden"
@@ -273,14 +289,14 @@ export function DesktopPage() {
             </p>
 
             <div className="flex flex-col items-center gap-4 sm:flex-row">
-              <ButtonPrimary className="group h-12 w-full px-8 text-base sm:w-auto" onClick={handleOpenWorkspace}>
+              <ActionButton className="group h-12 w-full px-8 text-base sm:w-auto" onClick={handleOpenWorkspace}>
                 Open Chat Workspace
                 <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-              </ButtonPrimary>
-              <ButtonSecondary className="h-12 w-full px-8 text-base sm:w-auto" onClick={() => navigate('/spec')}>
+              </ActionButton>
+              <ActionButton variant="secondary" className="h-12 w-full px-8 text-base sm:w-auto" onClick={() => navigate('/spec')}>
                 <Terminal className="mr-2 h-4 w-4 text-slate-400" />
                 Explore Spec Workflow
-              </ButtonSecondary>
+              </ActionButton>
             </div>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
@@ -367,28 +383,7 @@ export function DesktopPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <FeatureCard
-              icon={GitMerge}
-              title="Conversation + DAG orchestration"
-              description="Blend interactive chat turns with planner-driven DAG and loop execution in the same runtime."
-              colSpan={2}
-            />
-            <FeatureCard
-              icon={ShieldCheck}
-              title="Approval-aware runners"
-              description="High-risk shell execution flows through the runner approval path instead of hidden browser confirms."
-            />
-            <FeatureCard
-              icon={BrainCircuit}
-              title="Memory and compaction"
-              description="Support long conversations with semantic compaction, session persistence, and replay-friendly state."
-            />
-            <FeatureCard
-              icon={Activity}
-              title="Workspace surfaces"
-              description="Chat, spec, runner, and future flow pages live under one authenticated web UI."
-              colSpan={2}
-            />
+            {FEATURE_CARDS.map((card) => <FeatureCard key={card.title} {...card} />)}
           </div>
         </section>
 
@@ -402,15 +397,16 @@ export function DesktopPage() {
               Open the current workspace, start a spec-first session, or bootstrap runner control using the real routes from this project.
             </p>
             <div className="flex flex-col gap-4 sm:flex-row">
-              <ButtonPrimary className="bg-white text-slate-900 hover:bg-slate-100" onClick={handleOpenWorkspace}>
+              <ActionButton variant="inverted" onClick={handleOpenWorkspace}>
                 Open Chat
-              </ButtonPrimary>
-              <ButtonSecondary
+              </ActionButton>
+              <ActionButton
+                variant="secondary"
                 className="border-slate-700 bg-transparent text-slate-300 hover:border-slate-600 hover:bg-slate-800 hover:text-white"
                 onClick={() => navigate('/runners')}
               >
                 Runner Setup
-              </ButtonSecondary>
+              </ActionButton>
             </div>
           </div>
         </section>

@@ -7,10 +7,13 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "preview": "vite preview",
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@agent-flow/web-contracts": "workspace:*",
     "@hquant/casdoor": "workspace:*",
     "@radix-ui/themes": "^3.2.1",
     "axios": "^1.15.2",
@@ -22,6 +25,7 @@
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.5.0",
     "typescript": "^5.8.3",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vitest": "^3.2.1"
   }
 }

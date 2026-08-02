@@ -16,16 +16,17 @@ const (
 )
 
 type Options struct {
-	RPCHost      string
-	RPCToken     string
-	RunnerID     string
-	Kind         string
-	Host         string
-	HostName     string
-	HostIP       string
-	Version      string
-	Capabilities []string
-	DockerBinary string
+	RPCHost            string
+	RPCToken           string
+	RunnerID           string
+	Kind               string
+	Host               string
+	HostName           string
+	HostIP             string
+	Version            string
+	Capabilities       []string
+	DockerBinary       string
+	MaxConcurrentTasks uint32
 }
 
 func Install(opts Options) (string, error) {
@@ -101,6 +102,9 @@ func buildStartArgs(opts Options) []string {
 		appendFlag("--capabilities", strings.Join(normalizeCapabilities(opts.Capabilities), ","))
 	}
 	appendFlag("--docker_bin", opts.DockerBinary)
+	if opts.MaxConcurrentTasks > 0 {
+		appendFlag("--max_concurrent_tasks", fmt.Sprintf("%d", opts.MaxConcurrentTasks))
+	}
 	return args
 }
 

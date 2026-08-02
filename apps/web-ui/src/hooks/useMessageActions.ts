@@ -43,10 +43,10 @@ export function useMessageActions({
       setIsMutatingMessage(true);
       try {
         await retrySessionMessage({
-          session_id: activeSession,
-          msg_id: message.uuid,
-          model_id: selectedModelId ?? undefined,
-          reasoning_effort: reasoningEffort,
+          sessionId: activeSession,
+          messageId: message.uuid,
+          modelId: selectedModelId ?? undefined,
+          reasoningEffort,
         });
         await refreshSessionMessages(activeSession);
       } catch (error: unknown) {

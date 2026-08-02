@@ -174,18 +174,14 @@
   position: relative;
   height: 100%;
   border: 0;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   overflow: hidden;
-  background: radial-gradient(circle at 100% -20%, #f0f5ff 0%, #ffffff 44%);
-  box-shadow: var(--pg-shadow-2), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: #fbfbfa;
+  box-shadow: 0 8px 30px rgba(20, 20, 20, 0.04);
 }
 
 .playground-chat-panel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(140deg, rgba(255, 255, 255, 0.35), transparent 20%, transparent 80%, rgba(99, 102, 241, 0.08));
+  content: none;
 }
 
 .playground-chat-panel .chat-ui-root {

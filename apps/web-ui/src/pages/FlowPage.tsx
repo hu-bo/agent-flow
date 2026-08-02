@@ -1,11 +1,5 @@
+import { WorkspacePlaceholder } from './WorkspacePlaceholder';
 
 export function FlowPage() {
-  return (
-    <section className="workspace-canvas">
-      <div className="workspace-placeholder">
-        <strong>FLOW_WORKSPACE</strong>
-        <span>Workflow orchestration is being prepared.</span>
-      </div>
-    </section>
-  );
+  return <WorkspacePlaceholder label="FLOW_WORKSPACE" description="Workflow orchestration is being prepared." />;
 }

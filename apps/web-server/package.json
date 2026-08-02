@@ -17,11 +17,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-runner-proto.mjs",
+    "build": "tsc -p tsconfig.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@agent-flow/compact": "workspace:*",
@@ -30,10 +31,11 @@
     "@agent-flow/logger-js": "workspace:*",
     "@agent-flow/memory": "workspace:*",
     "@agent-flow/model-adapters": "workspace:*",
+    "@agent-flow/runner-protocol": "workspace:*",
     "@agent-flow/tools-impl": "workspace:*",
+    "@agent-flow/web-contracts": "workspace:*",
     "@fastify/cors": "^11.1.0",
     "@grpc/grpc-js": "^1.14.1",
-    "@grpc/proto-loader": "^0.8.0",
     "@types/adm-zip": "^0.5.8",
     "adm-zip": "^0.5.17",
     "axios": "^1.15.2",
@@ -42,7 +44,8 @@
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "typeorm": "^0.3.27",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.15.29",

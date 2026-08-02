@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [],
+  "project": [],
+  "exclude": ["types"],
+  "ignoreFiles": ["claude-code-main/**", "protocol/types/**"],
+  "ignoreIssues": {
+    "tests/**": ["unlisted", "unresolved"],
+    "tsconfig.web.json": ["unresolved"]
+  },
+  "ignoreWorkspaces": [
+    "apps/api-gateway-web",
+    "apps/cli",
+    "packages/casdoor",
+    "packages/compact",
+    "packages/core",
+    "packages/events",
+    "packages/logger-js",
+    "packages/memory",
+    "packages/model-adapters",
+    "packages/storage",
+    "packages/tools-impl"
+  ],
+  "workspaces": {
+    "packages/runner-protocol": {
+      "ignoreBinaries": ["protoc"],
+      "ignoreDependencies": ["@bufbuild/protobuf", "@grpc/grpc-js", "ts-proto"]
+    }
+  }
+}

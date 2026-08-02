@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { listModelsHandler, switchModelHandler } from '../handlers/model-handlers.js';
-import { requireJsonBody } from '../middlewares/require-json.js';
+import { sendSuccess } from '../lib/response.js';
 
 export async function registerModelRoutes(app: FastifyInstance) {
-  app.get('/models', listModelsHandler);
-  app.post('/model', { preHandler: requireJsonBody }, switchModelHandler);
+  app.get('/models', async (request, reply) => sendSuccess(reply, {
+    currentModel: request.server.services.modelService.getCurrentModelId(),
+    models: request.server.services.modelService.listModels(),
+  }));
 }

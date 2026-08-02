@@ -200,8 +200,10 @@ export class SessionService {
   async upsertMessage(sessionId: string, message: UnifiedMessage): Promise<UnifiedMessage> {
     const session = await this.getSessionEntity(sessionId);
     const existing = await this.messageRepository.findOne({ where: { messageId: message.uuid } });
+    let persisted = message;
     if (existing) {
       const merged = mergeExistingMessage(existing.payload, message);
+      persisted = merged;
       existing.role = merged.role;
       existing.timestamp = new Date(merged.timestamp);
       existing.payload = merged;
@@ -220,7 +222,7 @@ export class SessionService {
       );
     }
     await this.syncSessionAfterMessages(session, await this.listMessages(sessionId));
-    return message;
+    return persisted;
   }
 
   async replaceMessages(sessionId: string, messages: UnifiedMessage[]): Promise<SessionRecord> {
@@ -351,7 +353,7 @@ function mergeToolExecution(
 export function toSessionRecord(entity: ChatSessionEntity): SessionRecord {
   return {
     sessionId: entity.sessionId,
-    ...(entity.projectId ? { projectId: entity.projectId } : {}),
+    projectId: entity.projectId ?? null,
     ...(entity.title ? { title: entity.title } : {}),
     createdAt: entity.createdAt.toISOString(),
     updatedAt: entity.updatedAt.toISOString(),

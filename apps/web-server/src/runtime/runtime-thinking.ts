@@ -1,479 +1,196 @@
 import type { AgentEvent, AgentRunResult, LlmStepOutputPhase } from '@agent-flow/core';
-import type { ThoughtChainItemPart, ThinkingStatus, UnifiedMessage } from '@agent-flow/core/messages';
+import type { ThinkingMessage, ThinkingStatus } from '@agent-flow/core/messages';
 import type { RuntimeChatInput } from '../contracts/api.js';
-import type { RunnerDirective, RuntimeMode } from './runtime-types.js';
-import { formatUnknown, isPlainObject, truncateText } from './runtime-types.js';
+import type { RuntimeMode } from './runtime-types.js';
+import { isPlainObject, truncateText } from './runtime-types.js';
 
-export interface RuntimeThinkingMessageOptions {
+export interface RuntimeThinkingOptions {
   input: RuntimeChatInput;
   parentUuid: string | null;
   runtimeMode: Exclude<RuntimeMode, 'chat'>;
-  runnerDirective?: RunnerDirective;
   events: AgentEvent[];
   result?: AgentRunResult;
   startedAt: number;
 }
 
-interface PlanStepSnapshot {
-  id: string;
-  title: string;
-  kind: string;
-  toolName?: string;
+export function buildRuntimeThinkingSummaryMessage(options: RuntimeThinkingOptions): ThinkingMessage {
+  const status = resolveStatus(options.events, options.result);
+  const durationMs = Math.max(0, Date.now() - options.startedAt);
+  return createThinkingMessage(options, {
+    uuid: `runtime_summary_${sanitize(options.input.turnId)}`,
+    kind: 'summary',
+    title: status === 'running' ? 'Working' : status === 'success' ? 'Worked' : 'Execution stopped',
+    text: status === 'running' ? 'Working…' : status === 'success' ? `Worked for ${formatDuration(durationMs)}` : `Stopped after ${formatDuration(durationMs)}`,
+    status,
+    durationMs,
+  });
 }
 
-interface StepState {
-  id: string;
-  title: string;
-  kind: string;
-  status: ThinkingStatus;
-  startedAt?: string;
-  endedAt?: string;
-  error?: string;
+/** Convert a runtime event into one or more atomic, user-visible thinking messages. */
+export function buildRuntimeThinkingActivityMessages(
+  options: RuntimeThinkingOptions,
+  event: AgentEvent,
+): ThinkingMessage[] {
+  if (event.type === 'checkpoint.created' && event.payload.kind === 'llm') {
+    return checkpointMessages(options, event);
+  }
+
+  if (event.type === 'step.started' || event.type === 'step.completed' || event.type === 'step.failed') {
+    const stepId = readString(event.payload.stepId);
+    if (!stepId) return [];
+    const status: ThinkingStatus = event.type === 'step.started' ? 'running' : event.type === 'step.failed' ? 'error' : 'success';
+    const title = readString(event.payload.title) ?? humanize(stepId);
+    const error = readString(event.payload.error);
+    return [createThinkingMessage(options, {
+      uuid: `runtime_step_${sanitize(options.input.turnId)}_${sanitize(stepId)}`,
+      kind: 'step',
+      title,
+      text: error ?? (status === 'running' ? `Started ${title}` : `Completed ${title}`),
+      status,
+    })];
+  }
+
+  if (event.type === 'recovery.strategy_selected' || event.type === 'recovery.reflected' || event.type === 'recovery.exhausted') {
+    const text = recoveryText(event);
+    if (!text) return [];
+    return [createThinkingMessage(options, {
+      uuid: `runtime_recovery_${sanitize(options.input.turnId)}_${sanitize(event.id)}`,
+      kind: 'recovery',
+      title: event.type === 'recovery.exhausted' ? 'Recovery exhausted' : 'Recovery',
+      text,
+      status: event.type === 'recovery.exhausted' ? 'error' : 'running',
+    })];
+  }
+
+  if (event.type === 'session.verification') {
+    const statusText = readString(event.payload.status);
+    const reason = readString(event.payload.reason);
+    const nextAction = readString(event.payload.nextAction);
+    const missing = Array.isArray(event.payload.missingEvidence)
+      ? event.payload.missingEvidence.filter((value): value is string => typeof value === 'string')
+      : [];
+    const text = [reason, missing.length ? `Missing evidence: ${missing.join(', ')}` : undefined, nextAction ? `Next: ${nextAction}` : undefined]
+      .filter((value): value is string => Boolean(value)).join('\n');
+    if (!text && !statusText) return [];
+    return [createThinkingMessage(options, {
+      uuid: `runtime_verification_${sanitize(options.input.turnId)}_${sanitize(event.id)}`,
+      kind: 'verification',
+      title: readString(event.payload.verifierName) ?? 'Verification',
+      text: text || statusText || 'Verification updated',
+      status: statusText === 'passed' ? 'success' : statusText === 'blocked' ? 'error' : 'running',
+    })];
+  }
+
+  return [];
 }
 
-interface LlmSection {
-  phase: LlmStepOutputPhase;
-  title: string;
-  text: string;
+function checkpointMessages(options: RuntimeThinkingOptions, event: AgentEvent): ThinkingMessage[] {
+  const output = isPlainObject(event.payload.output) ? event.payload.output : null;
+  if (!output) return [];
+  const title = readString(output.title) ?? readString(event.payload.title) ?? 'Reasoning';
+  const sections = isPlainObject(output.sections) ? output.sections : null;
+  const result: ThinkingMessage[] = [];
+
+  if (sections) {
+    for (const phase of ['analysis', 'implementation', 'verification'] as const) {
+      const text = readString(sections[phase]);
+      if (!text) continue;
+      result.push(createCheckpointMessage(options, event, phase, title, text));
+    }
+    return result;
+  }
+
+  const text = readString(output.text);
+  if (!text) return [];
+  const phase = readPhase(output.phase) ?? inferPhase(title);
+  return [createCheckpointMessage(options, event, phase, title, text)];
 }
 
-interface VerificationSnapshot {
-  round?: number;
-  status?: string;
-  verifierName?: string;
-  reason?: string;
-  missingEvidence: string[];
-  nextAction?: string;
+function createCheckpointMessage(
+  options: RuntimeThinkingOptions,
+  event: AgentEvent,
+  phase: LlmStepOutputPhase,
+  title: string,
+  text: string,
+): ThinkingMessage {
+  return createThinkingMessage(options, {
+    uuid: `runtime_reasoning_${sanitize(options.input.turnId)}_${sanitize(event.id)}_${phase}`,
+    kind: phase === 'verification' ? 'verification' : 'reasoning',
+    title,
+    text: truncateText(text, 4_800),
+    status: 'success',
+  });
 }
 
-export function buildRuntimeThinkingMessage(options: RuntimeThinkingMessageOptions): UnifiedMessage {
-  const status = resolveThinkingStatus(options.events, options.result);
-  const items = buildThinkingItems(options, status);
-  const now = Date.now();
-  const durationMs = Math.max(0, now - options.startedAt);
+function createThinkingMessage(
+  options: RuntimeThinkingOptions,
+  value: Pick<ThinkingMessage, 'uuid' | 'kind' | 'title' | 'text' | 'status'> & Partial<Pick<ThinkingMessage, 'durationMs'>>,
+): ThinkingMessage {
   return {
-    uuid: `runtime_thinking_${sanitizeMessageId(options.input.requestId)}`,
+    uuid: value.uuid,
     parentUuid: options.parentUuid,
     role: 'assistant',
     type: 'thinking',
+    kind: value.kind,
+    title: value.title,
+    text: value.text,
+    status: value.status,
+    ...(value.durationMs !== undefined ? { durationMs: value.durationMs } : {}),
     timestamp: new Date().toISOString(),
     metadata: {
+      turnId: options.input.turnId,
       modelId: String(options.input.modelId),
       provider: 'core-runtime',
       isMeta: true,
-      extensions: {
-        runtimeThinking: true,
-        requestId: options.input.requestId,
-        modelId: options.input.modelId,
-        model: options.input.model,
-        runtimeMode: options.runtimeMode,
-        status,
-      },
     },
-    title: status === 'running' ? 'Thinking' : 'Complete thinking',
-    text: items
-      .map((item) => {
-        const title = typeof item.title === 'string' ? item.title : item.key;
-        const content = typeof item.content === 'string' ? item.content : '';
-        return content ? `## ${title}\n${content}` : `## ${title}`;
-      })
-      .join('\n\n'),
-    status,
-    durationMs,
-    defaultOpen: true,
-    defaultExpandedKeys: items.map((item) => item.key),
-    items,
   };
 }
 
-function buildThinkingItems(
-  options: RuntimeThinkingMessageOptions,
-  status: ThinkingStatus,
-): ThoughtChainItemPart[] {
-  const plan = extractPlan(options.events);
-  const stepStates = extractStepStates(options.events);
-  const llmSections = extractLlmSections(options.events);
-  const toolEvidence = extractToolEvidence(options.events);
-  const verification = extractLatestVerification(options.events);
-  const recoverySummary = extractRecoverySummary(options.events);
-  const items: ThoughtChainItemPart[] = [
-    {
-      key: 'intent',
-      title: 'Intent',
-      status: 'success',
-      content: [
-        `Mode: ${options.runtimeMode}`,
-        `Goal: ${truncateText(options.input.message.trim() || options.input.session.title || 'Untitled turn', 600)}`,
-        options.runnerDirective
-          ? `Runner directive: ${options.runnerDirective.command} ${options.runnerDirective.args.join(' ')}`.trim()
-          : undefined,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join('\n'),
-    },
-  ];
-
-  if (recoverySummary) {
-    items.push({
-      key: 'recovery-attempts',
-      title: 'Recovery attempts',
-      status: recoverySummary.includes('exhausted') ? 'error' : status,
-      content: recoverySummary,
-    });
+function recoveryText(event: AgentEvent): string | null {
+  if (event.type === 'recovery.exhausted') {
+    return readString(event.payload.reason) ?? 'Recovery attempt budget exhausted.';
   }
-
-  if (plan.length > 0) {
-    items.push({
-      key: 'plan',
-      title: 'Plan',
-      status: status === 'running' ? 'running' : status,
-      content: plan
-        .map((step, index) => {
-          const state = stepStates.get(step.id);
-          const marker = state?.status ?? 'pending';
-          const tool = step.toolName ? ` (${step.toolName})` : '';
-          return `${index + 1}. ${step.title}${tool} - ${marker}`;
-        })
-        .join('\n'),
-    });
+  if (event.type === 'recovery.strategy_selected') {
+    const strategy = isPlainObject(event.payload.strategy) ? event.payload.strategy : null;
+    return readString(strategy?.summary) ?? readString(event.payload.strategyFingerprint) ?? null;
   }
-
-  for (const phase of ['analysis', 'implementation', 'verification'] as const) {
-    const content = llmSections
-      .filter((section) => section.phase === phase)
-      .map((section) => `### ${section.title}\n${section.text}`)
-      .join('\n\n');
-    if (!content) continue;
-    items.push({
-      key: phase,
-      title: titleCase(phase),
-      status: statusForPhase(phase, stepStates, status),
-      content,
-    });
-  }
-
-  if (toolEvidence.length > 0) {
-    items.push({
-      key: 'tool-evidence',
-      title: 'Tool evidence',
-      status: toolEvidence.some((line) => line.includes('failed')) ? 'error' : 'success',
-      content: toolEvidence.join('\n'),
-    });
-  }
-
-  if (verification) {
-    items.push({
-      key: 'verification',
-      title: 'Verification',
-      status:
-        verification.status === 'passed'
-          ? 'success'
-          : verification.status === 'blocked'
-            ? 'error'
-            : 'running',
-      content: [
-        verification.round !== undefined ? `Round: ${verification.round}` : undefined,
-        verification.verifierName ? `Verifier: ${verification.verifierName}` : undefined,
-        verification.status ? `Status: ${verification.status}` : undefined,
-        verification.reason ? `Reason: ${verification.reason}` : undefined,
-        verification.missingEvidence.length > 0
-          ? `Missing evidence: ${verification.missingEvidence.join(', ')}`
-          : undefined,
-        verification.nextAction ? `Next action: ${verification.nextAction}` : undefined,
-      ]
-        .filter((line): line is string => Boolean(line))
-        .join('\n'),
-    });
-  }
-
-  const failure = buildFailureSummary(options.result, options.events);
-  if (failure) {
-    items.push({
-      key: 'failure',
-      title: 'Failure',
-      status: 'error',
-      content: failure,
-    });
-  }
-
-  if (options.result) {
-    items.push({
-      key: 'result',
-      title: 'Result',
-      status: options.result.status === 'succeeded' ? 'success' : 'error',
-      content: [
-        `Status: ${options.result.status}`,
-        `Runtime events: ${options.result.events.length}`,
-        `Output steps: ${Object.keys(options.result.outputs).length}`,
-      ].join('\n'),
-    });
-  }
-
-  return items;
+  const reflection = isPlainObject(event.payload.reflection) ? event.payload.reflection : null;
+  return readString(reflection?.summary) ?? readString(reflection?.cause) ?? null;
 }
 
-function extractPlan(events: AgentEvent[]): PlanStepSnapshot[] {
-  const sessionStarted = events.find((event) => event.type === 'session.started');
-  const rawSteps = sessionStarted?.payload.steps;
-  if (!Array.isArray(rawSteps)) {
-    return [];
-  }
-
-  return rawSteps
-    .map((raw): PlanStepSnapshot | null => {
-      if (!isPlainObject(raw)) return null;
-      const id = readString(raw.id);
-      const title = readString(raw.title);
-      const kind = readString(raw.kind);
-      if (!id || !title || !kind) return null;
-      return {
-        id,
-        title,
-        kind,
-        toolName: readString(raw.toolName),
-      };
-    })
-    .filter((step): step is PlanStepSnapshot => Boolean(step));
-}
-
-function extractStepStates(events: AgentEvent[]): Map<string, StepState> {
-  const states = new Map<string, StepState>();
-  const ensure = (id: string): StepState => {
-    const existing = states.get(id);
-    if (existing) return existing;
-    const created: StepState = {
-      id,
-      title: id,
-      kind: 'unknown',
-      status: 'pending',
-    };
-    states.set(id, created);
-    return created;
-  };
-
-  for (const event of events) {
-    const stepId = readString(event.payload.stepId);
-    if (!stepId) continue;
-    const state = ensure(stepId);
-    const title = readString(event.payload.title);
-    const kind = readString(event.payload.kind);
-    if (title) state.title = title;
-    if (kind) state.kind = kind;
-
-    if (event.type === 'step.started') {
-      state.status = 'running';
-      state.startedAt = event.timestamp;
-    } else if (event.type === 'step.completed') {
-      state.status = 'success';
-      state.endedAt = event.timestamp;
-    } else if (event.type === 'step.failed') {
-      state.status = 'error';
-      state.endedAt = event.timestamp;
-      state.error = readString(event.payload.error);
-    }
-  }
-
-  return states;
-}
-
-function extractLlmSections(events: AgentEvent[]): LlmSection[] {
-  const sections: LlmSection[] = [];
-  for (const event of events) {
-    if (event.type !== 'checkpoint.created' || event.payload.kind !== 'llm') {
-      continue;
-    }
-    const output = isPlainObject(event.payload.output) ? event.payload.output : null;
-    if (!output) continue;
-    const title = readString(output.title) ?? readString(event.payload.title) ?? readString(event.payload.stepId) ?? 'LLM step';
-    const phase = readPhase(output.phase) ?? inferPhaseFromTitle(title);
-    const structured = isPlainObject(output.sections) ? output.sections : null;
-
-    if (structured) {
-      for (const key of ['analysis', 'implementation', 'verification'] as const) {
-        const text = readString(structured[key]);
-        if (!text) continue;
-        sections.push({
-          phase: key,
-          title,
-          text: truncateText(text, 2400),
-        });
-      }
-      continue;
-    }
-
-    const text = readString(output.text);
-    if (text) {
-      sections.push({
-        phase,
-        title,
-        text: truncateText(text, 2400),
-      });
-    }
-  }
-  return sections;
-}
-
-function extractToolEvidence(events: AgentEvent[]): string[] {
-  const lines: string[] = [];
-  for (const event of events) {
-    if (event.type !== 'tool.result') {
-      continue;
-    }
-    const stepId = readString(event.payload.stepId) ?? event.id;
-    const tool = readString(event.payload.tool) ?? 'tool';
-    const ok = event.payload.ok === true;
-    const error = readString(event.payload.error);
-    const summary = ok
-      ? summarizeToolOutput(tool, event.payload.output)
-      : error
-        ? truncateText(error, 240)
-        : summarizeToolOutput(tool, event.payload.output);
-    lines.push(`- ${tool} (${stepId}) ${ok ? 'completed' : 'failed'}${summary ? `: ${summary}` : ''}`);
-  }
-  return lines.slice(-12);
-}
-
-function extractLatestVerification(events: AgentEvent[]): VerificationSnapshot | null {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (event?.type !== 'session.verification') {
-      continue;
-    }
-    return {
-      round: typeof event.payload.round === 'number' ? event.payload.round : undefined,
-      status: readString(event.payload.status),
-      verifierName: readString(event.payload.verifierName),
-      reason: readString(event.payload.reason),
-      missingEvidence: Array.isArray(event.payload.missingEvidence)
-        ? event.payload.missingEvidence.filter((item): item is string => typeof item === 'string')
-        : [],
-      nextAction: readString(event.payload.nextAction),
-    };
-  }
-  return null;
-}
-
-function extractRecoverySummary(events: AgentEvent[]): string | null {
-  const lines: string[] = [];
-  for (const event of events) {
-    if (event.type === 'recovery.strategy_selected') {
-      const attempt = typeof event.payload.attempt === 'number' ? event.payload.attempt : '?';
-      const fingerprint = readString(event.payload.strategyFingerprint);
-      const strategy = isPlainObject(event.payload.strategy) ? event.payload.strategy : null;
-      const summary = readString(strategy?.summary);
-      lines.push(`Attempt ${attempt}: ${summary ?? fingerprint ?? 'initial strategy'}`);
-    } else if (event.type === 'recovery.reflected') {
-      const attempt = typeof event.payload.attempt === 'number' ? event.payload.attempt : '?';
-      const reflection = isPlainObject(event.payload.reflection) ? event.payload.reflection : null;
-      const summary = readString(reflection?.summary) ?? readString(reflection?.cause);
-      if (summary) lines.push(`Reflection ${attempt}: ${truncateText(summary, 500)}`);
-    } else if (event.type === 'recovery.exhausted') {
-      lines.push(`Recovery exhausted: ${readString(event.payload.reason) ?? 'attempt budget exhausted'}`);
-    } else if (event.type === 'approval_response') {
-      const source = readString(event.payload.authorizationSource);
-      if (source) lines.push(`Approval: ${source}${readString(event.payload.grantId) ? ` (${readString(event.payload.grantId)})` : ''}`);
-    }
-  }
-  return lines.length > 0 ? lines.join('\n') : null;
-}
-
-function summarizeToolOutput(toolName: string, output: unknown): string {
-  if (!isPlainObject(output)) {
-    if (typeof output === 'string') {
-      return `text output, ${output.length} chars`;
-    }
-    return truncateText(formatUnknown(output), 120);
-  }
-
-  if (toolName === 'fs.read') {
-    const path = readString(output.path) ?? 'file';
-    const size = typeof output.size === 'number' ? output.size : undefined;
-    const missing = output.missing === true ? ' missing' : '';
-    return `${path}${size !== undefined ? `, ${size} bytes` : ''}${missing}`;
-  }
-  if (toolName === 'fs.list') {
-    const path = readString(output.path) ?? '.';
-    const total = typeof output.total === 'number' ? output.total : undefined;
-    return `${path}${total !== undefined ? `, ${total} entries` : ''}`;
-  }
-  if (toolName === 'fs.search') {
-    const pattern = readString(output.pattern) ?? 'pattern';
-    const total = typeof output.total === 'number' ? output.total : undefined;
-    return `${pattern}${total !== undefined ? `, ${total} matches` : ''}`;
-  }
-
-  const keys = Object.keys(output).slice(0, 8);
-  return keys.length > 0 ? `object output with keys: ${keys.join(', ')}` : 'object output';
-}
-
-function resolveThinkingStatus(events: AgentEvent[], result?: AgentRunResult): ThinkingStatus {
-  if (result) {
-    return result.status === 'succeeded' ? 'success' : 'error';
-  }
-  if (events.some((event) => event.type === 'session.failed' || event.type === 'step.failed')) {
-    return 'error';
-  }
+function resolveStatus(events: AgentEvent[], result?: AgentRunResult): ThinkingStatus {
+  if (result) return result.status === 'succeeded' ? 'success' : 'error';
+  if (events.some((event) => event.type === 'session.failed')) return 'error';
   return 'running';
 }
 
-function statusForPhase(
-  phase: LlmStepOutputPhase,
-  stepStates: Map<string, StepState>,
-  fallback: ThinkingStatus,
-): ThinkingStatus {
-  const matching = [...stepStates.values()].filter((step) => inferPhaseFromTitle(step.title) === phase);
-  if (matching.length === 0) return fallback === 'running' ? 'success' : fallback;
-  if (matching.some((step) => step.status === 'error')) return 'error';
-  if (matching.some((step) => step.status === 'running')) return 'running';
-  if (matching.every((step) => step.status === 'success')) return 'success';
-  return fallback;
-}
-
-function buildFailureSummary(result: AgentRunResult | undefined, events: AgentEvent[]): string | null {
-  if (result?.error) {
-    return truncateText(result.error, 1600);
-  }
-
-  const failed = [...events].reverse().find((event) => event.type === 'step.failed' || event.type === 'session.failed');
-  const error = readString(failed?.payload.error);
-  return error ? truncateText(error, 1600) : null;
-}
-
-function inferPhaseFromTitle(title: string): LlmStepOutputPhase {
-  const lowered = title.toLowerCase();
-  if (
-    lowered.includes('validation') ||
-    lowered.includes('verification') ||
-    lowered.includes('regression') ||
-    lowered.includes('acceptance') ||
-    lowered.includes('preservation')
-  ) {
-    return 'verification';
-  }
-  if (
-    lowered.includes('implementation') ||
-    lowered.includes('execution') ||
-    lowered.includes('summary')
-  ) {
-    return 'implementation';
-  }
+function inferPhase(title: string): LlmStepOutputPhase {
+  const value = title.toLowerCase();
+  if (value.includes('verification') || value.includes('validation')) return 'verification';
+  if (value.includes('implementation') || value.includes('execution')) return 'implementation';
   return 'analysis';
 }
 
 function readPhase(value: unknown): LlmStepOutputPhase | undefined {
-  return value === 'analysis' || value === 'implementation' || value === 'verification'
-    ? value
-    : undefined;
+  return value === 'analysis' || value === 'implementation' || value === 'verification' ? value : undefined;
 }
 
 function readString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function sanitizeMessageId(value: string): string {
-  return value.replace(/[^A-Za-z0-9_-]/g, '_') || `${Date.now()}`;
+function sanitize(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 80) || 'event';
 }
 
-function titleCase(value: string): string {
-  return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+function humanize(value: string): string {
+  return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) return `${durationMs}ms`;
+  if (durationMs < 60_000) return `${Math.max(1, Math.round(durationMs / 1_000))}s`;
+  const minutes = Math.floor(durationMs / 60_000);
+  const seconds = Math.round((durationMs % 60_000) / 1_000);
+  return `${minutes}m ${seconds}s`;
 }

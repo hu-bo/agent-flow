@@ -1,19 +1,39 @@
 import type { FilePart, UnifiedMessage } from '@agent-flow/core/messages';
 import type { AgentEvent } from '@agent-flow/core';
-import type { ApprovalRequiredPayload } from '../lib/approval.js';
+import type {
+  ModelDescriptor,
+  ProjectRecord,
+  ReasoningEffort,
+  RunnerDirectoryEntry,
+  RunnerPlatformProfile,
+  SessionMode,
+  SessionRecord,
+  SessionState,
+  SpecDocType,
+  SpecWorkflowPhase,
+  SpecWorkflowState,
+  TaskAction,
+  TaskRecord,
+  TaskStatus,
+} from '@agent-flow/web-contracts';
 
-export type ReasoningEffort = 'low' | 'medium' | 'high';
-export type SessionMode = 'vibe' | 'spec';
-export type SpecWorkflowPhase = 'requirements' | 'design' | 'tasks';
-export type SpecDocType = SpecWorkflowPhase;
-export type TaskStatus =
-  | 'pending'
-  | 'running'
-  | 'paused'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
-export type TaskAction = 'pause' | 'resume' | 'cancel' | 'retry';
+export type {
+  ModelDescriptor,
+  ProjectRecord,
+  ReasoningEffort,
+  RunnerDirectoryEntry,
+  RunnerPlatformProfile,
+  SessionMode,
+  SessionRecord,
+  SessionState,
+  SpecDocType,
+  SpecWorkflowPhase,
+  SpecWorkflowState,
+  TaskAction,
+  TaskRecord,
+  TaskStatus,
+};
+
 export type TaskType = 'chat' | 'workflow' | 'compact';
 export type TaskEventType =
   | 'task.created'
@@ -23,40 +43,6 @@ export type TaskEventType =
   | 'task.failed'
   | 'task.cancelled';
 
-export interface SessionRecord {
-  sessionId: string;
-  projectId?: string;
-  title?: string;
-  createdAt: string;
-  updatedAt: string;
-  modelId: number;
-  mode: SessionMode;
-  cwd: string;
-  messageCount: number;
-  systemPrompt?: string;
-  latestCheckpointId?: string;
-  boundRunnerId?: string;
-  specWorkflow?: SpecWorkflowState;
-}
-
-export interface ProjectRecord {
-  projectId: string;
-  name: string;
-  rootPath: string;
-  defaultRunnerId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  chatCount: number;
-  latestSession?: SessionRecord;
-}
-
-export interface RunnerDirectoryEntry {
-  path: string;
-  name: string;
-  type: 'directory' | 'file';
-  size?: number;
-}
-
 export interface RunnerRootsResult {
   roots: RunnerDirectoryEntry[];
 }
@@ -65,57 +51,6 @@ export interface RunnerDirectoryListResult {
   path: string;
   entries: RunnerDirectoryEntry[];
   total: number;
-}
-
-export interface RunnerPlatformProfile {
-  os?: string;
-  arch?: string;
-  defaultShell?: string;
-  pathSeparator?: string;
-  lineEnding?: string;
-  workspaceRoots: string[];
-  availableCommands: string[];
-}
-
-export interface SpecWorkflowState {
-  phase: SpecWorkflowPhase;
-  awaitingConfirm: boolean;
-  requirementsMsgId?: string;
-  designMsgId?: string;
-  taskListMsgId?: string;
-  documents?: Partial<Record<SpecDocType, string>>;
-}
-
-export interface SessionState {
-  session: SessionRecord;
-  messages: UnifiedMessage[];
-}
-
-export interface ModelDescriptor {
-  modelId: number;
-  model: string;
-  displayName: string;
-  provider: string;
-  providerType: string;
-  providerModel: string;
-  maxInputTokens: number;
-}
-
-export interface TaskRecord {
-  taskId: string;
-  sessionId: string;
-  profileId?: string;
-  type: TaskType;
-  status: TaskStatus;
-  createdAt: string;
-  updatedAt: string;
-  latestCheckpointId: string;
-  retryCount: number;
-  maxRetries: number;
-  modelId: number;
-  prompt: string;
-  error?: string;
-  outputs?: unknown;
 }
 
 export interface TaskEvent {
@@ -135,12 +70,11 @@ export interface RuntimeChatInput {
   modelId: number;
   model: string;
   requestId: string;
+  turnId: string;
   reasoningEffort?: ReasoningEffort;
   attachments: FilePart[];
   preferredRunnerId?: string;
   runnerPlatform?: RunnerPlatformProfile;
-  approveRiskyOps?: boolean;
-  approvalTicket?: string;
   /** Cancels model, tool, and runtime work for this chat turn. */
   signal?: AbortSignal;
 }
@@ -170,14 +104,6 @@ export interface ChatStreamThinkingEvent {
   msg: UnifiedMessage;
 }
 
-export type ApprovalRiskLevel = ApprovalRequiredPayload['risk'];
-export type ChatStreamApprovalPayload = ApprovalRequiredPayload;
-
-export interface ChatStreamApprovalRequiredEvent {
-  type: 'approval_req';
-  approval: ChatStreamApprovalPayload;
-}
-
 export interface ChatStreamRuntimeEvent {
   type: 'runtime_event';
   event: AgentEvent;
@@ -197,7 +123,6 @@ export type ChatStreamEvent =
   | ChatStreamMessageDeltaEvent
   | ChatStreamSpecDocUpdateEvent
   | ChatStreamThinkingEvent
-  | ChatStreamApprovalRequiredEvent
   | ChatStreamRuntimeEvent
   | ChatStreamErrorEvent;
 

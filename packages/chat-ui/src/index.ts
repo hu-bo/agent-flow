@@ -1,72 +1,35 @@
-import './tailwind.css';
+import './v2.css';
 import 'highlight.js/styles/github.css';
 
-// Components
 export { ChatPanel } from './components/ChatPanel/ChatPanel';
-export type { ChatPanelProps } from './components/ChatPanel/ChatPanel';
-export { MessageList } from './components/MessageList/MessageList';
-export { MessageBubble } from './components/MessageBubble/MessageBubble';
-export { InputArea } from './components/InputArea/InputArea';
-export { SelectField } from './components/SelectField/SelectField';
-export type { SelectFieldProps, SelectFieldOption } from './components/SelectField/SelectField';
+export type { ChatPanelActions, ChatPanelProps } from './components/ChatPanel/ChatPanel';
+export type { ComposerConfig } from './components/Composer/Composer';
 export { ActionPrompt } from './components/ActionPrompt/ActionPrompt';
 export type {
+  ActionPromptCustomInput,
   ActionPromptOption,
   ActionPromptProps,
   ActionPromptSubmitPayload,
-  ActionPromptCustomInput,
   ActionPromptToggle,
 } from './components/ActionPrompt/ActionPrompt';
-export { ThoughtChain } from './components/ThoughtChain/ThoughtChain';
 export type {
-  ThoughtChainProps,
-  ThoughtChainSemanticSlot,
-} from './components/ThoughtChain/ThoughtChain';
-
-// Registry
-export { ContentRendererRegistry, createDefaultRegistry } from './registry';
-export type {
-  ContentRenderer,
-  ContentRendererContext,
-  ContentRendererProps,
-} from './registry';
-
-// Renderers (for custom composition)
-export { TextRenderer } from './renderers/TextRenderer';
-export { ThinkingRenderer } from './renderers/ThinkingRenderer';
-export { ImageRenderer } from './renderers/ImageRenderer';
-export { CodeDiffRenderer } from './renderers/CodeDiffRenderer';
-export { ToolExecutionRenderer } from './renderers/ToolExecutionRenderer';
-export { FileAttachmentRenderer } from './renderers/FileAttachmentRenderer';
-
-// Types
-export type {
-  ChatContentPart,
   ChatMessage,
-  FileAttachment,
   ChatOption,
   ChatSuggestion,
-  ReasoningEffort,
-  TokenUsageSummary,
-  ThinkingPart,
-  ThoughtChainItem,
-  ThoughtChainItemStatus,
-  CodeDiffPart,
-  ToolExecutionPart,
-  // Re-exports from model-contracts
-  TextPart,
+  FileAttachment,
+  FilePart,
+  ImageMessage,
   ImagePart,
   ImageSource,
-  FilePart,
+  MessageMetadata,
   MessageRole,
   MessageStatus,
+  ReasoningEffort,
   TextMessage,
-  ImageMessage,
+  TextPart,
+  TokenUsage,
+  TokenUsageSummary,
   ToolExecution,
   ToolExecutionMessage,
   UnifiedMessage,
-  MessageMetadata,
-  TokenUsage,
 } from './types';
-
-// Trace helpers

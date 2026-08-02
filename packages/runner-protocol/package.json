@@ -15,10 +15,14 @@
   },
   "files": ["dist"],
   "scripts": {
-    "generate": "protoc --proto_path=../../ --ts_proto_out=./src/generated --ts_proto_opt=env=node,esModuleInterop=true,outputServices=none,outputEncodeMethods=false,outputJsonMethods=false,outputClientImpl=false,outputPartialMethods=false,oneof=unions-value ../../protocol/proto/runner.proto",
+    "generate": "protoc --proto_path=../../ --ts_proto_out=./src/generated --ts_proto_opt=env=node,esModuleInterop=true,outputServices=grpc-js,outputClientImpl=false,useExactTypes=false ../../protocol/proto/runner.proto",
     "build": "pnpm run generate && tsc -p tsconfig.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "pnpm run generate && tsc --noEmit"
+  },
+  "dependencies": {
+    "@bufbuild/protobuf": "^2.12.0",
+    "@grpc/grpc-js": "^1.14.1"
   },
   "devDependencies": {
     "ts-proto": "^2.7.7",

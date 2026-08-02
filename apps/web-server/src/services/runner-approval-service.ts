@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { IsNull } from 'typeorm';
 import type { AppDataSource } from '../db/data-source.js';
 import { AuditLogEntity } from '../db/entities/audit-log.entity.js';
@@ -13,17 +13,6 @@ export interface RunnerApprovalScope {
   label?: string;
 }
 
-interface ApprovalTicketRecord {
-  ticket: string;
-  ticketId: string;
-  ownerUserId: string;
-  sessionId: string;
-  command: string;
-  workingDir: string;
-  expiresAtMs: number;
-  consumedAtMs?: number;
-}
-
 interface PendingApprovalRecord {
   requestId: string;
   ownerUserId: string;
@@ -36,44 +25,6 @@ interface PendingApprovalRecord {
   reason?: string;
   expiresAtMs: number;
   resolve: (result: ApprovalWaitResult) => void;
-}
-
-export interface IssueApprovalTicketInput {
-  ownerUserId: string;
-  sessionId: string;
-  command: string;
-  workingDir: string;
-  ttlSec?: number;
-}
-
-export interface ApprovalTicketScope {
-  session_id: string;
-  cmd: string;
-  workdir: string;
-}
-
-export interface ApprovalTicketIssueResult {
-  approval_ticket: string;
-  ticket_id: string;
-  expires_at: string;
-  scope: ApprovalTicketScope;
-  approved_request_id?: string;
-  persistent_grant_id?: string;
-  decision?: 'once' | 'always';
-}
-
-export interface ApprovalTicketValidationInput {
-  ticket: string;
-  ownerUserId: string;
-  sessionId: string;
-  command: string;
-  workingDir: string;
-}
-
-interface ApprovalTicketValidationResult {
-  ok: boolean;
-  reason?: string;
-  ticketId?: string;
 }
 
 export interface ApprovalWaitInput {
@@ -91,13 +42,13 @@ export interface ApprovalWaitInput {
 
 export interface ApprovalWaitRequest {
   requestId: string;
-  session_id: string;
-  runner_id: string;
-  scope_type: 'project' | 'chat';
-  scope_id: string;
-  scope_label?: string;
-  cmd: string;
-  workdir: string;
+  sessionId: string;
+  runnerId: string;
+  scopeType: 'project' | 'chat';
+  scopeId: string;
+  scopeLabel?: string;
+  command: string;
+  workingDir: string;
   risk: 'low' | 'medium' | 'high';
   reason?: string;
 }
@@ -105,11 +56,16 @@ export interface ApprovalWaitRequest {
 export interface ApprovalWaitResult {
   approved: boolean;
   requestId: string;
-  authorizationSource?: 'once' | 'persistent';
-  ticket?: string;
-  ticketId?: string;
-  grantId?: string;
+  decision: 'once' | 'always' | 'deny';
+  persistentGrantId?: string;
   reason?: string;
+}
+
+export interface ApprovalDecisionResult {
+  requestId: string;
+  decision: 'once' | 'always' | 'deny';
+  approved: boolean;
+  persistentGrantId?: string;
 }
 
 export interface RunnerApprovalGrantView {
@@ -124,34 +80,9 @@ export interface RunnerApprovalGrantView {
 }
 
 export class RunnerApprovalService {
-  private readonly tickets = new Map<string, ApprovalTicketRecord>();
   private readonly pending = new Map<string, PendingApprovalRecord>();
 
   constructor(private readonly db: AppDataSource) {}
-
-  issue(input: IssueApprovalTicketInput): ApprovalTicketIssueResult {
-    this.pruneExpired();
-    const nowMs = Date.now();
-    const ttlSec = clampTtlSec(input.ttlSec);
-    const ticket = buildOpaqueTicket();
-    const ticketId = `apptk_${randomUUID()}`;
-    const record: ApprovalTicketRecord = {
-      ticket,
-      ticketId,
-      ownerUserId: input.ownerUserId,
-      sessionId: input.sessionId,
-      command: input.command,
-      workingDir: input.workingDir,
-      expiresAtMs: nowMs + ttlSec * 1000,
-    };
-    this.tickets.set(ticket, record);
-    return {
-      approval_ticket: ticket,
-      ticket_id: ticketId,
-      expires_at: new Date(record.expiresAtMs).toISOString(),
-      scope: { session_id: record.sessionId, cmd: record.command, workdir: record.workingDir },
-    };
-  }
 
   waitForApproval(input: ApprovalWaitInput): { request: ApprovalWaitRequest; response: Promise<ApprovalWaitResult> } {
     this.pruneExpired();
@@ -173,14 +104,24 @@ export class RunnerApprovalService {
         },
       };
       this.pending.set(requestId, record);
-      abortListener = () => record.resolve({ approved: false, requestId, reason: 'approval request aborted' });
+      abortListener = () => record.resolve({
+        approved: false,
+        requestId,
+        decision: 'deny',
+        reason: 'approval request aborted',
+      });
       if (input.signal?.aborted) {
         abortListener();
         return;
       }
       input.signal?.addEventListener('abort', abortListener, { once: true });
       timeoutHandle = setTimeout(
-        () => record.resolve({ approved: false, requestId, reason: 'approval request timed out' }),
+        () => record.resolve({
+          approved: false,
+          requestId,
+          decision: 'deny',
+          reason: 'approval request timed out',
+        }),
         timeoutMs,
       );
       timeoutHandle.unref?.();
@@ -188,13 +129,13 @@ export class RunnerApprovalService {
     return {
       request: {
         requestId,
-        session_id: input.sessionId,
-        runner_id: input.runnerId,
-        scope_type: input.scope.type,
-        scope_id: input.scope.id,
-        scope_label: input.scope.label,
-        cmd: input.command,
-        workdir: input.workingDir,
+        sessionId: input.sessionId,
+        runnerId: input.runnerId,
+        scopeType: input.scope.type,
+        scopeId: input.scope.id,
+        scopeLabel: input.scope.label,
+        command: input.command,
+        workingDir: input.workingDir,
         risk: input.risk,
         reason: input.reason,
       },
@@ -202,57 +143,50 @@ export class RunnerApprovalService {
     };
   }
 
-  async approvePending(
-    input: IssueApprovalTicketInput & { requestId?: string; decision?: 'once' | 'always' },
-  ): Promise<ApprovalTicketIssueResult> {
+  async decidePending(input: {
+    ownerUserId: string;
+    requestId: string;
+    decision: 'once' | 'always' | 'deny';
+  }): Promise<ApprovalDecisionResult> {
     this.pruneExpired();
-    const pending = this.findPendingApproval(input);
-    if (input.decision === 'always' && !pending) {
-      throw new AppError(404, 'APPROVAL_REQUEST_NOT_FOUND', 'Persistent approval requires an active pending request.');
+    const pending = this.pending.get(input.requestId);
+    if (!pending || pending.ownerUserId !== input.ownerUserId) {
+      throw new AppError(404, 'APPROVAL_REQUEST_NOT_FOUND', `Approval request not found or expired: ${input.requestId}`);
     }
-    const issued = this.issue(input);
-    let grantId: string | undefined;
-    if (input.decision === 'always' && pending) {
+    if (input.decision === 'deny') {
+      pending.resolve({
+        approved: false,
+        requestId: pending.requestId,
+        decision: 'deny',
+        reason: 'denied by user',
+      });
+      return { requestId: pending.requestId, decision: 'deny', approved: false };
+    }
+    if (input.decision === 'always') {
       const grant = await this.createPersistentGrant(pending);
-      grantId = grant.grantId;
       for (const record of [...this.pending.values()]) {
         if (samePersistentScope(record, pending)) {
           record.resolve({
             approved: true,
             requestId: record.requestId,
-            authorizationSource: 'persistent',
-            grantId,
+            decision: 'always',
+            persistentGrantId: grant.grantId,
           });
         }
       }
-    } else if (pending) {
-      pending.resolve({
-        approved: true,
+      return {
         requestId: pending.requestId,
-        authorizationSource: 'once',
-        ticket: issued.approval_ticket,
-        ticketId: issued.ticket_id,
-      });
+        decision: 'always',
+        approved: true,
+        persistentGrantId: grant.grantId,
+      };
     }
-    return {
-      ...issued,
-      approved_request_id: pending?.requestId,
-      persistent_grant_id: grantId,
-      decision: input.decision ?? 'once',
-    };
-  }
-
-  consumeAndValidate(input: ApprovalTicketValidationInput): ApprovalTicketValidationResult {
-    this.pruneExpired();
-    const record = this.tickets.get(input.ticket);
-    if (!record) return { ok: false, reason: 'approval ticket not found or expired' };
-    if (record.consumedAtMs) return { ok: false, reason: 'approval ticket already consumed', ticketId: record.ticketId };
-    if (record.ownerUserId !== input.ownerUserId) return { ok: false, reason: 'approval ticket owner mismatch', ticketId: record.ticketId };
-    if (record.sessionId !== input.sessionId) return { ok: false, reason: 'approval ticket session mismatch', ticketId: record.ticketId };
-    if (record.command !== input.command) return { ok: false, reason: 'approval ticket command mismatch', ticketId: record.ticketId };
-    if (record.workingDir !== input.workingDir) return { ok: false, reason: 'approval ticket working directory mismatch', ticketId: record.ticketId };
-    record.consumedAtMs = Date.now();
-    return { ok: true, ticketId: record.ticketId };
+    pending.resolve({
+      approved: true,
+      requestId: pending.requestId,
+      decision: 'once',
+    });
+    return { requestId: pending.requestId, decision: 'once', approved: true };
   }
 
   async findPersistentGrant(input: {
@@ -367,30 +301,17 @@ export class RunnerApprovalService {
 
   private pruneExpired(): void {
     const now = Date.now();
-    for (const [ticket, record] of this.tickets.entries()) {
-      if (record.expiresAtMs <= now) this.tickets.delete(ticket);
-    }
     for (const record of [...this.pending.values()]) {
       if (record.expiresAtMs <= now) {
-        record.resolve({ approved: false, requestId: record.requestId, reason: 'approval request expired' });
+        record.resolve({
+          approved: false,
+          requestId: record.requestId,
+          decision: 'deny',
+          reason: 'approval request expired',
+        });
       }
     }
   }
-
-  private findPendingApproval(input: IssueApprovalTicketInput & { requestId?: string }): PendingApprovalRecord | undefined {
-    if (input.requestId) {
-      const exact = this.pending.get(input.requestId);
-      return exact && matchesPendingApproval(exact, input) ? exact : undefined;
-    }
-    return [...this.pending.values()].find((record) => matchesPendingApproval(record, input));
-  }
-}
-
-function matchesPendingApproval(record: PendingApprovalRecord, input: IssueApprovalTicketInput): boolean {
-  return record.ownerUserId === input.ownerUserId
-    && record.sessionId === input.sessionId
-    && record.command === input.command
-    && record.workingDir === input.workingDir;
 }
 
 function samePersistentScope(left: PendingApprovalRecord, right: PendingApprovalRecord): boolean {
@@ -411,15 +332,6 @@ function toGrantView(grant: RunnerApprovalGrantEntity, scopeLabel?: string): Run
     createdAt: grant.createdAt.toISOString(),
     lastUsedAt: grant.lastUsedAt?.toISOString(),
   };
-}
-
-function buildOpaqueTicket(): string {
-  return `aft_${randomBytes(18).toString('base64url')}`;
-}
-
-function clampTtlSec(ttlSec: number | undefined): number {
-  if (typeof ttlSec !== 'number' || !Number.isFinite(ttlSec)) return 120;
-  return Math.max(30, Math.min(600, Math.floor(ttlSec)));
 }
 
 function clampApprovalWaitMs(timeoutMs: number | undefined): number {

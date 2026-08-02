@@ -6,7 +6,6 @@ import {
   fetchRunnerApprovalGrants,
   formatDeleteRunnerError,
   issueRunnerToken,
-  rotateRunnerToken,
   revokeRunnerApprovalGrant,
   streamRunners,
   type RunnerRecord,
@@ -130,11 +129,9 @@ function getPlatformInstructions(platform: RunnerPlatform): Array<{ title: strin
 
 export function RunnerPage() {
   const [runners, setRunners] = useState<RunnerRecord[]>([]);
-  const [tokenIssue, setTokenIssue] = useState<RunnerTokenIssueResult | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [notice, setNotice] = useState<NoticeState>(null);
-  const [isCreatingToken, setIsCreatingToken] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<RunnerPlatform>(() => detectRunnerPlatform());
   const [deletingRunnerId, setDeletingRunnerId] = useState<string | null>(null);
@@ -163,13 +160,11 @@ export function RunnerPage() {
         setRunners(runnerPayload.runners ?? []);
         const storedTokenIssue = loadStoredTokenIssue();
         if (storedTokenIssue) {
-          setTokenIssue(storedTokenIssue);
           return;
         }
 
         const issued = await issueRunnerToken();
         persistTokenIssue(issued);
-        setTokenIssue(issued);
         setIsConnecting(true);
       } catch (error: unknown) {
         setNotice({

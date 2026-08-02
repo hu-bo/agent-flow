@@ -10,7 +10,10 @@ import { buildAgentRequest } from './runtime-request-builder.js';
 import { parseRunnerDirective, resolveRuntimeMode } from './runtime-router.js';
 import { isRuntimeDiagnosticText } from './runtime-diagnostics.js';
 import { extractRuntimeStepTraces, extractRuntimeSteps, renderAssistantText } from './runtime-renderers.js';
-import { buildRuntimeThinkingMessage } from './runtime-thinking.js';
+import {
+  buildRuntimeThinkingActivityMessages,
+  buildRuntimeThinkingSummaryMessage,
+} from './runtime-thinking.js';
 import {
   MAX_AUTONOMOUS_MODEL_TOOL_ROUNDS,
   type RunnerDirective,
@@ -163,20 +166,25 @@ export class RuntimeTurnEngine {
         queue.push(toMessageEvent(progressMessage));
       }
     };
-    const emitThinkingSnapshot = (result?: Awaited<ReturnType<AgentRuntime['run']>>) => {
+    const thinkingOptions = (result?: Awaited<ReturnType<AgentRuntime['run']>>) => ({
+      input,
+      parentUuid,
+      runtimeMode,
+      events: runtimeEvents,
+      result,
+      startedAt: thinkingStartedAt,
+    });
+    const emitThinkingSummary = (result?: Awaited<ReturnType<AgentRuntime['run']>>) => {
       queue.push(
         toThinkingEvent(
-          buildRuntimeThinkingMessage({
-            input,
-            parentUuid,
-            runtimeMode,
-            runnerDirective,
-            events: runtimeEvents,
-            result,
-            startedAt: thinkingStartedAt,
-          }),
+          buildRuntimeThinkingSummaryMessage(thinkingOptions(result)),
         ),
       );
+    };
+    const emitThinkingActivities = (event: AgentEvent) => {
+      for (const message of buildRuntimeThinkingActivityMessages(thinkingOptions(), event)) {
+        queue.push(toThinkingEvent(message));
+      }
     };
 
     const result = await this.runtime.run(runRequest, {
@@ -199,8 +207,9 @@ export class RuntimeTurnEngine {
           queue.push(runtimeStreamEvent);
         }
         emitRuntimeProgress(event);
+        if (isNew) emitThinkingActivities(event);
         if (isNew && shouldRefreshThinking(event)) {
-          emitThinkingSnapshot();
+          emitThinkingSummary();
         }
       },
     });
@@ -222,11 +231,12 @@ export class RuntimeTurnEngine {
         queue.push(runtimeStreamEvent);
       }
       emitRuntimeProgress(event);
+      emitThinkingActivities(event);
       if (shouldRefreshThinking(event)) {
-        emitThinkingSnapshot();
+        emitThinkingSummary();
       }
     }
-    emitThinkingSnapshot(result);
+    emitThinkingSummary(result);
 
     const responseText = renderAssistantText({
       input,
@@ -295,6 +305,7 @@ export class RuntimeTurnEngine {
         createTextMessage('assistant', responseText, {
           parentUuid,
           metadata: {
+            turnId: input.turnId,
             modelId: String(input.modelId),
             provider: 'core-runtime',
             extensions: {
@@ -385,6 +396,7 @@ export class RuntimeTurnEngine {
         createTextMessage('assistant', `Core runtime execution failed:\n${message}`, {
           parentUuid,
           metadata: {
+            turnId: input.turnId,
             modelId: String(input.modelId),
             provider: 'core-runtime',
             extensions: {
@@ -412,6 +424,7 @@ function shouldRefreshThinking(event: AgentEvent): boolean {
     event.type === 'session.failed' ||
     event.type === 'approval_request' ||
     event.type === 'approval_response' ||
+    event.type === 'step.started' ||
     event.type === 'step.completed' ||
     event.type === 'step.failed' ||
     event.type === 'tool.result' ||
