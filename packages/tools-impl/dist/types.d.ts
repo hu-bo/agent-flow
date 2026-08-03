@@ -9,4 +9,3 @@ export interface BuiltinToolRegistrationResult {
 }
 export type BuiltinTool = ToolDefinition;
 export type ToolRegistry = ToolRegistryLike;
-//# sourceMappingURL=types.d.ts.map

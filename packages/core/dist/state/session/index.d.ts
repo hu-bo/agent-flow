@@ -5,4 +5,3 @@ export declare class InMemorySessionStore implements SessionStore {
     get(sessionId: string): Promise<AgentSession | undefined>;
     update(sessionId: string, patch: Partial<Omit<AgentSession, 'id' | 'taskId' | 'createdAt'>>): Promise<AgentSession>;
 }
-//# sourceMappingURL=index.d.ts.map

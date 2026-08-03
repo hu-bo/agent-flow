@@ -36,4 +36,3 @@ function rewriteText(input) {
     const rewritten = deduped.join(' ');
     return rewritten.length > 240 ? `${rewritten.slice(0, 237)}...` : rewritten;
 }
-//# sourceMappingURL=rewrite.js.map

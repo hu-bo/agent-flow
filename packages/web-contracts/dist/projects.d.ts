@@ -218,4 +218,3 @@ export declare const updateProjectBodySchema: z.ZodObject<{
 export type ProjectRecord = z.infer<typeof projectRecordSchema>;
 export type CreateProjectBody = z.infer<typeof createProjectBodySchema>;
 export type UpdateProjectBody = z.infer<typeof updateProjectBodySchema>;
-//# sourceMappingURL=projects.d.ts.map

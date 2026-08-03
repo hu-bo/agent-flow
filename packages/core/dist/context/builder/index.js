@@ -15,4 +15,3 @@ export class ContextBuilder {
         return this.windowManager.apply(selected, this.maxTokens);
     }
 }
-//# sourceMappingURL=index.js.map

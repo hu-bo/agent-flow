@@ -140,4 +140,3 @@ function useRequireAuth(options) {
   useCasdoorClient,
   useRequireAuth
 });
-//# sourceMappingURL=react.cjs.map

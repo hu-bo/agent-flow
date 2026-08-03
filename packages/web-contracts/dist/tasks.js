@@ -29,4 +29,3 @@ export const createTaskBodySchema = z.object({
     config: z.record(z.string(), z.unknown()).optional(),
     maxRetries: z.number().int().min(0).max(10).optional(),
 });
-//# sourceMappingURL=tasks.js.map

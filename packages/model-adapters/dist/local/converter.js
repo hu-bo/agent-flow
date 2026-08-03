@@ -35,4 +35,3 @@ export class LocalMessageTranslator {
         };
     }
 }
-//# sourceMappingURL=converter.js.map

@@ -408,4 +408,3 @@ export type ChatStreamEvent = {
 } | {
     type: 'done';
 };
-//# sourceMappingURL=chat.d.ts.map

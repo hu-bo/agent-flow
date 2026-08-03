@@ -6,4 +6,3 @@ export class LayeredPromptSystemLoader {
             .join('\n\n');
     }
 }
-//# sourceMappingURL=index.js.map

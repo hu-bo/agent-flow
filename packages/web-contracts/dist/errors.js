@@ -4,4 +4,3 @@ export const apiErrorSchema = z.object({
     message: z.string().min(1),
     details: z.unknown().optional(),
 });
-//# sourceMappingURL=errors.js.map

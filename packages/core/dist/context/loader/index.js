@@ -31,4 +31,3 @@ export class DefaultContextLoader {
         return fragments;
     }
 }
-//# sourceMappingURL=index.js.map

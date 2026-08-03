@@ -12,4 +12,3 @@ export declare class LocalAdapter implements ModelAdapter {
     stream(request: GenerationRequest): AsyncIterable<StreamEvent>;
     estimateInputTokens(messages: AdapterMessage[]): Promise<number>;
 }
-//# sourceMappingURL=adapter.d.ts.map

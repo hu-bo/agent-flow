@@ -24,4 +24,3 @@ export class InMemoryCheckpointStore {
         return checkpoints.length > 0 ? checkpoints[checkpoints.length - 1] : undefined;
     }
 }
-//# sourceMappingURL=index.js.map

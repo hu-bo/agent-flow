@@ -26,4 +26,3 @@ export class InMemoryReplayStore {
         return records.filter((record) => record.cursor >= cursor);
     }
 }
-//# sourceMappingURL=index.js.map

@@ -38,4 +38,3 @@ var import_client = require("./client/index.js");
   createCasdoorServer,
   ...require("./types.js")
 });
-//# sourceMappingURL=index.cjs.map

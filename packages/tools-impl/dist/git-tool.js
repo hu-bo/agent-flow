@@ -100,4 +100,3 @@ function runGit(args, options) {
         child.once('error', (error) => reject(error));
     });
 }
-//# sourceMappingURL=git-tool.js.map

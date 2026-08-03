@@ -30,4 +30,3 @@ function summarizeText(text) {
     }
     return `${normalized.slice(0, 197)}...`;
 }
-//# sourceMappingURL=summarization.js.map

@@ -12,4 +12,3 @@ export declare class InMemoryVectorStore implements VectorStore {
     search(query: VectorQuery): Promise<VectorQueryResult[]>;
     delete(ids: Array<string | number>): Promise<void>;
 }
-//# sourceMappingURL=in-memory.d.ts.map

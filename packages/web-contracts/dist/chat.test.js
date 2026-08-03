@@ -25,4 +25,3 @@ describe('web contracts', () => {
         expect(runnerApprovalDecisionBodySchema.safeParse({ decision: 'yes' }).success).toBe(false);
     });
 });
-//# sourceMappingURL=chat.test.js.map

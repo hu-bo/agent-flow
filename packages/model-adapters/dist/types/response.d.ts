@@ -35,4 +35,3 @@ export type StreamEvent = {
     message: string;
     error?: unknown;
 };
-//# sourceMappingURL=response.d.ts.map

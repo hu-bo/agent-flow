@@ -7,4 +7,3 @@ export function createOpenAiAdapter(options) {
         generationMode,
     });
 }
-//# sourceMappingURL=index.js.map

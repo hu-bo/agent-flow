@@ -35,4 +35,3 @@ export interface TraceSpan {
     end(attributes?: Record<string, unknown>): Promise<void>;
     fail(error: unknown, attributes?: Record<string, unknown>): Promise<void>;
 }
-//# sourceMappingURL=types.d.ts.map

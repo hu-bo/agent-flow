@@ -70,4 +70,3 @@ function trimText(text) {
     const normalized = text.trim();
     return normalized.length > 220 ? `${normalized.slice(0, 217)}...` : normalized;
 }
-//# sourceMappingURL=diff.js.map

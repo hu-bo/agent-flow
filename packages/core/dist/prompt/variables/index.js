@@ -4,4 +4,3 @@ export class BracesVariableRenderer {
         return template.replace(VARIABLE_PATTERN, (_, key) => variables[key] ?? '');
     }
 }
-//# sourceMappingURL=index.js.map

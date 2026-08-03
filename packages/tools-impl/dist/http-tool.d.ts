@@ -17,4 +17,3 @@ export declare class HttpTool implements ToolDefinition<HttpToolInput, HttpToolO
     readonly schema: ToolSchema;
     execute(input: HttpToolInput): Promise<HttpToolOutput>;
 }
-//# sourceMappingURL=http-tool.d.ts.map

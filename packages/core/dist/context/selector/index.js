@@ -29,4 +29,3 @@ export class KeywordContextSelector {
         return sorted.slice(0, this.maxFragments);
     }
 }
-//# sourceMappingURL=index.js.map

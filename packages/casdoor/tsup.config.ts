@@ -16,6 +16,6 @@ export default defineConfig({
   dts: true,
   clean: true,
   splitting: false,
-  sourcemap: true,
+  sourcemap: false,
   external: ['vue', 'react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
 });

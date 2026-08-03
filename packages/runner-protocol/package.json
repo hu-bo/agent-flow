@@ -16,7 +16,7 @@
   "files": ["dist"],
   "scripts": {
     "generate": "protoc --proto_path=../../ --ts_proto_out=./src/generated --ts_proto_opt=env=node,esModuleInterop=true,outputServices=grpc-js,outputClientImpl=false,useExactTypes=false ../../protocol/proto/runner.proto",
-    "build": "pnpm run generate && tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && pnpm run generate && tsc -p tsconfig.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "pnpm run generate && tsc --noEmit"
   },

@@ -158,4 +158,3 @@ export type SerializedMessage = UnifiedMessage & {
     version: string;
     gitBranch?: string;
 };
-//# sourceMappingURL=message.d.ts.map

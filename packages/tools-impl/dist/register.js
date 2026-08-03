@@ -19,4 +19,3 @@ export function registerBuiltinTools(registry, options = {}) {
         skipped
     };
 }
-//# sourceMappingURL=register.js.map

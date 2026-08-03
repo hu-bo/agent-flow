@@ -47,4 +47,3 @@ export class CommandBlocklistGuardrail {
         }
     }
 }
-//# sourceMappingURL=index.js.map

@@ -19,4 +19,3 @@ export interface GenerationRequest {
     metadata?: Record<string, unknown>;
     signal?: AbortSignal;
 }
-//# sourceMappingURL=request.d.ts.map

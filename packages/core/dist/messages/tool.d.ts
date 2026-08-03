@@ -11,4 +11,3 @@ export interface ToolResult {
     isError?: boolean;
     duration?: number;
 }
-//# sourceMappingURL=tool.d.ts.map

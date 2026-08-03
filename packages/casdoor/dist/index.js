@@ -8,4 +8,3 @@ export {
   createCasdoorClient,
   createCasdoorServer
 };
-//# sourceMappingURL=index.js.map

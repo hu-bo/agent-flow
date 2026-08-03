@@ -100,4 +100,3 @@ function useCasdoorCallback(serverExchangeTokenOrOptions, options) {
   useCasdoor,
   useCasdoorCallback
 });
-//# sourceMappingURL=vue.cjs.map

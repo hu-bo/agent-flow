@@ -49,4 +49,3 @@ export class StructuredLogger {
         });
     }
 }
-//# sourceMappingURL=logger.js.map

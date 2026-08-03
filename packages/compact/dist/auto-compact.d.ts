@@ -11,4 +11,3 @@ export declare class AutoCompactor {
     constructor(options?: AutoCompactorOptions);
     compact(request: CompactRequest): Promise<CompactResult>;
 }
-//# sourceMappingURL=auto-compact.d.ts.map

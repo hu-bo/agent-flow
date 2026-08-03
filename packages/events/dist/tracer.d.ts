@@ -13,4 +13,3 @@ export declare class Tracer {
     constructor(options: TracerOptions);
     startSpan(name: string, options?: StartSpanOptions): Promise<TraceSpan>;
 }
-//# sourceMappingURL=tracer.d.ts.map

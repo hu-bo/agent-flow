@@ -10,4 +10,3 @@ export declare class AiSdkMessageTranslator implements MessageTranslator {
     private convertAssistantPart;
     private convertUserPart;
 }
-//# sourceMappingURL=converter.d.ts.map

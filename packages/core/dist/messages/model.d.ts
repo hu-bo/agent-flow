@@ -20,4 +20,3 @@ export interface ModelRegistry {
     getByProvider(provider: string): ModelInfo[];
     listAll(): ModelInfo[];
 }
-//# sourceMappingURL=model.d.ts.map

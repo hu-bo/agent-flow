@@ -27,4 +27,3 @@ export interface CompactStrategy {
 export interface CompactQualityEvaluator {
     evaluate(before: CompactItem[], after: CompactItem[], tokenLimit: number): number;
 }
-//# sourceMappingURL=types.d.ts.map

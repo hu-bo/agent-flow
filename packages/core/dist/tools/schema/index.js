@@ -46,4 +46,3 @@ export function validateAgainstSchema(value, schema, pointer = '$') {
         });
     }
 }
-//# sourceMappingURL=index.js.map

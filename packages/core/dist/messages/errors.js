@@ -36,4 +36,3 @@ export class ContextTooLongError extends ModelError {
         this.name = 'ContextTooLongError';
     }
 }
-//# sourceMappingURL=errors.js.map

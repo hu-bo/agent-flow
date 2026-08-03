@@ -20,4 +20,3 @@ export declare class RedisStorageAdapter implements KeyValueStore {
     delete(key: string): Promise<void>;
     increment(key: string, by?: number): Promise<number>;
 }
-//# sourceMappingURL=redis-adapter.d.ts.map

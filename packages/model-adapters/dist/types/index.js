@@ -5,4 +5,3 @@ export * from './model.js';
 export * from './request.js';
 export * from './response.js';
 export * from './tool.js';
-//# sourceMappingURL=index.js.map

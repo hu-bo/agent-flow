@@ -15,4 +15,3 @@ describe('validateAgainstSchema', () => {
         expect(() => validateAgainstSchema({ maxEntries: '200' }, scanInputSchema)).toThrow('Schema validation failed at "$.maxEntries": expected integer.');
     });
 });
-//# sourceMappingURL=index.test.js.map

@@ -5,4 +5,3 @@ export interface DeepSeekAdapterOptions extends OpenAiAdapterOptions {
 }
 export declare const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
 export declare function createDeepSeekAdapter(options: DeepSeekAdapterOptions): ModelAdapter;
-//# sourceMappingURL=deepseek.d.ts.map

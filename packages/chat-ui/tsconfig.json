@@ -11,10 +11,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "declaration": true,
+    "declarationMap": false,
     "declarationDir": "dist",
     "emitDeclarationOnly": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "sourceMap": false
   },
   "include": ["src"]
 }

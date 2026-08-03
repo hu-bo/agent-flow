@@ -6,4 +6,3 @@ export declare class HashEmbeddingProvider implements EmbeddingProvider {
     embed(texts: string[]): Promise<number[][]>;
     private embedSingle;
 }
-//# sourceMappingURL=default-embedder.d.ts.map

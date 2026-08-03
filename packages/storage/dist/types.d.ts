@@ -24,4 +24,3 @@ export interface VectorStore {
     search(query: VectorQuery): Promise<VectorQueryResult[]>;
     delete(ids: Array<string | number>): Promise<void>;
 }
-//# sourceMappingURL=types.d.ts.map

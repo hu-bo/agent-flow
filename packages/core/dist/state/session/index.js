@@ -38,4 +38,3 @@ export class InMemorySessionStore {
         return updated;
     }
 }
-//# sourceMappingURL=index.js.map

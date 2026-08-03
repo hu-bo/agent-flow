@@ -25,4 +25,3 @@ export class HashEmbeddingProvider {
         return vector.map((value) => value / norm);
     }
 }
-//# sourceMappingURL=default-embedder.js.map

@@ -2,4 +2,3 @@ export type { CompactBoundaryInfo, BaseMessage, FilePart, ImagePart, ImageMessag
 export type { ModelCapabilities, ModelInfo, ModelRegistry } from './model.js';
 export type { ToolDefinition, ToolResult } from './tool.js';
 export { AgentFlowError, ContextTooLongError, ModelError, RateLimitError } from './errors.js';
-//# sourceMappingURL=index.d.ts.map

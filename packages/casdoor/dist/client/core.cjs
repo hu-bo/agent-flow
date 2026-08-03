@@ -384,4 +384,3 @@ function createCasdoorClient(config) {
   CasdoorClient,
   createCasdoorClient
 });
-//# sourceMappingURL=core.cjs.map

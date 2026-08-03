@@ -22,4 +22,3 @@ export const updateProjectBodySchema = z.object({
     rootPath: z.string().trim().min(1).max(2048).optional(),
     defaultRunnerId: runnerIdSchema.optional(),
 });
-//# sourceMappingURL=projects.js.map

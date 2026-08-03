@@ -133,4 +133,3 @@ class TokenStorage {
 export {
   TokenStorage
 };
-//# sourceMappingURL=storage.js.map

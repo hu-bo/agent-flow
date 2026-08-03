@@ -11,4 +11,3 @@ export const specStateSchema = z.object({
     mode: z.literal('spec'),
     specWorkflow: specWorkflowStateSchema,
 });
-//# sourceMappingURL=spec.js.map

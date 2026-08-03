@@ -8,4 +8,3 @@ export declare class MemoryEventSink implements EventSink {
 export declare class ConsoleEventSink implements EventSink {
     emit(event: EventRecord): void;
 }
-//# sourceMappingURL=sinks.d.ts.map

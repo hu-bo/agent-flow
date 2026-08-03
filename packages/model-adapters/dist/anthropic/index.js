@@ -7,4 +7,3 @@ export function createAnthropicAdapter(options) {
         generationMode,
     });
 }
-//# sourceMappingURL=index.js.map

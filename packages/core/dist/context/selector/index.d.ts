@@ -4,4 +4,3 @@ export declare class KeywordContextSelector implements ContextSelector {
     constructor(maxFragments?: number);
     select(fragments: ContextFragment[], request: AgentRunRequest): Promise<ContextFragment[]>;
 }
-//# sourceMappingURL=index.d.ts.map

@@ -260,4 +260,3 @@ export type RunnerTokenIssueResult = z.infer<typeof runnerTokenIssueResultSchema
 export type RunnerApprovalGrant = z.infer<typeof runnerApprovalGrantSchema>;
 export type RunnerDirectoryEntry = z.infer<typeof runnerDirectoryEntrySchema>;
 export type RunnerDownloadPlatform = z.infer<typeof runnerDownloadPlatformSchema>;
-//# sourceMappingURL=runners.d.ts.map

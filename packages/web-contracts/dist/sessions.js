@@ -36,4 +36,3 @@ export const createSessionBodySchema = z.object({
     cwd: z.string().trim().min(1).optional(),
     projectId: projectIdSchema.optional(),
 });
-//# sourceMappingURL=sessions.js.map

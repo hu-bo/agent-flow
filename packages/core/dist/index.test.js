@@ -79,4 +79,3 @@ describe('createAgent runtime event forwarding', () => {
         expect(new Set(observed.map((event) => event.id)).size).toBe(observed.length);
     });
 });
-//# sourceMappingURL=index.test.js.map

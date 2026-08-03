@@ -10,4 +10,3 @@ export declare class ContextBuilder implements ContextBuilderLike {
     constructor(loader: ContextLoader, selector: ContextSelector, windowManager: TokenWindowManager, options: ContextBuilderOptions);
     build(request: AgentRunRequest): Promise<ContextEnvelope>;
 }
-//# sourceMappingURL=index.d.ts.map

@@ -5,4 +5,3 @@ export declare class InMemoryCheckpointStore implements CheckpointStore {
     list(sessionId: string): Promise<CheckpointRecord[]>;
     latest(sessionId: string): Promise<CheckpointRecord | undefined>;
 }
-//# sourceMappingURL=index.d.ts.map

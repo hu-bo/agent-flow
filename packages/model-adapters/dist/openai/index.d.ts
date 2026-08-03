@@ -7,4 +7,3 @@ export interface OpenAiAdapterOptions extends OpenAIProviderSettings {
     generationMode?: AiSdkGenerationMode;
 }
 export declare function createOpenAiAdapter(options: OpenAiAdapterOptions): ModelAdapter;
-//# sourceMappingURL=index.d.ts.map

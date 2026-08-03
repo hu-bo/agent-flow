@@ -19,4 +19,3 @@ export class FixedTokenWindowManager {
         };
     }
 }
-//# sourceMappingURL=index.js.map

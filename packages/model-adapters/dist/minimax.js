@@ -8,4 +8,3 @@ export function createMiniMaxAdapter(options) {
         baseURL: options.baseURL ?? MINIMAX_BASE_URL,
     });
 }
-//# sourceMappingURL=minimax.js.map

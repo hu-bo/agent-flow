@@ -359,4 +359,3 @@ export {
   CasdoorClient,
   createCasdoorClient
 };
-//# sourceMappingURL=core.js.map

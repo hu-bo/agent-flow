@@ -132,4 +132,3 @@ function buildUsage(messages, answer) {
         totalTokens: inputTokens + outputTokens,
     };
 }
-//# sourceMappingURL=adapter.js.map

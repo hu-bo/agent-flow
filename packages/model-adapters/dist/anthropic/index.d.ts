@@ -7,4 +7,3 @@ export interface AnthropicAdapterOptions extends AnthropicProviderSettings {
     generationMode?: AiSdkGenerationMode;
 }
 export declare function createAnthropicAdapter(options: AnthropicAdapterOptions): ModelAdapter;
-//# sourceMappingURL=index.d.ts.map

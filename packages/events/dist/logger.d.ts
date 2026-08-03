@@ -15,4 +15,3 @@ export declare class StructuredLogger {
     emit(event: EventRecord): Promise<void>;
     private log;
 }
-//# sourceMappingURL=logger.d.ts.map

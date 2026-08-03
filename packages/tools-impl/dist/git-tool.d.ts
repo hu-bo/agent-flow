@@ -19,4 +19,3 @@ export declare class GitTool implements ToolDefinition<GitExecInput, GitExecOutp
     constructor(options?: GitToolOptions);
     execute(input: GitExecInput): Promise<GitExecOutput>;
 }
-//# sourceMappingURL=git-tool.d.ts.map

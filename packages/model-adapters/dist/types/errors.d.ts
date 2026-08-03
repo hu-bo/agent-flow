@@ -14,4 +14,3 @@ export declare class ContextWindowAdapterError extends AdapterError {
     readonly limit: number;
     constructor(message: string, inputTokens: number, limit: number, provider?: string, model?: string);
 }
-//# sourceMappingURL=errors.d.ts.map

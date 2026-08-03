@@ -7,4 +7,3 @@ export function estimateTextTokens(text) {
 export function estimateItemsTokens(items) {
     return items.reduce((total, item) => total + estimateTextTokens(item.text), 0);
 }
-//# sourceMappingURL=token-estimator.js.map

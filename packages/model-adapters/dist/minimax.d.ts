@@ -5,4 +5,3 @@ export interface MiniMaxAdapterOptions extends OpenAiAdapterOptions {
 }
 export declare const MINIMAX_BASE_URL = "https://api.minimaxi.com/v1";
 export declare function createMiniMaxAdapter(options: MiniMaxAdapterOptions): ModelAdapter;
-//# sourceMappingURL=minimax.d.ts.map

@@ -52,4 +52,3 @@ export class RedisStorageAdapter {
         return value;
     }
 }
-//# sourceMappingURL=redis-adapter.js.map

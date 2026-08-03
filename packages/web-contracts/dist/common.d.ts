@@ -18,4 +18,3 @@ export type SpecWorkflowPhase = z.infer<typeof specWorkflowPhaseSchema>;
 export type SpecDocType = SpecWorkflowPhase;
 export type TaskStatus = z.infer<typeof taskStatusSchema>;
 export type TaskAction = z.infer<typeof taskActionSchema>;
-//# sourceMappingURL=common.d.ts.map

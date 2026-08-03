@@ -327,4 +327,3 @@ export class ObjectiveVerifierRegistry {
         return verifier.verify(verificationContext);
     }
 }
-//# sourceMappingURL=objective-verifiers.js.map

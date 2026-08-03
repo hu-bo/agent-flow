@@ -5,4 +5,3 @@ export declare class ToolRegistry implements ToolRegistryLike {
     get(name: string): ToolDefinition | undefined;
     list(): ToolDefinition[];
 }
-//# sourceMappingURL=index.d.ts.map

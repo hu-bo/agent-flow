@@ -25,4 +25,3 @@ export declare const modelDescriptorSchema: z.ZodObject<{
     maxInputTokens: number;
 }>;
 export type ModelDescriptor = z.infer<typeof modelDescriptorSchema>;
-//# sourceMappingURL=models.d.ts.map

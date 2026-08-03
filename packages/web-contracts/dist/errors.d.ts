@@ -13,4 +13,3 @@ export declare const apiErrorSchema: z.ZodObject<{
     details?: unknown;
 }>;
 export type ApiError = z.infer<typeof apiErrorSchema>;
-//# sourceMappingURL=errors.d.ts.map

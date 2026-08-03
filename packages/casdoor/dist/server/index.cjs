@@ -240,4 +240,3 @@ var server_default = CasdoorServer;
   createTokenVerifier,
   ...require("../types.js")
 });
-//# sourceMappingURL=index.cjs.map

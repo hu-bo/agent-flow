@@ -1,1 +1,0 @@
-{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../../src/prompt/system-loader/index.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,WAAW,EAAE,kBAAkB,EAAE,MAAM,sBAAsB,CAAC;AAE5E,qBAAa,yBAA0B,YAAW,kBAAkB;IAC5D,IAAI,CAAC,MAAM,EAAE,WAAW,EAAE,GAAG,OAAO,CAAC,MAAM,CAAC;CAMnD"}

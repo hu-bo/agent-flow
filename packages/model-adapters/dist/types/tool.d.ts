@@ -15,4 +15,3 @@ export type ToolChoice = 'auto' | 'none' | 'required' | {
     type: 'tool';
     name: string;
 };
-//# sourceMappingURL=tool.d.ts.map

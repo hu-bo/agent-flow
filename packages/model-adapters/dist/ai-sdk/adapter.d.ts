@@ -19,4 +19,3 @@ export declare class AiSdkAdapter implements ModelAdapter {
     private generateFromNonStreaming;
     private toGenerationResult;
 }
-//# sourceMappingURL=adapter.d.ts.map

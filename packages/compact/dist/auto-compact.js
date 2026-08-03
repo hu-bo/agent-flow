@@ -53,4 +53,3 @@ export class AutoCompactor {
         return winner;
     }
 }
-//# sourceMappingURL=auto-compact.js.map

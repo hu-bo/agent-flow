@@ -78,4 +78,3 @@ export const chatStreamEventSchema = z.discriminatedUnion('type', [
     }),
     z.object({ type: z.literal('done') }),
 ]);
-//# sourceMappingURL=chat.js.map

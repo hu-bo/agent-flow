@@ -9,4 +9,3 @@ export const modelDescriptorSchema = z.object({
     providerModel: z.string(),
     maxInputTokens: z.number().int().positive(),
 });
-//# sourceMappingURL=models.js.map

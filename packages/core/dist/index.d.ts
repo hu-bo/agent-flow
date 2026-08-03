@@ -24,4 +24,3 @@ export declare class Agent implements AgentRuntime {
     run(request: AgentRunRequest, options?: AgentRunOptions): Promise<AgentRunResult>;
     resume(sessionId: string, requestOverride?: Partial<Omit<AgentRunRequest, 'goal'>>, options?: AgentRunOptions): Promise<AgentRunResult>;
 }
-//# sourceMappingURL=index.d.ts.map

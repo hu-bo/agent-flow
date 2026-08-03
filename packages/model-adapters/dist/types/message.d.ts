@@ -67,4 +67,3 @@ export interface AdapterMessage {
     createdAt: string;
     meta?: AdapterMessageMeta;
 }
-//# sourceMappingURL=message.d.ts.map

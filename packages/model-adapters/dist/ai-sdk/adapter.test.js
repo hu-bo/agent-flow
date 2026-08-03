@@ -133,4 +133,3 @@ async function* createAsyncStream(events) {
         yield event;
     }
 }
-//# sourceMappingURL=adapter.test.js.map

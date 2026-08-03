@@ -28,4 +28,3 @@ export {
   useCasdoor2 as useCasdoorReact,
   useRequireAuth
 };
-//# sourceMappingURL=index.js.map

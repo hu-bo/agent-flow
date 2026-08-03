@@ -16,4 +16,3 @@ export declare class CommandBlocklistGuardrail implements GuardrailPolicy {
     constructor(options?: CommandBlocklistGuardrailOptions);
     beforeStep(ctx: GuardrailBeforeContext): Promise<void>;
 }
-//# sourceMappingURL=index.d.ts.map

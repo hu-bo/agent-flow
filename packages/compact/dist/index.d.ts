@@ -6,4 +6,3 @@ export * from './strategies/summarization.js';
 export * from './strategies/diff.js';
 export * from './strategies/semantic.js';
 export * from './strategies/rewrite.js';
-//# sourceMappingURL=index.d.ts.map

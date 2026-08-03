@@ -189,4 +189,3 @@ export class Agent {
         return this.runtime.resume(sessionId, requestOverride, options);
     }
 }
-//# sourceMappingURL=index.js.map

@@ -25,4 +25,3 @@ export declare class MemoryService {
     ingestSessionToLongTerm(sessionId: string, namespace?: string): Promise<VectorMemoryRecord[]>;
     recall(query: string, options?: RecallOptions): Promise<RecalledMemory[]>;
 }
-//# sourceMappingURL=memory-service.d.ts.map

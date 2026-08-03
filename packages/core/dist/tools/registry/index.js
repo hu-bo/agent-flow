@@ -14,4 +14,3 @@ export class ToolRegistry {
         return [...this.tools.values()];
     }
 }
-//# sourceMappingURL=index.js.map

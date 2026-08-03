@@ -5,4 +5,3 @@ export declare class InMemorySessionMemoryStore implements SessionMemoryStore {
     list(sessionId: string): Promise<SessionMemoryRecord[]>;
     clear(sessionId: string): Promise<void>;
 }
-//# sourceMappingURL=session-memory.d.ts.map

@@ -6,4 +6,3 @@ export declare class InMemoryVectorStore implements VectorStore {
     delete(ids: string[]): Promise<void>;
 }
 export declare function cosineSimilarity(left: number[], right: number[]): number;
-//# sourceMappingURL=vector-memory.d.ts.map

@@ -123,4 +123,3 @@ export class AiSdkMessageTranslator {
         }
     }
 }
-//# sourceMappingURL=converter.js.map

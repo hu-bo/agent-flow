@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "tsup",
     "lint": "eslint src --ext .ts",
     "test": "node -e \"console.log('no tests')\""
   },

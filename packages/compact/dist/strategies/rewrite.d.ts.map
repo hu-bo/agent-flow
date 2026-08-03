@@ -1,1 +1,0 @@
-{"version":3,"file":"rewrite.d.ts","sourceRoot":"","sources":["../../src/strategies/rewrite.ts"],"names":[],"mappings":"AACA,OAAO,KAAK,EAAe,cAAc,EAAE,aAAa,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAE/F,qBAAa,sBAAuB,YAAW,eAAe;IAC5D,QAAQ,CAAC,IAAI,EAAG,SAAS,CAAU;IAE7B,OAAO,CAAC,OAAO,EAAE,cAAc,GAAG,OAAO,CAAC,aAAa,CAAC;CAgB/D"}

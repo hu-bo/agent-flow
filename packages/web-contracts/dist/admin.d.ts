@@ -434,4 +434,3 @@ export type ProviderModelRecord = z.infer<typeof providerModelRecordSchema>;
 export type RoutingPolicyRecord = z.infer<typeof routingPolicyRecordSchema>;
 export type ModelProfileRecord = z.infer<typeof modelProfileRecordSchema>;
 export type AuditLogRecord = z.infer<typeof auditLogRecordSchema>;
-//# sourceMappingURL=admin.d.ts.map

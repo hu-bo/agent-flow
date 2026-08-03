@@ -20,4 +20,3 @@ export interface ModelCatalog {
     listByProvider(provider: string): ModelDescriptor[];
     listAll(): ModelDescriptor[];
 }
-//# sourceMappingURL=model.d.ts.map

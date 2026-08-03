@@ -4,4 +4,3 @@ export declare class ToolExecutor implements ToolExecutorLike {
     constructor(registry: ToolRegistryLike);
     execute(call: ToolCall, context: ToolContext, options?: ToolExecuteOptions): Promise<ToolResult>;
 }
-//# sourceMappingURL=index.d.ts.map

@@ -14,4 +14,3 @@ export declare class ObjectiveVerifierRegistry {
         round: number;
     }): Promise<ObjectiveVerificationResult | null>;
 }
-//# sourceMappingURL=objective-verifiers.d.ts.map

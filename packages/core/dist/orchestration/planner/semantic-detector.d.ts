@@ -10,4 +10,3 @@ export declare class SemanticFsDetector {
     private shouldRead;
     private extractSearchPattern;
 }
-//# sourceMappingURL=semantic-detector.d.ts.map

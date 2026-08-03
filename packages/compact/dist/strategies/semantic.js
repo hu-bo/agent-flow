@@ -55,4 +55,3 @@ function tokenize(value) {
         .map((part) => part.trim())
         .filter((part) => part.length > 1);
 }
-//# sourceMappingURL=semantic.js.map
