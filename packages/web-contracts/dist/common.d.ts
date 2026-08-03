@@ -1,0 +1,21 @@
+import { z } from 'zod';
+export declare const sessionIdSchema: z.ZodString;
+export declare const projectIdSchema: z.ZodString;
+export declare const runnerIdSchema: z.ZodString;
+export declare const taskIdSchema: z.ZodString;
+export declare const modelIdSchema: z.ZodNumber;
+export declare const messageIdSchema: z.ZodUnion<[z.ZodString, z.ZodString]>;
+export declare const turnIdSchema: z.ZodString;
+export declare const isoDateTimeSchema: z.ZodString;
+export declare const reasoningEffortSchema: z.ZodEnum<["low", "medium", "high"]>;
+export declare const sessionModeSchema: z.ZodEnum<["vibe", "spec"]>;
+export declare const specWorkflowPhaseSchema: z.ZodEnum<["requirements", "design", "tasks"]>;
+export declare const taskStatusSchema: z.ZodEnum<["pending", "running", "paused", "completed", "failed", "cancelled"]>;
+export declare const taskActionSchema: z.ZodEnum<["pause", "resume", "cancel", "retry"]>;
+export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
+export type SessionMode = z.infer<typeof sessionModeSchema>;
+export type SpecWorkflowPhase = z.infer<typeof specWorkflowPhaseSchema>;
+export type SpecDocType = SpecWorkflowPhase;
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+export type TaskAction = z.infer<typeof taskActionSchema>;
+//# sourceMappingURL=common.d.ts.map

@@ -3,6 +3,7 @@ param(
   [string]$ServerAddr = "127.0.0.1:9201",
   [string]$RunnerToken = "",
   [string]$RunnerId = "",
+  [uint32]$MaxConcurrentTasks = 1,
   [string]$OutputDir = "dist",
   [switch]$SkipZip
 )
@@ -26,13 +27,15 @@ function New-RunnerConfigJson {
   param(
     [string]$ConfigRunnerId,
     [string]$ConfigRunnerToken,
-    [string]$ConfigServerAddr
+    [string]$ConfigServerAddr,
+    [uint32]$ConfigMaxConcurrentTasks
   )
 
   return [ordered]@{
     runnerId = $ConfigRunnerId
     runnerToken = $ConfigRunnerToken
     serverAddr = $ConfigServerAddr
+    maxConcurrentTasks = $ConfigMaxConcurrentTasks
   } | ConvertTo-Json -Depth 3
 }
 
@@ -164,7 +167,7 @@ foreach ($target in $targets) {
     throw "go build failed for $($target.PackageName)"
   }
 
-  $configJson = New-RunnerConfigJson -ConfigRunnerId $RunnerId -ConfigRunnerToken $RunnerToken -ConfigServerAddr $ServerAddr
+  $configJson = New-RunnerConfigJson -ConfigRunnerId $RunnerId -ConfigRunnerToken $RunnerToken -ConfigServerAddr $ServerAddr -ConfigMaxConcurrentTasks $MaxConcurrentTasks
   Set-Content -Path (Join-Path $packageDir "config.json") -Value $configJson -Encoding utf8
   Set-Content -Path (Join-Path $packageDir "README.txt") -Value (New-ReadmeText -PackageName $target.PackageName -BinaryName $target.BinaryName -TargetOS $target.GOOS) -Encoding utf8
 

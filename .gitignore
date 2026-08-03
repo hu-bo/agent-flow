@@ -6,7 +6,6 @@ temp/
 
 # build artifacts
 apps/**/dist
-packages/**/dist
 packages/runner-protocol/src/generated/
 pkg/**/dist
 pkg/**/test-output.log
