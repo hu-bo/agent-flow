@@ -20,6 +20,12 @@ const intentResolver = new PlanningIntentResolver();
 
 type RecoveryStrategy = 'fs-diagnostics' | 'shell-diagnostics' | 'generic';
 type ErrorCategory = 'not-found' | 'permission' | 'timeout' | 'validation' | 'unknown';
+type VerificationCommand = {
+  command: string;
+  args: string[];
+};
+
+const DEFAULT_VERIFICATION_TIMEOUT_MS = 120_000;
 
 function classifyErrorCategory(error: string): ErrorCategory {
   const lowered = error.toLowerCase();
@@ -98,6 +104,107 @@ function resolveWorkingDir(ctx: ReplanContext): string {
   return '.';
 }
 
+function hasMissingEvidence(ctx: ReplanContext, evidence: string): boolean {
+  return (ctx.verification?.missingEvidence ?? []).includes(evidence);
+}
+
+function needsObjectiveVerificationStep(ctx: ReplanContext): boolean {
+  if (ctx.trigger !== 'verification_failure') {
+    return false;
+  }
+
+  return (
+    hasMissingEvidence(ctx, 'runner-verification') ||
+    hasMissingEvidence(ctx, 'objective-execution-evidence') ||
+    hasMissingEvidence(ctx, 'required:tool-success') ||
+    hasMissingEvidence(ctx, 'required:verification') ||
+    hasMissingEvidence(ctx, 'tool-success')
+  );
+}
+
+function readInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) ? value : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item));
+}
+
+function inferVerificationCommand(goal: string): VerificationCommand | undefined {
+  const lowered = goal.toLowerCase();
+
+  if (lowered.includes('typecheck')) {
+    return { command: 'pnpm', args: ['typecheck'] };
+  }
+  if (lowered.includes('lint')) {
+    return { command: 'pnpm', args: ['lint'] };
+  }
+  if (lowered.includes('build') || lowered.includes('compile')) {
+    return { command: 'pnpm', args: ['build'] };
+  }
+  if (
+    lowered.includes('test') ||
+    lowered.includes('verify') ||
+    lowered.includes('validate') ||
+    lowered.includes('regression') ||
+    lowered.includes('check') ||
+    goal.includes('测试') ||
+    goal.includes('验证') ||
+    goal.includes('校验') ||
+    goal.includes('检查')
+  ) {
+    return { command: 'pnpm', args: ['test'] };
+  }
+
+  return undefined;
+}
+
+function reuseFailedVerificationCommand(ctx: ReplanContext): VerificationCommand | undefined {
+  if (ctx.failedStep.kind === 'runner' && ctx.failedStep.runner?.command) {
+    return {
+      command: ctx.failedStep.runner.command,
+      args: ctx.failedStep.runner.args ?? [],
+    };
+  }
+
+  if (ctx.failedStep.kind === 'tool' && ctx.failedStep.toolName === 'shell.exec') {
+    const input = ctx.failedStep.input ?? {};
+    const command = typeof input.command === 'string' ? input.command.trim() : '';
+    if (!command) {
+      return undefined;
+    }
+    return {
+      command,
+      args: readStringArray(input.args),
+    };
+  }
+
+  return undefined;
+}
+
+function buildObjectiveVerificationInput(ctx: ReplanContext, goal: string): Record<string, unknown> | undefined {
+  const reused = reuseFailedVerificationCommand(ctx);
+  const inferred = reused ?? inferVerificationCommand(goal);
+  if (!inferred) {
+    return undefined;
+  }
+
+  const timeoutMs =
+    readInteger((ctx.failedStep.input ?? {}).timeoutMs)
+    ?? ctx.failedStep.runner?.timeoutMs
+    ?? DEFAULT_VERIFICATION_TIMEOUT_MS;
+
+  return {
+    command: inferred.command,
+    args: inferred.args,
+    workingDir: resolveWorkingDir(ctx),
+    timeoutMs,
+  };
+}
+
 export class CodingReplanner implements Replanner {
   async replan(ctx: ReplanContext): Promise<RecoveryDecision | undefined> {
     const rawMessage = extractRequestMessage(ctx.request);
@@ -153,6 +260,10 @@ export class CodingReplanner implements Replanner {
     const analysisStepId = nextReplanStepId();
     const implementationStepId = nextReplanStepId();
     const verificationStepId = nextReplanStepId();
+    const objectiveVerificationInput = needsObjectiveVerificationStep(ctx)
+      ? buildObjectiveVerificationInput(ctx, rawMessage)
+      : undefined;
+    const objectiveVerificationStepId = objectiveVerificationInput ? nextReplanStepId() : undefined;
 
     steps.push({
       id: analysisStepId,
@@ -206,14 +317,30 @@ export class CodingReplanner implements Replanner {
       },
     });
 
+    if (objectiveVerificationStepId && objectiveVerificationInput) {
+      steps.push({
+        id: objectiveVerificationStepId,
+        title: 'replan-objective-verification',
+        kind: 'tool',
+        dependsOn: [implementationStepId],
+        toolName: 'shell.exec',
+        input: objectiveVerificationInput,
+      });
+    }
+
     steps.push({
       id: verificationStepId,
       title: 'replan-coding-verification',
       kind: 'llm',
-      dependsOn: [implementationStepId],
+      dependsOn: [objectiveVerificationStepId ?? implementationStepId],
       consumes: {
         implementation: implementationStepId,
         diagnosis: analysisStepId,
+        ...(objectiveVerificationStepId
+          ? {
+              objectiveVerification: objectiveVerificationStepId,
+            }
+          : {}),
       },
       input: {
         goal: ctx.request.goal,
@@ -222,6 +349,7 @@ export class CodingReplanner implements Replanner {
         recoveryStrategy,
         errorCategory,
         previousError: ctx.error,
+        objectiveVerificationRequired: Boolean(objectiveVerificationStepId),
       },
     });
 
@@ -246,6 +374,9 @@ export class CodingReplanner implements Replanner {
       recoveryStrategy,
       errorCategory,
       diagnosticsStepId ? String(steps[0]?.input?.path ?? steps[0]?.input?.workingDir ?? '') : 'no-diagnostics',
+      objectiveVerificationInput
+        ? `${String(objectiveVerificationInput.command)}:${readStringArray(objectiveVerificationInput.args).join(' ')}`
+        : 'no-objective-verification',
     ].join(':');
     const failureFingerprint = [
       errorCategory,
@@ -278,6 +409,9 @@ export class CodingReplanner implements Replanner {
         changes: [
           diagnosticsStepId ? 'Run deterministic diagnostics before model reasoning.' : 'Feed the concrete failure into recovery analysis.',
           'Execute the corrected action instead of only restating the failure.',
+          ...(objectiveVerificationStepId
+            ? ['Inject a deterministic verification command before the final acceptance check.']
+            : []),
           'Preserve the original completion contract and verify against it.',
         ],
         verification: ctx.failedPlan.completionContract?.acceptance.verifierName ?? 'coding',

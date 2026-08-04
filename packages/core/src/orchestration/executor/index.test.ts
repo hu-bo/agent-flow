@@ -817,4 +817,152 @@ describe('DefaultPlanExecutor', () => {
     const outputKeys = Object.keys(result.outputs);
     expect(outputKeys.some((key) => key.startsWith('replan_step_'))).toBe(true);
   });
+
+  it('recovers coding verification failures by inserting objective verification evidence', async () => {
+    const toolExecutor: ToolExecutorLike = {
+      async execute(call): Promise<ToolResult> {
+        if (call.name === 'shell.exec') {
+          expect(call.input).toMatchObject({
+            command: 'pnpm',
+            args: ['test'],
+          });
+          return {
+            name: call.name,
+            ok: true,
+            output: {
+              command: 'pnpm',
+              args: ['test'],
+              exitCode: 0,
+              stdout: ['ok'],
+              stderr: [],
+            },
+          };
+        }
+        return {
+          name: call.name,
+          ok: false,
+          error: `unexpected tool: ${call.name}`,
+        };
+      },
+    };
+
+    const llmExecutor: LlmStepExecutorLike = {
+      async execute(request) {
+        if (request.step.title.includes('analysis')) {
+          return {
+            mode: 'llm-step',
+            stepId: request.step.id,
+            title: request.step.title,
+            phase: 'analysis',
+            text: 'Diagnosed the coding issue.',
+            sections: {
+              analysis: 'Diagnosed the coding issue.',
+            },
+          };
+        }
+        if (request.step.title.includes('implementation')) {
+          return {
+            mode: 'llm-step',
+            stepId: request.step.id,
+            title: request.step.title,
+            phase: 'implementation',
+            text: 'Applied the fix.',
+            sections: {
+              implementation: 'Applied the fix.',
+            },
+          };
+        }
+        return {
+          mode: 'llm-step',
+          stepId: request.step.id,
+          title: request.step.title,
+          phase: 'verification',
+          text: 'Verification completed successfully. COMPLETE',
+          sections: {
+            verification: 'Verification completed successfully.',
+          },
+          completionSignal: 'COMPLETE',
+          evidence: ['pnpm test passed'],
+        };
+      },
+    };
+
+    const plan: AgentPlan = {
+      id: 'plan-coding-verification-missing-evidence',
+      strategy: 'plan',
+      completionContract: {
+        objective: 'fix failing tests in planner and verify regression',
+        completionSignal: 'COMPLETE',
+        maxRounds: 2,
+        acceptance: {
+          verifierName: 'coding',
+          requiredEvidence: ['tool-success'],
+        },
+      },
+      steps: [
+        {
+          id: 'step_analysis',
+          title: 'coding-analysis',
+          kind: 'llm',
+          dependsOn: [],
+          input: {
+            mode: 'analysis',
+          },
+        },
+        {
+          id: 'step_implementation',
+          title: 'coding-implementation',
+          kind: 'llm',
+          dependsOn: ['step_analysis'],
+          consumes: {
+            analysis: 'step_analysis',
+          },
+          input: {
+            mode: 'implementation',
+          },
+        },
+        {
+          id: 'step_validation',
+          title: 'coding-validation',
+          kind: 'llm',
+          dependsOn: ['step_implementation'],
+          consumes: {
+            implementation: 'step_implementation',
+          },
+          input: {
+            mode: 'validation',
+          },
+        },
+      ],
+    };
+
+    const result = await drainExecution(plan, toolExecutor, {
+      llmExecutor,
+      replanner: new CodingReplanner(),
+      maxReplans: 1,
+      request: {
+        ...defaultRequest,
+        goal: 'fix failing tests in planner and verify regression',
+        metadata: {
+          userMessage: 'fix failing tests in planner and verify regression',
+        },
+      },
+    });
+
+    expect(result.status).toBe('succeeded');
+    expect(result.rounds).toBe(2);
+    expect(result.events.some((event) => event.type === 'session.replanned')).toBe(true);
+    expect(
+      result.events.some(
+        (event) =>
+          event.type === 'tool.result'
+          && event.payload.tool === 'shell.exec'
+          && event.payload.ok === true,
+      ),
+    ).toBe(true);
+    expect(result.verification).toMatchObject({
+      status: 'passed',
+      verifierName: 'coding',
+    });
+  });
 });

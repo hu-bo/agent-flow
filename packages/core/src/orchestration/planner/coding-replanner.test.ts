@@ -142,4 +142,46 @@ describe('CodingReplanner', () => {
       shellDiagnostics: decision?.plan.steps[0]?.id,
     });
   });
+
+  it('injects an objective verification step after coding verification failures', async () => {
+    const replanner = new CodingReplanner();
+    const ctx = createReplanContext('fix failing tests in planner and verify regression');
+    ctx.trigger = 'verification_failure';
+    ctx.failedStep = {
+      id: 'step_validate',
+      title: 'coding-validation',
+      kind: 'llm',
+      dependsOn: [],
+    };
+    ctx.verification = {
+      status: 'failed',
+      verifierName: 'coding',
+      reason: 'Coding task requires objective verification evidence before completion.',
+      missingEvidence: ['required:tool-success', 'runner-verification'],
+      nextAction: 'Run the required verification command and capture its result before finishing.',
+    };
+
+    const decision = await replanner.replan(ctx);
+
+    expect(decision).toBeDefined();
+    expect(decision?.plan.steps).toHaveLength(4);
+    expect(decision?.plan.steps[2]).toMatchObject({
+      title: 'replan-objective-verification',
+      kind: 'tool',
+      toolName: 'shell.exec',
+      input: {
+        command: 'pnpm',
+        args: ['test'],
+        workingDir: '.',
+        timeoutMs: 120000,
+      },
+    });
+    expect(decision?.plan.steps[3]?.dependsOn).toEqual([decision?.plan.steps[2]?.id]);
+    expect(decision?.plan.steps[3]?.consumes).toMatchObject({
+      objectiveVerification: decision?.plan.steps[2]?.id,
+    });
+    expect(decision?.strategy.changes).toContain(
+      'Inject a deterministic verification command before the final acceptance check.',
+    );
+  });
 });
