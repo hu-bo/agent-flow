@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
-  LoaderCircle,
   RefreshCcw,
   ShieldCheck,
 } from 'lucide-react';
@@ -22,6 +21,15 @@ export interface ExecutionTimelineProps {
 
 export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProps) {
   const status = resolveStatus(summary, activities);
+  const activeThinkingUuid = status === 'running'
+    ? [...activities]
+      .reverse()
+      .find((activity): activity is Extract<ChatMessage, { type: 'thinking' }> => (
+        activity.type === 'thinking'
+        && (activity.status === 'running' || activity.status === 'pending')
+      ))
+      ?.uuid
+    : undefined;
   const automaticOpen = status === 'running' || status === 'error';
   const [open, setOpen] = useState(automaticOpen);
   const manuallyChanged = useRef(false);
@@ -33,7 +41,7 @@ export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProp
   if (!summary && activities.length === 0) return null;
   const elapsed = formatDuration(summary?.durationMs);
   const label = status === 'running'
-    ? 'Working...'
+    ? <RunningStatusLabel />
     : status === 'error'
       ? `Stopped after ${elapsed || 'a moment'}`
       : `Worked for ${elapsed || 'a moment'}`;
@@ -50,7 +58,11 @@ export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProp
       <CollapsibleTrigger asChild>
         <button type="button" className="chat-v2-execution-trigger">
           {status === 'running'
-            ? <LoaderCircle size={15} className="is-spinning" />
+            ? (
+              <span className="chat-v2-status-indicator" aria-hidden="true">
+                <span className="chat-v2-status-orbit-dot" />
+              </span>
+            )
             : status === 'error'
               ? <CircleAlert size={15} />
               : <CheckCircle2 size={15} />}
@@ -63,7 +75,13 @@ export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProp
           {activities.map((activity) => activity.type === 'tool_execution'
             ? <ToolExecution key={activity.uuid} message={activity} />
             : activity.type === 'thinking'
-              ? <ThinkingActivity key={activity.uuid} message={activity} />
+              ? (
+                <ThinkingActivity
+                  key={activity.uuid}
+                  message={activity}
+                  showRunningIndicator={activity.uuid === activeThinkingUuid}
+                />
+              )
               : null)}
         </div>
       </CollapsibleContent>
@@ -71,7 +89,26 @@ export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProp
   );
 }
 
-function ThinkingActivity({ message }: { message: Extract<ChatMessage, { type: 'thinking' }> }) {
+function RunningStatusLabel() {
+  return (
+    <span className="chat-v2-status-label" aria-label="working">
+      <span className="chat-v2-status-word-placeholder" aria-hidden="true">working...</span>
+      <span className="chat-v2-status-word-shell" aria-hidden="true">
+        <span className="chat-v2-status-word">working...</span>
+      </span>
+    </span>
+  );
+}
+
+function ThinkingActivity(
+  {
+    message,
+    showRunningIndicator,
+  }: {
+    message: Extract<ChatMessage, { type: 'thinking' }>;
+    showRunningIndicator: boolean;
+  },
+) {
   const icon = message.kind === 'recovery'
     ? <RefreshCcw size={14} />
     : message.kind === 'verification'
@@ -79,13 +116,22 @@ function ThinkingActivity({ message }: { message: Extract<ChatMessage, { type: '
       : message.status === 'error'
         ? <CircleAlert size={14} />
         : <Brain size={14} />;
+  const visualStatus = showRunningIndicator
+    ? 'running'
+    : message.status === 'error'
+      ? 'error'
+      : 'success';
   return (
-    <article className={`chat-v2-thinking is-${message.status ?? 'success'}`}>
+    <article className={`chat-v2-thinking is-${visualStatus}`}>
       <span className="chat-v2-timeline-dot">{icon}</span>
       <div className="chat-v2-thinking-main">
         <div className="chat-v2-thinking-title">
           <span>{message.title ?? (message.kind === 'step' ? 'Step' : 'Thinking')}</span>
-          {message.status === 'running' && <LoaderCircle size={13} className="is-spinning" />}
+          {showRunningIndicator && (
+            <span className="chat-v2-inline-status-indicator" aria-hidden="true">
+              <span className="chat-v2-inline-status-dot" />
+            </span>
+          )}
         </div>
         {message.text && <div className="chat-v2-thinking-body"><Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{message.text}</Markdown></div>}
         {message.items?.map((item) => (

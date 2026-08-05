@@ -357,6 +357,10 @@ export function buildSystemPrompt(
     input.session.systemPrompt?.trim() || CODING_EFFICIENCY_SYSTEM_PROMPT,
   ];
 
+  if (input.preferredRunnerId || input.runnerPlatform) {
+    lines.push(renderRunnerPlatformContext(input));
+  }
+
   if (runtime) {
     lines.push(
       [
@@ -481,13 +485,16 @@ function renderRunnerPlatformContext(input: RuntimeChatInput): string {
       '- boundRunner=none-or-unknown',
       '- platform=unknown',
       '- Prefer semantic tools such as fs.read, fs.list, fs.search, fs.patch, and git.exec.',
+      '- For directory or file-structure discovery, start with fs.list, fs.search, and fs.read before shell.exec.',
       '- Before shell.exec, bind or query a runner so shell commands can match the actual OS.',
+      '- If shell.exec becomes necessary, first identify whether the runner is Windows or POSIX so command syntax stays native.',
     ].join('\n');
   }
 
   const os = platform.os ?? 'unknown';
   const shell = platform.defaultShell ?? 'unknown';
   const commandStyle = renderCommandStyle(os, shell);
+  const inspectionGuidance = renderWorkspaceInspectionGuidance(os, shell);
   return [
     'Runner Platform Context:',
     `- boundRunner=${input.preferredRunnerId}`,
@@ -499,6 +506,8 @@ function renderRunnerPlatformContext(input: RuntimeChatInput): string {
     `- workspaceRoots=${platform.workspaceRoots.length > 0 ? platform.workspaceRoots.join(', ') : 'unknown'}`,
     `- availableCommands=${platform.availableCommands.length > 0 ? platform.availableCommands.join(', ') : 'unknown'}`,
     `- shellCommandGuidance=${commandStyle}`,
+    '- inspectionPriority=Prefer fs.list or fs.glob for tree shape, fs.search for text matches, and fs.read for targeted file inspection.',
+    ...inspectionGuidance,
     '- Use read-only semantic tools without approval for inspection.',
     '- Use shell.exec only for real environment execution, and ensure command syntax matches this runner platform.',
   ].join('\n');
@@ -517,6 +526,45 @@ function renderCommandStyle(os: string, shell: string): string {
     return 'POSIX runner: prefer sh/bash-compatible commands and POSIX paths.';
   }
   return 'Unknown runner OS: prefer semantic tools and avoid shell-specific syntax unless necessary.';
+}
+
+function renderWorkspaceInspectionGuidance(os: string, shell: string): string[] {
+  const normalizedOs = os.toLowerCase();
+  const normalizedShell = shell.toLowerCase();
+
+  if (normalizedOs === 'windows') {
+    if (normalizedShell.includes('powershell') || normalizedShell.includes('pwsh')) {
+      return [
+        '- shellExamples.directory=Get-ChildItem -Path .',
+        '- shellExamples.directoryRecursive=Get-ChildItem -Path . -Recurse -File',
+        '- shellExamples.nameSearch=Get-ChildItem -Path . -Recurse | Where-Object { $_.Name -match \'pattern\' }',
+        '- shellExamples.contentSearch=Get-ChildItem -Path . -Recurse -File | Select-String -Pattern \'pattern\'',
+        '- shellExamples.pathStyle=Prefer .\\relative\\path or C:\\absolute\\path when passing Windows file paths.',
+      ];
+    }
+
+    return [
+      '- shellExamples.directory=dir .',
+      '- shellExamples.directoryRecursive=dir . /s /b',
+      '- shellExamples.nameSearch=where /r . *pattern*',
+      '- shellExamples.contentSearch=findstr /s /n /i "pattern" *',
+      '- shellExamples.pathStyle=Prefer .\\relative\\path or C:\\absolute\\path when passing Windows file paths.',
+    ];
+  }
+
+  if (normalizedOs === 'linux' || normalizedOs === 'darwin') {
+    return [
+      '- shellExamples.directory=find . -maxdepth 2 -type d',
+      '- shellExamples.directoryRecursive=find . -type f',
+      '- shellExamples.nameSearch=find . -type f | grep "pattern"',
+      '- shellExamples.contentSearch=grep -RIn "pattern" .',
+      '- shellExamples.pathStyle=Prefer ./relative/path or /absolute/path with POSIX separators.',
+    ];
+  }
+
+  return [
+    '- shellExamples.unknown=Prefer fs.list, fs.search, and fs.read until the runner OS is known.',
+  ];
 }
 
 function formatLineEnding(value: string | undefined): string {
