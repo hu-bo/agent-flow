@@ -12,7 +12,6 @@ $ErrorActionPreference = "Stop"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
-$cmdPath = Join-Path $projectRoot "cmd"
 $distRoot = Join-Path $projectRoot $OutputDir
 
 $targets = @(
@@ -136,64 +135,69 @@ This package already includes a pre-filled config.json.
 "@
 }
 
-if (Test-Path $distRoot) {
-  Remove-Item -Recurse -Force $distRoot
-}
-New-Item -ItemType Directory -Path $distRoot | Out-Null
-
-foreach ($target in $targets) {
-  $packageDir = Join-Path $distRoot $target.PackageName
-  New-Item -ItemType Directory -Path $packageDir | Out-Null
-
-  $binaryPath = Join-Path $packageDir $target.BinaryName
-  Write-Host "Building $($target.PackageName)..."
-
-  $env:GOOS = $target.GOOS
-  $env:GOARCH = $target.GOARCH
-  $env:CGO_ENABLED = "0"
-
-  $ldflags = @(
-    "-X main.defaultVersion=$Version",
-    "-X main.buildTargetOS=$($target.GOOS)",
-    "-X main.buildTargetArch=$($target.GOARCH)",
-    "-X main.buildDefaultShell=$($target.DefaultShell)",
-    "-X main.buildPathSeparator=$($target.PathSeparator)",
-    "-X main.buildLineEnding=$($target.LineEnding)",
-    "-X main.buildAvailableCommands=$($target.AvailableCommands)"
-  ) -join " "
-
-  go build -ldflags $ldflags -o $binaryPath $cmdPath
-  if ($LASTEXITCODE -ne 0) {
-    throw "go build failed for $($target.PackageName)"
+Push-Location $projectRoot
+try {
+  if (Test-Path $distRoot) {
+    Remove-Item -Recurse -Force $distRoot
   }
+  New-Item -ItemType Directory -Path $distRoot | Out-Null
 
-  $configJson = New-RunnerConfigJson -ConfigRunnerId $RunnerId -ConfigRunnerToken $RunnerToken -ConfigServerAddr $ServerAddr -ConfigMaxConcurrentTasks $MaxConcurrentTasks
-  Set-Content -Path (Join-Path $packageDir "config.json") -Value $configJson -Encoding utf8
-  Set-Content -Path (Join-Path $packageDir "README.txt") -Value (New-ReadmeText -PackageName $target.PackageName -BinaryName $target.BinaryName -TargetOS $target.GOOS) -Encoding utf8
+  foreach ($target in $targets) {
+    $packageDir = Join-Path $distRoot $target.PackageName
+    New-Item -ItemType Directory -Path $packageDir | Out-Null
 
-  if ($target.GOOS -eq "windows") {
-    Set-Content -Path (Join-Path $packageDir "start.cmd") -Value (New-WindowsStartScript) -Encoding ascii
-    Set-Content -Path (Join-Path $packageDir "install-autostart.cmd") -Value (New-WindowsAutostartScript) -Encoding ascii
-  } elseif ($target.GOOS -eq "linux") {
-    Set-Content -Path (Join-Path $packageDir "start.sh") -Value (New-LinuxStartScript) -Encoding ascii
-  } else {
-    $startScript = Join-Path $packageDir "start.command"
-    $autostartScript = Join-Path $packageDir "install-autostart.command"
-    Set-Content -Path $startScript -Value (New-MacStartScript) -Encoding ascii
-    Set-Content -Path $autostartScript -Value (New-MacAutostartScript) -Encoding ascii
-  }
+    $binaryPath = Join-Path $packageDir $target.BinaryName
+    Write-Host "Building $($target.PackageName)..."
 
-  if (-not $SkipZip) {
-    $zipPath = Join-Path $distRoot ($target.PackageName + ".zip")
-    if (Test-Path $zipPath) {
-      Remove-Item -Force $zipPath
+    $env:GOOS = $target.GOOS
+    $env:GOARCH = $target.GOARCH
+    $env:CGO_ENABLED = "0"
+
+    $ldflags = @(
+      "-X main.defaultVersion=$Version",
+      "-X main.buildTargetOS=$($target.GOOS)",
+      "-X main.buildTargetArch=$($target.GOARCH)",
+      "-X main.buildDefaultShell=$($target.DefaultShell)",
+      "-X main.buildPathSeparator=$($target.PathSeparator)",
+      "-X main.buildLineEnding=$($target.LineEnding)",
+      "-X main.buildAvailableCommands=$($target.AvailableCommands)"
+    ) -join " "
+
+    go build -ldflags $ldflags -o $binaryPath .\cmd
+    if ($LASTEXITCODE -ne 0) {
+      throw "go build failed for $($target.PackageName)"
     }
-    Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $zipPath
+
+    $configJson = New-RunnerConfigJson -ConfigRunnerId $RunnerId -ConfigRunnerToken $RunnerToken -ConfigServerAddr $ServerAddr -ConfigMaxConcurrentTasks $MaxConcurrentTasks
+    Set-Content -Path (Join-Path $packageDir "config.json") -Value $configJson -Encoding utf8
+    Set-Content -Path (Join-Path $packageDir "README.txt") -Value (New-ReadmeText -PackageName $target.PackageName -BinaryName $target.BinaryName -TargetOS $target.GOOS) -Encoding utf8
+
+    if ($target.GOOS -eq "windows") {
+      Set-Content -Path (Join-Path $packageDir "start.cmd") -Value (New-WindowsStartScript) -Encoding ascii
+      Set-Content -Path (Join-Path $packageDir "install-autostart.cmd") -Value (New-WindowsAutostartScript) -Encoding ascii
+    } elseif ($target.GOOS -eq "linux") {
+      Set-Content -Path (Join-Path $packageDir "start.sh") -Value (New-LinuxStartScript) -Encoding ascii
+    } else {
+      $startScript = Join-Path $packageDir "start.command"
+      $autostartScript = Join-Path $packageDir "install-autostart.command"
+      Set-Content -Path $startScript -Value (New-MacStartScript) -Encoding ascii
+      Set-Content -Path $autostartScript -Value (New-MacAutostartScript) -Encoding ascii
+    }
+
+    if (-not $SkipZip) {
+      $zipPath = Join-Path $distRoot ($target.PackageName + ".zip")
+      if (Test-Path $zipPath) {
+        Remove-Item -Force $zipPath
+      }
+      Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $zipPath
+    }
   }
 }
-
-Remove-Item Env:GOOS -ErrorAction SilentlyContinue
-Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
-Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
+finally {
+  Remove-Item Env:GOOS -ErrorAction SilentlyContinue
+  Remove-Item Env:GOARCH -ErrorAction SilentlyContinue
+  Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue
+  Pop-Location
+}
 
 Write-Host "Packages created in $distRoot"

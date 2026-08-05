@@ -119,31 +119,16 @@ go run ./cmd install-autostart
 
 Build from `pkg/runner`:
 
-```powershell
-cd e:\Project\my-project\agent-flow\pkg\runner
-
-# Windows 11 x64
-$env:GOOS="windows"; $env:GOARCH="amd64"; go build -o dist/agent-flow-runner-windows-amd64.exe ./cmd
-
-# Windows 11 ARM64
-$env:GOOS="windows"; $env:GOARCH="arm64"; go build -o dist/agent-flow-runner-windows-arm64.exe ./cmd
-
-# macOS Apple Silicon
-$env:GOOS="darwin"; $env:GOARCH="arm64"; go build -o dist/agent-flow-runner-darwin-arm64 ./cmd
-
-# macOS Intel
-$env:GOOS="darwin"; $env:GOARCH="amd64"; go build -o dist/agent-flow-runner-darwin-amd64 ./cmd
-```
 
 For release packaging, use the provided script:
 
-```powershell
+```shell
 cd e:\Project\my-project\agent-flow\pkg\runner
 
 powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 `
   -Version 0.1.0 `
   -ServerAddr 127.0.0.1:9201 `
-  -RunnerToken afr_bK5nADjjhz7RBShIe1SgzSOYAkvsHPWlWFOyU7BnSMg
+  -maxConcurrentTasks 5
 ```
 
 Or via Makefile:
