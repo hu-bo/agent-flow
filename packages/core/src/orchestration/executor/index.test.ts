@@ -808,6 +808,14 @@ describe('DefaultPlanExecutor', () => {
         request: {
           ...defaultRequest,
           goal: 'fix failing tests in planner and verify regression',
+          metadata: {
+            intent: {
+              wantsModification: true,
+              wantsVerification: true,
+              isCodingTask: true,
+              codingTaskType: 'bugfix',
+            },
+          },
         },
       },
     );
@@ -944,6 +952,12 @@ describe('DefaultPlanExecutor', () => {
         ...defaultRequest,
         goal: 'fix failing tests in planner and verify regression',
         metadata: {
+          intent: {
+            wantsModification: true,
+            wantsVerification: true,
+            isCodingTask: true,
+            codingTaskType: 'bugfix',
+          },
           userMessage: 'fix failing tests in planner and verify regression',
         },
       },

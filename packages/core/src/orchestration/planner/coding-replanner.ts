@@ -205,12 +205,20 @@ function buildObjectiveVerificationInput(ctx: ReplanContext, goal: string): Reco
   };
 }
 
+function isCodingWorkflowPlan(ctx: ReplanContext): boolean {
+  return (
+    ctx.failedPlan.metadata?.workflow === 'coding'
+    || ctx.failedPlan.completionContract?.acceptance.verifierName === 'coding'
+    || ctx.verification?.verifierName === 'coding'
+  );
+}
+
 export class CodingReplanner implements Replanner {
   async replan(ctx: ReplanContext): Promise<RecoveryDecision | undefined> {
     const rawMessage = extractRequestMessage(ctx.request);
     const semanticStep = semanticFsDetector.detect(rawMessage);
     const intent = intentResolver.resolve(ctx.request, ctx.context, semanticStep);
-    if (!intent.isCodingTask) {
+    if (!intent.isCodingTask && !isCodingWorkflowPlan(ctx)) {
       return undefined;
     }
 

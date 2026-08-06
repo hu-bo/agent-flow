@@ -76,9 +76,13 @@ describe('CodingReplanner', () => {
 
   it('returns undefined for non-coding requests', async () => {
     const replanner = new CodingReplanner();
-    const plan = await replanner.replan(
-      createReplanContext('summarize architecture and explain tradeoffs'),
-    );
+    const ctx = createReplanContext('summarize architecture and explain tradeoffs');
+    ctx.failedPlan.completionContract = {
+      objective: ctx.request.goal,
+      maxRounds: 3,
+      acceptance: { verifierName: 'generic' },
+    };
+    const plan = await replanner.replan(ctx);
     expect(plan).toBeUndefined();
   });
 

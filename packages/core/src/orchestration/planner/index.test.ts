@@ -21,6 +21,18 @@ function repoUnderstandingTriageAgent(): WorkflowTriageAgent {
   };
 }
 
+function codingTriageAgent(): WorkflowTriageAgent {
+  return {
+    name: 'coding-triage',
+    async triage() {
+      return {
+        workflow: 'coding',
+        reason: 'The caller already resolved this request as a coding task.',
+      };
+    },
+  };
+}
+
 describe('detectSemanticToolStep', () => {
   it('returns undefined for empty input', () => {
     expect(detectSemanticToolStep('   ')).toBeUndefined();
@@ -197,11 +209,21 @@ describe('CapabilityPlanner', () => {
   });
 
   it('builds coding workflow plan for modification requests with semantic hint', async () => {
-    const planner = new CapabilityPlanner();
+    const planner = new CapabilityPlanner({
+      workflowTriageAgent: codingTriageAgent(),
+    });
     const plan = await planner.plan(
       {
         goal: 'read `packages/core/src/index.ts`, then fix it and test it',
         strategy: 'plan',
+        metadata: {
+          intent: {
+            wantsModification: true,
+            wantsVerification: true,
+            isCodingTask: true,
+            codingTaskType: 'bugfix',
+          },
+        },
       },
       defaultContext,
     );
@@ -238,6 +260,14 @@ describe('CapabilityPlanner', () => {
       {
         goal: '\u4fee\u6539\u8fd9\u4e2a\u9879\u76ee\u91cc\u7684 bug\uff0c\u5e76\u9a8c\u8bc1\u4fee\u590d\u7ed3\u679c',
         strategy: 'plan',
+        metadata: {
+          intent: {
+            wantsModification: true,
+            wantsVerification: true,
+            isCodingTask: true,
+            codingTaskType: 'bugfix',
+          },
+        },
       },
       defaultContext,
     );
@@ -250,11 +280,21 @@ describe('CapabilityPlanner', () => {
   });
 
   it('builds coding workflow for feature implementation requests', async () => {
-    const planner = new CapabilityPlanner();
+    const planner = new CapabilityPlanner({
+      workflowTriageAgent: codingTriageAgent(),
+    });
     const plan = await planner.plan(
       {
         goal: 'implement login feature, add integration tests, then verify edge cases',
         strategy: 'plan',
+        metadata: {
+          intent: {
+            wantsModification: true,
+            wantsVerification: true,
+            isCodingTask: true,
+            codingTaskType: 'feature',
+          },
+        },
       },
       defaultContext,
     );
@@ -273,11 +313,21 @@ describe('CapabilityPlanner', () => {
   });
 
   it('classifies bugfix coding tasks in workflow metadata', async () => {
-    const planner = new CapabilityPlanner();
+    const planner = new CapabilityPlanner({
+      workflowTriageAgent: codingTriageAgent(),
+    });
     const plan = await planner.plan(
       {
         goal: 'fix failing test in session-service and verify regression',
         strategy: 'plan',
+        metadata: {
+          intent: {
+            wantsModification: true,
+            wantsVerification: true,
+            isCodingTask: true,
+            codingTaskType: 'bugfix',
+          },
+        },
       },
       defaultContext,
     );
@@ -291,11 +341,21 @@ describe('CapabilityPlanner', () => {
   });
 
   it('builds refactor workflow with behavior-preservation validation', async () => {
-    const planner = new CapabilityPlanner();
+    const planner = new CapabilityPlanner({
+      workflowTriageAgent: codingTriageAgent(),
+    });
     const plan = await planner.plan(
       {
         goal: 'refactor orchestration planner to reduce duplication and verify behavior',
         strategy: 'plan',
+        metadata: {
+          intent: {
+            wantsModification: true,
+            wantsVerification: true,
+            isCodingTask: true,
+            codingTaskType: 'refactor',
+          },
+        },
       },
       defaultContext,
     );
@@ -329,5 +389,19 @@ describe('CapabilityPlanner', () => {
         goal: 'summarize the architecture briefly',
       },
     });
+  });
+
+  it('does not classify short keyword-only prompts as coding without explicit intent', async () => {
+    const planner = new CapabilityPlanner();
+    const plan = await planner.plan(
+      {
+        goal: 'test',
+        strategy: 'plan',
+      },
+      defaultContext,
+    );
+
+    expect(plan.steps).toHaveLength(1);
+    expect(plan.steps[0]?.title).toBe('llm-reasoning');
   });
 });
