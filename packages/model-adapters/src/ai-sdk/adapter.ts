@@ -1,6 +1,7 @@
 import type { LanguageModel } from 'ai';
 import { generateText, streamText } from 'ai';
 import type { AdapterMessage, GenerationRequest, GenerationResult, ModelAdapter, StreamEvent } from '../types/index.js';
+import { normalizeTextualToolCalls } from '../textual-tool-call.js';
 import { AiSdkMessageTranslator } from './converter.js';
 
 interface AiSdkProviderResponse {
@@ -14,6 +15,7 @@ export type AiSdkGenerationMode = 'stream' | 'nonstream';
 
 export interface AiSdkAdapterOptions {
   generationMode?: AiSdkGenerationMode;
+  textualToolCallFormat?: 'dsml';
 }
 
 export class AiSdkAdapter implements ModelAdapter {
@@ -21,12 +23,14 @@ export class AiSdkAdapter implements ModelAdapter {
   readonly translator: AiSdkMessageTranslator;
   private model: LanguageModel;
   private readonly generationMode: AiSdkGenerationMode;
+  private readonly textualToolCallFormat?: 'dsml';
 
   constructor(model: LanguageModel, provider: string, options: AiSdkAdapterOptions = {}) {
     this.model = model;
     this.provider = provider;
     this.translator = new AiSdkMessageTranslator();
     this.generationMode = options.generationMode ?? 'stream';
+    this.textualToolCallFormat = options.textualToolCallFormat;
   }
 
   async generate(request: GenerationRequest): Promise<GenerationResult> {
@@ -51,12 +55,24 @@ export class AiSdkAdapter implements ModelAdapter {
       abortSignal: request.signal,
     });
 
+    const bufferedTextDeltas: string[] = [];
+    const nativeToolCalls = new Map<string, { toolCallId: string; toolName: string; args: unknown }>();
+
     for await (const event of result.fullStream) {
       switch (event.type) {
         case 'text-delta':
+          if (this.textualToolCallFormat) {
+            bufferedTextDeltas.push(event.textDelta);
+            break;
+          }
           yield { type: 'text-delta', delta: event.textDelta };
           break;
         case 'tool-call-streaming-start':
+          nativeToolCalls.set(event.toolCallId, {
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            args: {},
+          });
           yield { type: 'tool-call-start', callId: event.toolCallId, toolName: event.toolName };
           break;
         case 'tool-call-delta':
@@ -68,6 +84,11 @@ export class AiSdkAdapter implements ModelAdapter {
           };
           break;
         case 'tool-call':
+          nativeToolCalls.set(event.toolCallId, {
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            args: event.args,
+          });
           yield {
             type: 'tool-call-end',
             callId: event.toolCallId,
@@ -76,9 +97,38 @@ export class AiSdkAdapter implements ModelAdapter {
           };
           break;
         case 'finish':
+          let parsedBufferedText = undefined as ReturnType<typeof normalizeTextualToolCalls> | undefined;
+          if (this.textualToolCallFormat) {
+            parsedBufferedText = normalizeTextualToolCalls(bufferedTextDeltas.join(''));
+            if (parsedBufferedText.text) {
+              yield { type: 'text-delta', delta: parsedBufferedText.text };
+            }
+            if (nativeToolCalls.size === 0) {
+              for (const toolCall of parsedBufferedText.toolCalls) {
+                yield {
+                  type: 'tool-call-start',
+                  callId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                };
+                yield {
+                  type: 'tool-call-end',
+                  callId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  args: toolCall.args,
+                };
+              }
+            }
+          }
+
+          const normalizedFinishReason =
+            this.textualToolCallFormat
+            && nativeToolCalls.size === 0
+            && (parsedBufferedText?.toolCalls.length ?? 0) > 0
+              ? 'tool-call'
+              : this.mapFinishReason(event.finishReason);
           yield {
             type: 'finish',
-            finishReason: this.mapFinishReason(event.finishReason),
+            finishReason: normalizedFinishReason,
             usage: {
               inputTokens: event.usage.promptTokens,
               outputTokens: event.usage.completionTokens,
@@ -199,9 +249,10 @@ export class AiSdkAdapter implements ModelAdapter {
   }
 
   private toGenerationResult(request: GenerationRequest, response: AiSdkProviderResponse): GenerationResult {
+    const normalizedResponse = this.normalizeProviderResponse(response);
     const lastMessage = request.messages[request.messages.length - 1];
     const parentId = lastMessage?.id ?? null;
-    const message = this.translator.fromProviderResponse(response, parentId);
+    const message = this.translator.fromProviderResponse(normalizedResponse, parentId);
 
     message.meta = {
       ...(message.meta ?? {}),
@@ -209,11 +260,11 @@ export class AiSdkAdapter implements ModelAdapter {
       provider: this.provider,
     };
 
-    const usage = response.usage
+    const usage = normalizedResponse.usage
       ? {
-          inputTokens: response.usage.promptTokens,
-          outputTokens: response.usage.completionTokens,
-          totalTokens: response.usage.totalTokens ?? response.usage.promptTokens + response.usage.completionTokens,
+          inputTokens: normalizedResponse.usage.promptTokens,
+          outputTokens: normalizedResponse.usage.completionTokens,
+          totalTokens: normalizedResponse.usage.totalTokens ?? normalizedResponse.usage.promptTokens + normalizedResponse.usage.completionTokens,
         }
       : {
           inputTokens: 0,
@@ -221,15 +272,40 @@ export class AiSdkAdapter implements ModelAdapter {
           totalTokens: 0,
         };
 
-    const finishReason = this.mapFinishReason(response.finishReason ?? 'error');
+    const finishReason = this.mapFinishReason(normalizedResponse.finishReason ?? 'error');
 
     return {
       message,
       finishReason,
       usage,
       providerResponse: {
-        finishReason: response.finishReason ?? 'error',
+        finishReason: normalizedResponse.finishReason ?? 'error',
       },
+    };
+  }
+
+  private normalizeProviderResponse(response: AiSdkProviderResponse): AiSdkProviderResponse {
+    if (!this.textualToolCallFormat || !response.text) {
+      return response;
+    }
+
+    const normalized = normalizeTextualToolCalls(response.text);
+    if (normalized.toolCalls.length === 0) {
+      return {
+        ...response,
+        text: normalized.text,
+      };
+    }
+
+    const toolCalls = response.toolCalls && response.toolCalls.length > 0
+      ? response.toolCalls
+      : normalized.toolCalls;
+
+    return {
+      ...response,
+      text: normalized.text,
+      toolCalls,
+      finishReason: response.finishReason === 'stop' ? 'tool-call' : response.finishReason,
     };
   }
 }

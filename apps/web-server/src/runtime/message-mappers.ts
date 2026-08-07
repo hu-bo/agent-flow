@@ -414,7 +414,7 @@ function createProgressToolResultMessage(
       callId: toolCallId,
       name: toolName,
       output,
-      error: isError ? readString(asRecord(output)?.error) ?? readString(output) ?? 'Tool execution failed' : null,
+      error: isError ? readString(asRecord(output)?.error) ?? readString(output) ?? `Tool execution failed: ${toolName}` : null,
     },
     metadata: {
       modelId: String(input.modelId),

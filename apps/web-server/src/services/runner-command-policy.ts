@@ -26,6 +26,7 @@ const READ_ONLY_SHELL_COMMANDS = new Set([
   'wc',
   'where',
   'which',
+  'whoami',
   'powershell',
   'powershell.exe',
   'pwsh',

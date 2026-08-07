@@ -113,7 +113,12 @@ export class ModelToolRunner {
       output: result.output,
     });
 
-    let output: unknown = result.ok ? result.output : { error: result.error ?? 'Tool execution failed.' };
+    let output: unknown = result.ok
+      ? result.output
+      : {
+          error: result.error ?? `Tool "${internalToolName}" failed without an error message.`,
+          tool: internalToolName,
+        };
     if (result.ok && outputEnhancer) {
       output = await outputEnhancer.finalize(output);
     }

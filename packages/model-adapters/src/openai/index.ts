@@ -6,12 +6,14 @@ export interface OpenAiAdapterOptions extends OpenAIProviderSettings {
   model: string;
   providerId?: string;
   generationMode?: AiSdkGenerationMode;
+  textualToolCallFormat?: 'dsml';
 }
 
 export function createOpenAiAdapter(options: OpenAiAdapterOptions): ModelAdapter {
-  const { model, providerId, generationMode, ...providerOptions } = options;
+  const { model, providerId, generationMode, textualToolCallFormat, ...providerOptions } = options;
   const provider = createOpenAI(providerOptions);
   return new AiSdkAdapter(provider(model), providerId ?? providerOptions.name ?? 'openai', {
     generationMode,
+    textualToolCallFormat,
   });
 }

@@ -12,5 +12,6 @@ export function createDeepSeekAdapter(options: DeepSeekAdapterOptions): ModelAda
     providerId: options.providerId ?? 'deepseek',
     compatibility: 'compatible',
     baseURL: options.baseURL ?? DEEPSEEK_BASE_URL,
+    textualToolCallFormat: 'dsml',
   });
 }

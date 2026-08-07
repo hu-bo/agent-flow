@@ -88,6 +88,46 @@ describe('AiSdkAdapter.generate', () => {
     });
   });
 
+  it('normalizes DSML textual tool calls in non-stream mode', async () => {
+    mockedGenerateText.mockResolvedValueOnce({
+      text: [
+        'Need to inspect the workspace.',
+        '<｜｜DSML｜｜tool_calls>',
+        '<｜｜DSML｜｜invoke name="fs_read">',
+        '<｜｜DSML｜｜parameter name="path" string="true">/workspace/synes-master/package.json</｜｜DSML｜｜parameter>',
+        '</｜｜DSML｜｜invoke>',
+        '</｜｜DSML｜｜tool_calls>',
+      ].join(' '),
+      toolCalls: [],
+      usage: {
+        promptTokens: 18,
+        completionTokens: 7,
+      },
+      finishReason: 'stop',
+    } as unknown as Awaited<ReturnType<typeof generateText>>);
+
+    const adapter = new AiSdkAdapter({} as LanguageModel, 'deepseek', {
+      generationMode: 'nonstream',
+      textualToolCallFormat: 'dsml',
+    });
+    const result = await adapter.generate(createRequest());
+
+    expect(result.finishReason).toBe('tool-call');
+    expect(result.message.parts).toEqual([
+      {
+        type: 'text',
+        text: 'Need to inspect the workspace.',
+      },
+      expect.objectContaining({
+        type: 'tool-call',
+        toolName: 'fs_read',
+        args: {
+          path: '/workspace/synes-master/package.json',
+        },
+      }),
+    ]);
+  });
+
   it('does not switch protocols after stream parse failures', async () => {
     mockedStreamText.mockReturnValueOnce({
       fullStream: createAsyncStream([
@@ -121,6 +161,64 @@ describe('AiSdkAdapter.generate', () => {
 
     expect(mockedStreamText).toHaveBeenCalledTimes(1);
     expect(mockedGenerateText).not.toHaveBeenCalled();
+  });
+
+  it('normalizes DSML textual tool calls while streaming', async () => {
+    mockedStreamText.mockReturnValueOnce({
+      fullStream: createAsyncStream([
+        {
+          type: 'text-delta',
+          textDelta: 'Check docs ',
+        },
+        {
+          type: 'text-delta',
+          textDelta: '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="fs_list"><｜｜DSML｜｜parameter name="path" string="true">/workspace/synes-master/docs</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>',
+        },
+        {
+          type: 'finish',
+          finishReason: 'stop',
+          usage: {
+            promptTokens: 22,
+            completionTokens: 6,
+          },
+        },
+      ]),
+    } as unknown as ReturnType<typeof streamText>);
+
+    const adapter = new AiSdkAdapter({} as LanguageModel, 'deepseek', {
+      textualToolCallFormat: 'dsml',
+    });
+    const events: Array<Record<string, unknown>> = [];
+    for await (const event of adapter.stream(createRequest())) {
+      events.push(event as Record<string, unknown>);
+    }
+
+    expect(events).toEqual([
+      {
+        type: 'text-delta',
+        delta: 'Check docs',
+      },
+      expect.objectContaining({
+        type: 'tool-call-start',
+        toolName: 'fs_list',
+      }),
+      expect.objectContaining({
+        type: 'tool-call-end',
+        toolName: 'fs_list',
+        args: {
+          path: '/workspace/synes-master/docs',
+        },
+      }),
+      {
+        type: 'finish',
+        finishReason: 'tool-call',
+        usage: {
+          inputTokens: 22,
+          outputTokens: 6,
+          totalTokens: 28,
+        },
+      },
+    ]);
   });
 });
 

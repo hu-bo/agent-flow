@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ToolRegistry, validateAgainstSchema } from '@agent-flow/core';
 import type { RunnerDispatchService } from '../src/services/runner-dispatch-service.js';
 import { registerRunnerBackedTools } from '../src/services/runner-backed-tools.js';
+import { isReadOnlyShellExec } from '../src/services/runner-command-policy.js';
 
 describe('Runner-backed tool catalog', () => {
   it('accepts the integer limits emitted for fs.list', () => {
@@ -21,5 +22,14 @@ describe('Runner-backed tool catalog', () => {
         inputSchema!,
       ),
     ).not.toThrow();
+  });
+
+  it('treats pwd/whoami/echo inspection chains as read-only shell commands', () => {
+    expect(
+      isReadOnlyShellExec({
+        command: 'pwd',
+        args: ['&&', 'whoami', '&&', 'echo', 'OK'],
+      }),
+    ).toBe(true);
   });
 });
