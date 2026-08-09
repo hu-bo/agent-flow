@@ -733,12 +733,7 @@ function titleCase(value: string): string {
 
 function renderFsReadOutput(output: Record<string, unknown>): string {
   const path = getObjectString(output, 'path') ?? '(unknown path)';
-  const content = getObjectString(output, 'content') ?? '';
-  const maxPreviewChars = 8000;
-  const truncated = content.length > maxPreviewChars;
-  const preview = truncated ? `${content.slice(0, maxPreviewChars)}\n\n... (truncated)` : content;
-
-  return [`Read file: ${path}`, '', preview || '(empty file)'].join('\n');
+  return [`Read file: ${path}`, '', '[file content hidden]'].join('\n');
 }
 
 function renderFsSearchOutput(output: Record<string, unknown>): string {
@@ -769,6 +764,7 @@ function renderFsSearchOutput(output: Record<string, unknown>): string {
 
 function renderShellExecOutput(output: Record<string, unknown>): string {
   const command = getObjectString(output, 'command') ?? 'command';
+  const hideStdout = isFileReadCommand(output);
   const stdout = Array.isArray(output.stdout)
     ? output.stdout.filter((item): item is string => typeof item === 'string')
     : [];
@@ -778,7 +774,7 @@ function renderShellExecOutput(output: Record<string, unknown>): string {
 
   const sections: string[] = [`Executed: ${command}`];
   if (stdout.length > 0) {
-    sections.push(`STDOUT:\n${stdout.join('\n')}`);
+    sections.push(`STDOUT:\n${hideStdout ? summarizeHiddenStream(stdout) : stdout.join('\n')}`);
   }
   if (stderr.length > 0) {
     sections.push(`STDERR:\n${stderr.join('\n')}`);
@@ -787,4 +783,31 @@ function renderShellExecOutput(output: Record<string, unknown>): string {
     sections.push('(No output)');
   }
   return sections.join('\n\n');
+}
+
+function isFileReadCommand(output: Record<string, unknown>): boolean {
+  const command = getObjectString(output, 'command')?.toLowerCase() ?? '';
+  const args = Array.isArray(output.args) ? output.args.map((arg) => String(arg).toLowerCase()) : [];
+  const commandLine = [command, ...args].join(' ');
+  const executable = command.replace(/\\/g, '/').split('/').pop() ?? command;
+  if (executable === 'cat' || executable === 'type' || executable === 'get-content') {
+    return true;
+  }
+  if ((executable === 'powershell.exe' || executable === 'powershell' || executable === 'pwsh.exe' || executable === 'pwsh') && args.some((arg) => arg.includes('get-content'))) {
+    return true;
+  }
+  if ((executable === 'cmd.exe' || executable === 'cmd') && /\btype\b/.test(commandLine)) {
+    return true;
+  }
+  if ((executable === 'sh' || executable === 'bash' || executable === 'zsh') && /\bcat\b/.test(commandLine)) {
+    return true;
+  }
+  if (commandLine.includes('get-content')) {
+    return true;
+  }
+  return false;
+}
+
+function summarizeHiddenStream(value: string[]): string {
+  return value.length > 0 ? `[file content hidden: ${value.length} chunk(s)]` : '[file content hidden]';
 }

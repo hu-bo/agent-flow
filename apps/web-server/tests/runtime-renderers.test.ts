@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RuntimeChatInput } from '../src/contracts/api.js';
-import { buildSystemPrompt, renderEnvironmentContext } from '../src/runtime/runtime-renderers.js';
+import { buildSystemPrompt, renderEnvironmentContext, renderRuntimeOutput } from '../src/runtime/runtime-renderers.js';
 
 function createInput(overrides: Partial<RuntimeChatInput> = {}): RuntimeChatInput {
   const base: RuntimeChatInput = {
@@ -112,5 +112,42 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Runner Platform Context:');
     expect(prompt).toContain('shellExamples.directory=Get-ChildItem -Path .');
     expect(prompt).toContain('inspectionPriority=Use shell.exec with native read-only commands for tree shape, text search, and targeted file inspection.');
+  });
+});
+
+describe('renderRuntimeOutput', () => {
+  it('hides fs.read content in runtime output previews', () => {
+    const text = renderRuntimeOutput({
+      path: 'apps/web-server/src/runtime/message-mappers.ts',
+      content: 'secret file content',
+      size: 19,
+      bytesRead: 19,
+    });
+
+    expect(text).toContain('Read file: apps/web-server/src/runtime/message-mappers.ts');
+    expect(text).toContain('[file content hidden]');
+    expect(text).not.toContain('secret file content');
+    expect(text).not.toContain('bytesRead');
+  });
+
+  it('keeps normal shell stdout but hides file-read stdout', () => {
+    const gitText = renderRuntimeOutput({
+      command: 'git',
+      args: ['status', '--short'],
+      stdout: [' M apps/web-server/src/runtime/runtime-renderers.ts'],
+      stderr: [],
+      exitCode: 0,
+    });
+    const readText = renderRuntimeOutput({
+      command: 'powershell.exe',
+      args: ['-NoProfile', '-Command', "Get-Content -LiteralPath 'app.ts' -Raw"],
+      stdout: ['secret file content'],
+      stderr: [],
+      exitCode: 0,
+    });
+
+    expect(gitText).toContain(' M apps/web-server/src/runtime/runtime-renderers.ts');
+    expect(readText).toContain('[file content hidden: 1 chunk(s)]');
+    expect(readText).not.toContain('secret file content');
   });
 });
