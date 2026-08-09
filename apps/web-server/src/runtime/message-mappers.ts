@@ -486,10 +486,12 @@ function sanitizeShellProgressOutput(output: unknown): unknown {
   }
   const sanitized = sanitizeRecordOutput(output, new Set(['stdoutBytes', 'stderrBytes', 'byteOffset'])) as Record<string, unknown>;
   if (isFileReadCommand(rec)) {
-    const stdout = rec.stdout;
-    if (stdout !== undefined) {
-      sanitized.stdout = summarizeHiddenStream(stdout);
-    }
+    hideStdout(sanitized);
+  }
+
+  const nestedResult = asRecord(sanitized.result);
+  if (nestedResult && (isFileReadCommand(nestedResult) || isFileReadCommand(rec))) {
+    hideStdout(nestedResult);
   }
   return sanitized;
 }
@@ -526,6 +528,7 @@ function sanitizeRecordOutput(output: unknown, hiddenKeys: Set<string>): unknown
 function isFileReadCommand(output: Record<string, unknown>): boolean {
   const command = readString(output.command)?.toLowerCase() ?? '';
   const args = Array.isArray(output.args) ? output.args.map((arg) => String(arg).toLowerCase()) : [];
+  const commandLine = [command, ...args].join(' ');
   const executable = command.replace(/\\/g, '/').split('/').pop() ?? command;
   if (executable === 'cat' || executable === 'type' || executable === 'get-content') {
     return true;
@@ -533,7 +536,23 @@ function isFileReadCommand(output: Record<string, unknown>): boolean {
   if ((executable === 'powershell.exe' || executable === 'powershell' || executable === 'pwsh.exe' || executable === 'pwsh') && args.some((arg) => arg.includes('get-content'))) {
     return true;
   }
+  if ((executable === 'cmd.exe' || executable === 'cmd') && /\btype\b/.test(commandLine)) {
+    return true;
+  }
+  if ((executable === 'sh' || executable === 'bash' || executable === 'zsh') && /\bcat\b/.test(commandLine)) {
+    return true;
+  }
+  if (commandLine.includes('get-content')) {
+    return true;
+  }
   return false;
+}
+
+function hideStdout(output: Record<string, unknown>): void {
+  const stdout = output.stdout;
+  if (stdout !== undefined) {
+    output.stdout = summarizeHiddenStream(stdout);
+  }
 }
 
 function summarizeHiddenStream(value: unknown): unknown {

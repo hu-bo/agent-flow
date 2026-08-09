@@ -374,7 +374,7 @@ describe('DefaultPlanExecutor', () => {
       steps: [
         {
           id: 'read_required',
-          title: 'semantic-fs-read',
+          title: 'required fs read',
           kind: 'tool',
           dependsOn: [],
           toolName: 'fs.read',

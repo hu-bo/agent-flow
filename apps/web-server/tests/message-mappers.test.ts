@@ -159,6 +159,83 @@ describe('toProgressMessage', () => {
     });
     expect(message && message.type === 'tool_execution' ? message.tool.output : undefined).not.toHaveProperty('stdoutBytes');
   });
+
+  it('keeps runner call chain visible while hiding nested file-read stdout', () => {
+    const started = toProgressMessage(
+      createInput(),
+      null,
+      createEvent('runner.event', {
+        stepId: 'step_runner_read',
+        title: 'Read file',
+        runnerEvent: {
+          type: 'started',
+          task: {
+            command: 'powershell.exe',
+            args: ['-NoProfile', '-Command', "Get-Content -LiteralPath 'app.ts' -Raw"],
+          },
+        },
+      }),
+    );
+    const result = toProgressMessage(
+      createInput(),
+      null,
+      createEvent('runner.event', {
+        stepId: 'step_runner_read',
+        title: 'Read file',
+        runnerEvent: {
+          type: 'result',
+          result: {
+            command: 'powershell.exe',
+            args: ['-NoProfile', '-Command', "Get-Content -LiteralPath 'app.ts' -Raw"],
+            stdout: ['secret file content'],
+            stderr: [],
+            stdoutBytes: 19,
+            stderrBytes: 0,
+            success: true,
+          },
+          stdoutBytes: 19,
+          stderrBytes: 0,
+          outputTruncated: false,
+        },
+      }),
+    );
+
+    expect(started).toMatchObject({
+      type: 'tool_execution',
+      status: 'running',
+      tool: {
+        name: 'runner.exec',
+        input: {
+          command: 'powershell.exe',
+          args: ['-NoProfile', '-Command', "Get-Content -LiteralPath 'app.ts' -Raw"],
+        },
+      },
+    });
+    expect(result).toMatchObject({
+      type: 'tool_execution',
+      status: 'success',
+      tool: {
+        name: 'runner.exec',
+        output: {
+          type: 'result',
+          result: {
+            command: 'powershell.exe',
+            args: ['-NoProfile', '-Command', "Get-Content -LiteralPath 'app.ts' -Raw"],
+            stdout: ['[file content hidden: 1 chunk(s)]'],
+            stderr: [],
+            success: true,
+          },
+          outputTruncated: false,
+        },
+      },
+    });
+    expect(result && result.type === 'tool_execution' ? result.tool.output : undefined).not.toHaveProperty('stdoutBytes');
+    expect(
+      result && result.type === 'tool_execution' && typeof result.tool.output === 'object' && result.tool.output
+        ? (result.tool.output as { result?: unknown }).result
+        : undefined,
+    ).not.toHaveProperty('stdoutBytes');
+  });
 });
 
 function createInput() {
