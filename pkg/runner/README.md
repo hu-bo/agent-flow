@@ -127,7 +127,7 @@ cd e:\Project\my-project\agent-flow\pkg\runner
 
 powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1 `
   -Version 0.1.0 `
-  -ServerAddr 127.0.0.1:9201 `
+  -ServerAddr aflow-grpc.8and1.cn:80 `
   -maxConcurrentTasks 5
 ```
 
