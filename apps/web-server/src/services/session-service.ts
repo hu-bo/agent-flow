@@ -264,8 +264,20 @@ export class SessionService {
     return runnerId;
   }
 
-  async getBoundRunner(sessionId: string): Promise<string | undefined> {
-    const session = await this.getSessionEntity(sessionId);
+  async bindRunnerIfUnset(sessionId: string, runnerId: string, ownerUserId?: string): Promise<string> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
+    if (session.boundRunnerId) {
+      return session.boundRunnerId;
+    }
+
+    session.boundRunnerId = runnerId;
+    session.updatedAt = new Date();
+    await this.sessionRepository.save(session);
+    return runnerId;
+  }
+
+  async getBoundRunner(sessionId: string, ownerUserId?: string): Promise<string | undefined> {
+    const session = await this.getSessionEntity(sessionId, ownerUserId);
     return session.boundRunnerId ?? undefined;
   }
 

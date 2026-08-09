@@ -68,4 +68,67 @@ describe('chat event reducer', () => {
     expect(state.usageByMessageId.assistant?.totalTokens).toBe(3);
     expect(state.done).toBe(true);
   });
+
+  it('merges tool progress updates so shell commands keep both input and output details', () => {
+    let state = createChatEventState();
+    state = reduceChatEvent(state, {
+      type: 'message.upsert',
+      message: {
+        uuid: 'tool_1',
+        parentUuid: null,
+        role: 'tool',
+        type: 'tool_execution',
+        status: 'running',
+        timestamp: '2026-08-09T00:00:00.000Z',
+        title: 'Run shell command',
+        tool: {
+          callId: 'call_1',
+          name: 'shell.exec',
+          input: {
+            command: 'git',
+            args: ['status', '--short'],
+            workingDir: 'E:/Project/my-project/agent-flow',
+          },
+        },
+        metadata: {},
+      },
+    });
+    state = reduceChatEvent(state, {
+      type: 'message.upsert',
+      message: {
+        uuid: 'tool_1',
+        parentUuid: null,
+        role: 'tool',
+        type: 'tool_execution',
+        status: 'success',
+        timestamp: '2026-08-09T00:00:01.000Z',
+        title: 'Run shell command',
+        tool: {
+          callId: 'call_1',
+          name: 'shell.exec',
+          output: {
+            stdout: ' M apps/web-ui/src/chat-event-reducer.ts',
+            exitCode: 0,
+          },
+        },
+        metadata: {},
+      },
+    });
+
+    expect(state.messages[0]).toMatchObject({
+      type: 'tool_execution',
+      status: 'success',
+      tool: {
+        name: 'shell.exec',
+        input: {
+          command: 'git',
+          args: ['status', '--short'],
+        },
+        output: {
+          stdout: ' M apps/web-ui/src/chat-event-reducer.ts',
+          exitCode: 0,
+        },
+      },
+    });
+  });
 });

@@ -44,8 +44,9 @@ export class ModelAdapterService {
       throw new Error(`Provider "${model.provider.name}" has no active credential.`);
     }
 
-    const baseURL = readMetadataString(model.provider.metadata, 'baseUrl');
+    const baseURL = readProviderMetadataString(model.provider.metadata, 'baseUrl');
     const generationMode = readGenerationMode(model.provider.metadata);
+    const apiVersion = readProviderMetadataString(model.provider.metadata, 'apiVersion');
     const providerType = model.provider.type.toLowerCase();
     const providerName = model.provider.name;
 
@@ -84,14 +85,31 @@ export class ModelAdapterService {
       providerId: providerName,
       apiKey,
       generationMode,
+      ...(apiVersion ? { apiVersion } : {}),
       compatibility: resolveOpenAiCompatibility(providerType, baseURL),
       ...(baseURL ? { baseURL } : {}),
     });
   }
 }
 
-function readMetadataString(metadata: Record<string, unknown> | null, key: string): string | undefined {
-  const value = metadata?.[key];
+export function readProviderMetadataString(
+  metadata: Record<string, unknown> | null,
+  key: string,
+): string | undefined {
+  const direct = normalizeMetadataString(metadata?.[key]);
+  if (direct) {
+    return direct;
+  }
+
+  const nestedConfig =
+    metadata?.config && typeof metadata.config === 'object' && !Array.isArray(metadata.config)
+      ? (metadata.config as Record<string, unknown>)
+      : undefined;
+
+  return normalizeMetadataString(nestedConfig?.[key]);
+}
+
+function normalizeMetadataString(value: unknown): string | undefined {
   if (typeof value !== 'string') {
     return undefined;
   }
@@ -100,7 +118,7 @@ function readMetadataString(metadata: Record<string, unknown> | null, key: strin
 }
 
 export function readGenerationMode(metadata: Record<string, unknown> | null): AiSdkGenerationMode {
-  const value = readMetadataString(metadata, 'generationMode');
+  const value = readProviderMetadataString(metadata, 'generationMode');
   if (value === 'nonstream') {
     return 'nonstream';
   }

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { createSessionBodySchema, sessionParamsSchema } from '@agent-flow/web-contracts';
+import { toClientSessionState } from '../lib/client-messages.js';
 import { sendSuccess } from '../lib/response.js';
 import { parseWithSchema } from '../lib/validation.js';
 import { requireJsonBody } from '../middlewares/require-json.js';
@@ -13,7 +14,9 @@ export async function registerSessionRoutes(app: FastifyInstance) {
     const params = parseWithSchema(sessionParamsSchema, request.params, 'params');
     return sendSuccess(
       reply,
-      await request.server.services.sessionService.getSessionState(params.sessionId, request.auth.userId),
+      toClientSessionState(
+        await request.server.services.sessionService.getSessionState(params.sessionId, request.auth.userId),
+      ),
     );
   });
 

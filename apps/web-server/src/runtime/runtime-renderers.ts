@@ -213,25 +213,17 @@ export function extractRuntimeStepTraces(result: AgentRunResult): RuntimeStepTra
 }
 
 function renderRuntimeSummary(context: RuntimeModelContext): string {
-  const { result, eventCountByType, runnerDirective } = context;
-  const steps = extractRuntimeSteps(result);
-  const outputEntries = Object.entries(result.outputs);
+  const { result, runnerDirective } = context;
   const latestOutput = extractLatestOutput(result);
   const outputPreview =
     latestOutput === undefined
       ? '(no runtime output)'
-      : truncateText(formatUnknown(latestOutput), 12_000);
-  const eventSummary = [...eventCountByType.entries()]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([type, count]) => `- ${type}: ${count}`)
-    .join('\n');
+      : truncateText(renderRuntimeOutput(latestOutput) ?? formatUnknown(sanitizeRuntimePromptValue(latestOutput)), 12_000);
+  const usagePreview = renderUsagePreview(latestOutput);
 
   return [
     'Autonomous runtime result:',
     `status=${result.status}`,
-    `taskId=${result.taskId}`,
-    `coreSessionId=${result.sessionId}`,
-    result.rounds !== undefined ? `rounds=${result.rounds}` : undefined,
     result.verification
       ? `verification=${formatUnknown({
           status: result.verification.status,
@@ -242,9 +234,7 @@ function renderRuntimeSummary(context: RuntimeModelContext): string {
         })}`
       : undefined,
     runnerDirective ? `runnerDirective=${runnerDirective.command} ${runnerDirective.args.join(' ')}`.trim() : undefined,
-    steps.length > 0 ? `plannedSteps:\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}` : 'plannedSteps=(none)',
-    eventSummary ? `eventCounts:\n${eventSummary}` : undefined,
-    `outputStepCount=${outputEntries.length}`,
+    usagePreview ? `usage=${usagePreview}` : undefined,
     `latestOutput:\n${outputPreview}`,
   ]
     .filter((line): line is string => Boolean(line))
@@ -335,8 +325,23 @@ function renderStructuredValue(value: unknown, depth: number): string | undefine
 }
 
 function isInternalResultKey(key: string): boolean {
-  return key === 'completionSignal' || key === 'finishReason' || key === 'usage';
+  return INTERNAL_RESULT_KEYS.has(key);
 }
+
+const INTERNAL_RESULT_KEYS = new Set([
+  'byteLength',
+  'byteOffset',
+  'bytesRead',
+  'completionSignal',
+  'durationMs',
+  'exitCode',
+  'finishReason',
+  'maxBytes',
+  'outputStepCount',
+  'rounds',
+  'size',
+  'total',
+]);
 
 function humanizeStructuredKey(key: string): string {
   return key
@@ -484,10 +489,9 @@ function renderRunnerPlatformContext(input: RuntimeChatInput): string {
       'Runner Platform Context:',
       '- boundRunner=none-or-unknown',
       '- platform=unknown',
-      '- Prefer semantic tools such as fs.read, fs.list, fs.search, fs.patch, and git.exec.',
-      '- For directory or file-structure discovery, start with fs.list, fs.search, and fs.read before shell.exec.',
-      '- Before shell.exec, bind or query a runner so shell commands can match the actual OS.',
-      '- If shell.exec becomes necessary, first identify whether the runner is Windows or POSIX so command syntax stays native.',
+      '- Use shell.exec for workspace inspection, file reads, search, edits, and verification.',
+      '- Prefer read-only shell commands for discovery, then choose native syntax after the runner OS is known.',
+      '- If the OS is unknown, first run a harmless probe such as pwd, uname, ver, or $PSVersionTable.',
     ].join('\n');
   }
 
@@ -506,10 +510,10 @@ function renderRunnerPlatformContext(input: RuntimeChatInput): string {
     `- workspaceRoots=${platform.workspaceRoots.length > 0 ? platform.workspaceRoots.join(', ') : 'unknown'}`,
     `- availableCommands=${platform.availableCommands.length > 0 ? platform.availableCommands.join(', ') : 'unknown'}`,
     `- shellCommandGuidance=${commandStyle}`,
-    '- inspectionPriority=Prefer fs.list or fs.glob for tree shape, fs.search for text matches, and fs.read for targeted file inspection.',
+    '- inspectionPriority=Use shell.exec with native read-only commands for tree shape, text search, and targeted file inspection.',
     ...inspectionGuidance,
-    '- Use read-only semantic tools without approval for inspection.',
-    '- Use shell.exec only for real environment execution, and ensure command syntax matches this runner platform.',
+    '- Prefer bounded, read-only commands for inspection and summarize only the evidence needed for the task.',
+    '- Ensure command syntax matches this runner platform.',
   ].join('\n');
 }
 
@@ -525,7 +529,7 @@ function renderCommandStyle(os: string, shell: string): string {
   if (normalizedOs === 'linux' || normalizedOs === 'darwin') {
     return 'POSIX runner: prefer sh/bash-compatible commands and POSIX paths.';
   }
-  return 'Unknown runner OS: prefer semantic tools and avoid shell-specific syntax unless necessary.';
+  return 'Unknown runner OS: use shell.exec for a harmless OS probe before shell-specific commands.';
 }
 
 function renderWorkspaceInspectionGuidance(os: string, shell: string): string[] {
@@ -539,6 +543,8 @@ function renderWorkspaceInspectionGuidance(os: string, shell: string): string[] 
         '- shellExamples.directoryRecursive=Get-ChildItem -Path . -Recurse -File',
         '- shellExamples.nameSearch=Get-ChildItem -Path . -Recurse | Where-Object { $_.Name -match \'pattern\' }',
         '- shellExamples.contentSearch=Get-ChildItem -Path . -Recurse -File | Select-String -Pattern \'pattern\'',
+        '- shellExamples.readFile=Get-Content -Path .\\path\\to\\file.ts',
+        '- shellExamples.readHead=Get-Content -Path .\\path\\to\\file.ts -TotalCount 120',
         '- shellExamples.pathStyle=Prefer .\\relative\\path or C:\\absolute\\path when passing Windows file paths.',
       ];
     }
@@ -548,6 +554,7 @@ function renderWorkspaceInspectionGuidance(os: string, shell: string): string[] 
       '- shellExamples.directoryRecursive=dir . /s /b',
       '- shellExamples.nameSearch=where /r . *pattern*',
       '- shellExamples.contentSearch=findstr /s /n /i "pattern" *',
+      '- shellExamples.readFile=type .\\path\\to\\file.ts',
       '- shellExamples.pathStyle=Prefer .\\relative\\path or C:\\absolute\\path when passing Windows file paths.',
     ];
   }
@@ -558,12 +565,14 @@ function renderWorkspaceInspectionGuidance(os: string, shell: string): string[] 
       '- shellExamples.directoryRecursive=find . -type f',
       '- shellExamples.nameSearch=find . -type f | grep "pattern"',
       '- shellExamples.contentSearch=grep -RIn "pattern" .',
+      '- shellExamples.readFile=cat ./path/to/file.ts',
+      '- shellExamples.readHead=sed -n \'1,120p\' ./path/to/file.ts',
       '- shellExamples.pathStyle=Prefer ./relative/path or /absolute/path with POSIX separators.',
     ];
   }
 
   return [
-    '- shellExamples.unknown=Prefer fs.list, fs.search, and fs.read until the runner OS is known.',
+    '- shellExamples.unknown=Use shell.exec for a harmless OS probe, then use native read/search commands.',
   ];
 }
 
@@ -599,17 +608,43 @@ export function renderLlmStepPrompt(stepRequest: LlmStepRequest): string {
       ? `Completion contract:\n${formatUnknown(stepRequest.request.plan.completionContract)}`
       : 'Completion contract: none',
     `Consumes:\n${consumesPreview}`,
-    `Step input:\n${formatUnknown(stepRequest.input)}`,
+    `Step input:\n${formatUnknown(sanitizeRuntimePromptValue(stepRequest.input))}`,
     contextPreview ? `Context:\n${contextPreview}` : 'Context: none',
     [
       'Produce the output for this step now.',
       'Use concise summaries only; do not include hidden chain-of-thought.',
+      'Do not repeat transport metadata such as bytesRead, byteOffset, byteLength, maxBytes, size, total, exitCode, or durationMs unless the user explicitly asks for those numbers.',
       'When useful, return JSON like {"analysis":"Markdown summary","implementation":"Markdown changes or details","verification":"Markdown verification","completionSignal":"COMPLETE","nextAction":"...","incompleteReason":"...","evidence":["..."]}.',
       'The analysis, implementation, and verification fields must be strings. Use Markdown bullets inside those strings instead of nested JSON objects.',
       'Only emit completionSignal=COMPLETE if the current objective has actually met the completion contract.',
       'If the objective is not done, do not claim completion. Instead provide incompleteReason, nextAction, and concrete evidence gaps.',
     ].join('\n'),
   ].join('\n\n');
+}
+
+function sanitizeRuntimePromptValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeRuntimePromptValue);
+  }
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (isInternalResultKey(key)) {
+      continue;
+    }
+    out[key] = sanitizeRuntimePromptValue(nested);
+  }
+  return out;
+}
+
+function renderUsagePreview(value: unknown): string | undefined {
+  if (!isPlainObject(value) || value.usage === undefined) {
+    return undefined;
+  }
+  return formatUnknown(value.usage);
 }
 
 function extractLatestOutput(result: AgentRunResult): unknown {
@@ -649,9 +684,7 @@ function renderFsListOutput(output: Record<string, unknown>): string {
       }
       const type = getObjectString(entry, 'type') ?? 'entry';
       const name = getObjectString(entry, 'name') ?? getObjectString(entry, 'path') ?? '(unknown)';
-      const size = getObjectNumber(entry, 'size');
-      const sizeLabel = typeof size === 'number' ? ` (${size} bytes)` : '';
-      return `- [${type}] ${name}${sizeLabel}`;
+      return `- [${type}] ${name}`;
     })
     .join('\n');
 
@@ -700,14 +733,12 @@ function titleCase(value: string): string {
 
 function renderFsReadOutput(output: Record<string, unknown>): string {
   const path = getObjectString(output, 'path') ?? '(unknown path)';
-  const size = getObjectNumber(output, 'size');
-  const sizeLabel = typeof size === 'number' ? `${size} bytes` : 'unknown size';
   const content = getObjectString(output, 'content') ?? '';
   const maxPreviewChars = 8000;
   const truncated = content.length > maxPreviewChars;
   const preview = truncated ? `${content.slice(0, maxPreviewChars)}\n\n... (truncated)` : content;
 
-  return [`Read file: ${path} (${sizeLabel})`, '', preview || '(empty file)'].join('\n');
+  return [`Read file: ${path}`, '', preview || '(empty file)'].join('\n');
 }
 
 function renderFsSearchOutput(output: Record<string, unknown>): string {

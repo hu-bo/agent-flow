@@ -109,6 +109,9 @@ export function buildToolContextMetadata(input: RuntimeChatInput): Record<string
     cwd: input.session.cwd,
     userMessage: input.message,
     preferredRunnerId: input.preferredRunnerId,
+    runnerOs: input.runnerPlatform?.os,
+    runnerDefaultShell: input.runnerPlatform?.defaultShell,
+    runnerPathSeparator: input.runnerPlatform?.pathSeparator,
     reasoningEffort: input.reasoningEffort ?? 'medium',
     attachmentCount: input.attachments.length,
   };

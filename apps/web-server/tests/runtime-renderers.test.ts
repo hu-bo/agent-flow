@@ -78,7 +78,7 @@ describe('renderEnvironmentContext', () => {
     expect(text).toContain('shellExamples.contentSearch=grep -RIn "pattern" .');
   });
 
-  it('falls back to semantic-tool guidance when runner platform is unknown', () => {
+  it('falls back to shell-first guidance when runner platform is unknown', () => {
     const text = renderEnvironmentContext(createInput({
       runnerPlatform: undefined,
       preferredRunnerId: undefined,
@@ -87,8 +87,8 @@ describe('renderEnvironmentContext', () => {
       },
     }), 'autonomous');
 
-    expect(text).toContain('For directory or file-structure discovery, start with fs.list, fs.search, and fs.read before shell.exec.');
-    expect(text).toContain('If shell.exec becomes necessary, first identify whether the runner is Windows or POSIX so command syntax stays native.');
+    expect(text).toContain('Use shell.exec for workspace inspection, file reads, search, edits, and verification.');
+    expect(text).toContain('first run a harmless probe such as pwd, uname, ver, or $PSVersionTable.');
   });
 });
 
@@ -111,6 +111,6 @@ describe('buildSystemPrompt', () => {
 
     expect(prompt).toContain('Runner Platform Context:');
     expect(prompt).toContain('shellExamples.directory=Get-ChildItem -Path .');
-    expect(prompt).toContain('inspectionPriority=Prefer fs.list or fs.glob for tree shape, fs.search for text matches, and fs.read for targeted file inspection.');
+    expect(prompt).toContain('inspectionPriority=Use shell.exec with native read-only commands for tree shape, text search, and targeted file inspection.');
   });
 });

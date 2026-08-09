@@ -86,7 +86,7 @@ describe('CodingReplanner', () => {
     expect(plan).toBeUndefined();
   });
 
-  it('adds fs diagnostics step for fs tool failures', async () => {
+  it('adds shell diagnostics step for file tool failures', async () => {
     const replanner = new CodingReplanner();
     const ctx = createReplanContext('fix read error and verify');
     ctx.failedStep.toolName = 'fs.read';
@@ -103,11 +103,12 @@ describe('CodingReplanner', () => {
     });
     expect(decision?.plan.steps).toHaveLength(4);
     expect(decision?.plan.steps[0]).toMatchObject({
-      title: 'replan-fs-diagnostics',
+      title: 'replan-shell-file-diagnostics',
       kind: 'tool',
-      toolName: 'fs.list',
+      toolName: 'shell.exec',
       input: {
-        path: 'packages/core/src',
+        command: 'find',
+        args: ['packages/core/src', '-maxdepth', '1', '-print'],
       },
     });
     expect(decision?.plan.steps[1]?.dependsOn).toEqual([decision?.plan.steps[0]?.id]);

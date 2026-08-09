@@ -72,7 +72,9 @@
 .chat-v2-status-indicator {
   width: .98rem;
   height: .98rem;
-  animation: chat-v2-status-orbit 1.9s linear infinite;
+  background: linear-gradient(145deg, rgba(255,255,255,.92), rgba(229,231,235,.58) 48%, rgba(148,163,184,.22));
+  box-shadow: 0 5px 16px rgba(15,23,42,.10), inset 0 1px rgba(255,255,255,.95);
+  animation: chat-v2-status-spark 1.65s ease-in-out infinite;
 }
 .chat-v2-inline-status-indicator {
   width: .78rem;
@@ -88,7 +90,9 @@
   border-radius: 999px;
   opacity: .7;
 }
-.chat-v2-status-orbit-dot,
+.chat-v2-status-indicator::before {
+  border-color: rgba(148,163,184,.28);
+}
 .chat-v2-inline-status-dot {
   position: absolute;
   left: 50%;
@@ -96,16 +100,14 @@
   border-radius: 999px;
   background: currentColor;
 }
-.chat-v2-status-orbit-dot {
-  width: .26rem;
-  height: .26rem;
-  margin-left: -.13rem;
-  box-shadow: 0 0 0 .14rem color-mix(in srgb, currentColor 10%, transparent);
-}
 .chat-v2-inline-status-dot {
   width: .2rem;
   height: .2rem;
   margin-left: -.1rem;
+}
+.chat-v2-status-spark-icon {
+  color: #59616d;
+  filter: drop-shadow(0 1px rgba(255,255,255,.95));
 }
 .chat-v2-status-label {
   position: relative;
@@ -113,27 +115,29 @@
   min-width: 7ch;
   align-items: center;
   color: var(--chat-text-primary);
-  font: 500 .82rem/1.4 "JetBrains Mono", Consolas, monospace;
+  font: 700 .84rem/1.4 "JetBrains Mono", Consolas, monospace;
   letter-spacing: 0;
   text-transform: lowercase;
 }
-.chat-v2-status-word-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-}
-.chat-v2-status-word-shell {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  display: inline-block;
-  overflow: hidden;
-  width: 0;
-  white-space: nowrap;
-  transform: translateY(-50%);
-  animation: chat-v2-status-type 3s steps(7, end) infinite;
-}
 .chat-v2-status-word {
   display: inline-block;
+  position: relative;
+  white-space: nowrap;
+}
+.chat-v2-status-dots {
+  display: inline-flex;
+  width: 3ch;
+}
+.chat-v2-status-dots span {
+  opacity: .18;
+  transform: translateY(.06rem);
+  animation: chat-v2-status-dot-step 1.25s ease-in-out infinite;
+}
+.chat-v2-status-dots span:nth-child(2) {
+  animation-delay: .18s;
+}
+.chat-v2-status-dots span:nth-child(3) {
+  animation-delay: .36s;
 }
 .chat-v2-timeline { position: relative; margin: .7rem 0 .2rem .42rem; padding-left: 1.45rem; }
 .chat-v2-timeline::before { content: ""; position: absolute; left: .38rem; top: .3rem; bottom: .8rem; width: 1px; background: var(--chat-border-strong); }
@@ -182,10 +186,14 @@
 .chat-v2-badge { flex: 0 0 auto; padding: .12rem .38rem; border-radius: 999px; color: var(--chat-text-subtle); background: var(--chat-soft); font: .65rem "JetBrains Mono", Consolas, monospace; }
 .chat-v2-tooltip { z-index: 100; padding: .35rem .5rem; border-radius: .4rem; color: #fff; background: #272827; box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: .7rem; }
 @keyframes chat-v2-status-orbit { to { transform: rotate(360deg); } }
-@keyframes chat-v2-status-type {
-  0%, 16% { width: 0; }
-  46%, 78% { width: 7ch; }
-  100% { width: 0; }
+@keyframes chat-v2-status-spark {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.06); }
+}
+@keyframes chat-v2-status-dot-step {
+  0%, 18% { opacity: .18; transform: translateY(.06rem); }
+  34%, 72% { opacity: 1; transform: translateY(0); }
+  88%, 100% { opacity: .18; transform: translateY(.06rem); }
 }
 @media (max-width: 720px) { .chat-v2-list-inner { padding: 1.25rem .85rem 2rem; }.chat-v2-message.is-user .chat-v2-message-content { max-width: 92%; }.chat-v2-composer-left .chat-v2-token-usage { display: none; }.chat-v2-native-select { max-width: 7rem; }.chat-v2-tool-status { display: none; } }
 @media (prefers-reduced-motion: reduce) {
@@ -204,15 +212,15 @@
   }
 
   .chat-v2-status-indicator {
-    animation-duration: 1.9s !important;
+    animation-duration: 1.65s !important;
   }
 
   .chat-v2-inline-status-indicator {
     animation-duration: 2.05s !important;
   }
 
-  .chat-v2-status-word-shell {
-    animation-duration: 3s !important;
+  .chat-v2-status-dots span {
+    animation-duration: 1.25s !important;
   }
 }
 

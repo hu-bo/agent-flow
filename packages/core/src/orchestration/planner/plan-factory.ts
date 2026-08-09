@@ -1,6 +1,6 @@
 import type { AgentPlan, AgentRunRequest, AgentStep, CompletionContract } from '../../types/index.js';
 import type { PlanningIntent } from './intent-resolver.js';
-import type { SemanticToolStep } from './semantic-detector.js';
+import { buildListInput, buildReadInput, resolveShellStyle, type SemanticToolStep } from './semantic-detector.js';
 
 const STEP_TITLES = {
   runner: 'runner-execution',
@@ -210,61 +210,40 @@ export class PlanFactory {
         title: 'repo.scan',
         kind: 'tool',
         dependsOn: [],
-        toolName: 'fs.list',
-        input: {
-          path: '.',
-          recursive: false,
-          maxEntries: 200,
-          includeHidden: false,
-        },
+        toolName: 'shell.exec',
+        input: buildListInput('.', false, resolveShellStyle(request.metadata, '.')),
       },
       {
         id: readmeId,
         title: 'repo.read_readme',
         kind: 'tool',
         dependsOn: [],
-        toolName: 'fs.read',
-        input: {
-          path: 'README.md',
-          maxBytes: 200_000,
-          allowMissing: true,
-        },
+        toolName: 'shell.exec',
+        input: buildReadInput('README.md', resolveShellStyle(request.metadata, 'README.md'), { allowMissing: true }),
       },
       {
         id: pkgId,
         title: 'repo.read_package_json',
         kind: 'tool',
         dependsOn: [],
-        toolName: 'fs.read',
-        input: {
-          path: 'package.json',
-          maxBytes: 200_000,
-          allowMissing: true,
-        },
+        toolName: 'shell.exec',
+        input: buildReadInput('package.json', resolveShellStyle(request.metadata, 'package.json'), { allowMissing: true }),
       },
       {
         id: workspaceId,
         title: 'repo.read_pnpm_workspace',
         kind: 'tool',
         dependsOn: [],
-        toolName: 'fs.read',
-        input: {
-          path: 'pnpm-workspace.yaml',
-          maxBytes: 200_000,
-          allowMissing: true,
-        },
+        toolName: 'shell.exec',
+        input: buildReadInput('pnpm-workspace.yaml', resolveShellStyle(request.metadata, 'pnpm-workspace.yaml'), { allowMissing: true }),
       },
       {
         id: turboId,
         title: 'repo.read_turbo',
         kind: 'tool',
         dependsOn: [],
-        toolName: 'fs.read',
-        input: {
-          path: 'turbo.json',
-          maxBytes: 200_000,
-          allowMissing: true,
-        },
+        toolName: 'shell.exec',
+        input: buildReadInput('turbo.json', resolveShellStyle(request.metadata, 'turbo.json'), { allowMissing: true }),
       },
       {
         id: analysisId,

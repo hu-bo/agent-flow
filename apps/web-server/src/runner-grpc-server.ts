@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { StructuredLogger } from '@agent-flow/events';
 import {
   Server,
@@ -44,6 +45,12 @@ interface StartedRunnerGrpcServer {
   close: () => Promise<void>;
 }
 
+interface ActiveRunnerConnection {
+  connectionId: string;
+  call: RunnerServiceConnectCall;
+  close(reason: string): void;
+}
+
 const HEARTBEAT_INTERVAL_MS = 10_000;
 
 export async function startRunnerGrpcServer(
@@ -51,9 +58,10 @@ export async function startRunnerGrpcServer(
   options: RunnerGrpcServerOptions,
 ): Promise<StartedRunnerGrpcServer> {
   const server = new Server();
+  const activeConnections = new Map<string, ActiveRunnerConnection>();
   const handlers: RunnerServiceServer = {
     connect: (call) => {
-      void handleConnectStream(call, deps, options.logger);
+      void handleConnectStream(call, deps, options.logger, activeConnections);
     },
     runTask: (call) => {
       // The bidirectional Connect stream is the primary control-plane path.
@@ -126,21 +134,36 @@ async function handleConnectStream(
   call: RunnerServiceConnectCall,
   deps: RunnerGrpcServerDeps,
   logger?: StructuredLogger,
+  activeConnections?: Map<string, ActiveRunnerConnection>,
 ): Promise<void> {
+  const connectionId = randomUUID();
   let runnerId = '';
   let runnerToken = '';
   let closed = false;
   let pumpStarted = false;
 
-  const closeWithError = (error: unknown) => {
-    if (closed) return;
-    closed = true;
-    const message = error instanceof Error ? error.message : String(error);
-    call.destroy(Object.assign(new Error(message), { code: GrpcStatus.UNKNOWN }));
+  const cleanupActiveConnection = () => {
+    if (!runnerId) {
+      return;
+    }
+    const active = activeConnections?.get(runnerId);
+    if (active?.connectionId === connectionId) {
+      activeConnections?.delete(runnerId);
+      deps.runnerDispatchService.deactivateRunnerConnection({ runnerId, connectionId });
+    }
   };
 
   const stop = () => {
+    if (closed) return;
     closed = true;
+    cleanupActiveConnection();
+  };
+
+  const closeWithError = (error: unknown) => {
+    if (closed) return;
+    const message = error instanceof Error ? error.message : String(error);
+    stop();
+    call.destroy(Object.assign(new Error(message), { code: GrpcStatus.UNKNOWN }));
   };
 
   call.on('error', stop);
@@ -163,6 +186,23 @@ async function handleConnectStream(
 
           runnerId = registered.runnerId;
           runnerToken = message.register.runnerToken;
+          const previousConnectionId = deps.runnerDispatchService.activateRunnerConnection({
+            runnerId,
+            connectionId,
+          });
+          const previousConnection = activeConnections?.get(runnerId);
+          if (previousConnection && previousConnection.connectionId !== connectionId) {
+            previousConnection.close('runner reconnected with the same runnerId');
+          }
+          activeConnections?.set(runnerId, {
+            connectionId,
+            call,
+            close: (reason: string) => {
+              if (closed) return;
+              closed = true;
+              call.destroy(Object.assign(new Error(reason), { code: GrpcStatus.CANCELLED }));
+            },
+          });
           call.write({
             registerAck: {
               runnerId: registered.runnerId,
@@ -175,6 +215,8 @@ async function handleConnectStream(
           logger?.info('runner.grpc.registered', 'runner connected via grpc stream', {
             attributes: {
               runnerId: registered.runnerId,
+              connectionId,
+              replacedConnectionId: previousConnectionId,
               ownerUserId: registered.ownerUserId,
               host: registered.host ?? undefined,
               hostName: registered.hostName ?? undefined,
@@ -192,7 +234,7 @@ async function handleConnectStream(
               call,
               deps,
               () => closed,
-              () => ({ runnerId, runnerToken }),
+              () => ({ runnerId, runnerToken, connectionId }),
               logger,
             ).catch(closeWithError);
           }
@@ -276,11 +318,11 @@ async function pumpOutboundToRunner(
   call: RunnerServiceConnectCall,
   deps: RunnerGrpcServerDeps,
   isClosed: () => boolean,
-  getRunnerIdentity: () => { runnerId: string; runnerToken: string },
+  getRunnerIdentity: () => { runnerId: string; runnerToken: string; connectionId: string },
   logger?: StructuredLogger,
 ): Promise<void> {
   while (!isClosed()) {
-    const { runnerId, runnerToken } = getRunnerIdentity();
+    const { runnerId, runnerToken, connectionId } = getRunnerIdentity();
     if (!runnerId || !runnerToken) {
       await sleep(200);
       continue;
@@ -288,6 +330,7 @@ async function pumpOutboundToRunner(
     const outbound = await deps.runnerDispatchService.nextOutboundMessage({
       runnerId,
       runnerToken,
+      connectionId,
       waitMs: 15_000,
     });
 

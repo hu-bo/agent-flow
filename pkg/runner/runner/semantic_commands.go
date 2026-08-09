@@ -713,6 +713,7 @@ func fsSearch(req types.TaskRequest) (map[string]any, error) {
 	regex, regexErr := regexp.Compile(pattern)
 	useRegex := regexErr == nil
 	matches := make([]map[string]any, 0, maxMatches)
+	skippedBinary := 0
 
 	walkErr := filepath.WalkDir(absPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -733,6 +734,10 @@ func fsSearch(req types.TaskRequest) (map[string]any, error) {
 		}
 		raw, readErr := os.ReadFile(path)
 		if readErr != nil {
+			return nil
+		}
+		if looksBinary(raw) || !utf8.Valid(raw) {
+			skippedBinary++
 			return nil
 		}
 		lines := strings.Split(string(raw), "\n")
@@ -762,11 +767,12 @@ func fsSearch(req types.TaskRequest) (map[string]any, error) {
 	}
 
 	return map[string]any{
-		"path":      absPath,
-		"pattern":   pattern,
-		"usedRegex": useRegex,
-		"matches":   matches,
-		"total":     len(matches),
+		"path":          absPath,
+		"pattern":       pattern,
+		"usedRegex":     useRegex,
+		"matches":       matches,
+		"total":         len(matches),
+		"skippedBinary": skippedBinary,
 	}, nil
 }
 

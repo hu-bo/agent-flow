@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	runnerpb "github.com/agent-flow/runner/protocol/proto"
 	runnercore "github.com/agent-flow/runner/runner"
@@ -284,9 +285,114 @@ func StartLoop(ctx context.Context, controller runnercore.Controller, opts Start
 func sendTaskEvent(send func(*runnerpb.RunnerEnvelope) error, event *runnerpb.TaskEvent) error {
 	return send(&runnerpb.RunnerEnvelope{
 		Payload: &runnerpb.RunnerEnvelope_TaskEvent{
-			TaskEvent: event,
+			TaskEvent: sanitizeTaskEventForSend(event),
 		},
 	})
+}
+
+func sanitizeTaskEventForSend(event *runnerpb.TaskEvent) *runnerpb.TaskEvent {
+	if event == nil {
+		return nil
+	}
+	safe := &runnerpb.TaskEvent{
+		TaskId:        safeProtoString(event.GetTaskId()),
+		SessionId:     safeProtoString(event.GetSessionId()),
+		StepId:        safeProtoString(event.GetStepId()),
+		Type:          event.GetType(),
+		Timestamp:     safeProtoString(event.GetTimestamp()),
+		RunnerId:      safeProtoString(event.GetRunnerId()),
+		ExecutionId:   safeProtoString(event.GetExecutionId()),
+		Attempt:       event.GetAttempt(),
+		EventSequence: event.GetEventSequence(),
+	}
+
+	switch payload := event.GetPayload().(type) {
+	case *runnerpb.TaskEvent_Started:
+		if payload.Started != nil {
+			safe.Payload = &runnerpb.TaskEvent_Started{
+				Started: &runnerpb.StartedPayload{Message: safeProtoString(payload.Started.GetMessage())},
+			}
+		}
+	case *runnerpb.TaskEvent_Stdout:
+		if payload.Stdout != nil {
+			safe.Payload = &runnerpb.TaskEvent_Stdout{Stdout: sanitizeStreamPayload(payload.Stdout)}
+		}
+	case *runnerpb.TaskEvent_Stderr:
+		if payload.Stderr != nil {
+			safe.Payload = &runnerpb.TaskEvent_Stderr{Stderr: sanitizeStreamPayload(payload.Stderr)}
+		}
+	case *runnerpb.TaskEvent_Progress:
+		if payload.Progress != nil {
+			safe.Payload = &runnerpb.TaskEvent_Progress{
+				Progress: &runnerpb.ProgressPayload{
+					Message: safeProtoString(payload.Progress.GetMessage()),
+					Percent: payload.Progress.GetPercent(),
+				},
+			}
+		}
+	case *runnerpb.TaskEvent_Result:
+		if payload.Result != nil {
+			safe.Payload = &runnerpb.TaskEvent_Result{
+				Result: &runnerpb.ResultPayload{
+					ExitCode:        payload.Result.GetExitCode(),
+					OutputJson:      append([]byte{}, payload.Result.GetOutputJson()...),
+					StdoutBytes:     payload.Result.GetStdoutBytes(),
+					StderrBytes:     payload.Result.GetStderrBytes(),
+					OutputTruncated: payload.Result.GetOutputTruncated(),
+				},
+			}
+		}
+	case *runnerpb.TaskEvent_Error:
+		if payload.Error != nil {
+			safe.Payload = &runnerpb.TaskEvent_Error{
+				Error: &runnerpb.ErrorPayload{
+					Message:     safeProtoString(payload.Error.GetMessage()),
+					Retryable:   payload.Error.GetRetryable(),
+					FailureType: payload.Error.GetFailureType(),
+					Code:        safeProtoString(payload.Error.GetCode()),
+				},
+			}
+		}
+	case *runnerpb.TaskEvent_Completed:
+		if payload.Completed != nil {
+			safe.Payload = &runnerpb.TaskEvent_Completed{
+				Completed: &runnerpb.CompletedPayload{
+					ExitCode:        payload.Completed.GetExitCode(),
+					DurationMs:      payload.Completed.GetDurationMs(),
+					Status:          payload.Completed.GetStatus(),
+					FailureType:     payload.Completed.GetFailureType(),
+					Message:         safeProtoString(payload.Completed.GetMessage()),
+					StdoutBytes:     payload.Completed.GetStdoutBytes(),
+					StderrBytes:     payload.Completed.GetStderrBytes(),
+					OutputTruncated: payload.Completed.GetOutputTruncated(),
+				},
+			}
+		}
+	case *runnerpb.TaskEvent_Heartbeat:
+		if payload.Heartbeat != nil {
+			safe.Payload = &runnerpb.TaskEvent_Heartbeat{
+				Heartbeat: &runnerpb.HeartbeatPayload{Message: safeProtoString(payload.Heartbeat.GetMessage())},
+			}
+		}
+	}
+
+	return safe
+}
+
+func sanitizeStreamPayload(payload *runnerpb.StreamPayload) *runnerpb.StreamPayload {
+	return &runnerpb.StreamPayload{
+		Chunk:         safeProtoString(payload.GetChunk()),
+		ChunkSequence: payload.GetChunkSequence(),
+		ByteOffset:    payload.GetByteOffset(),
+		Truncated:     payload.GetTruncated(),
+	}
+}
+
+func safeProtoString(value string) string {
+	if utf8.ValidString(value) {
+		return value
+	}
+	return strings.ToValidUTF8(value, "\uFFFD")
 }
 
 func normalizeGrpcTarget(raw string) string {
@@ -374,13 +480,13 @@ func toEngine(engine runnerpb.Engine) types.Engine {
 
 func toPBTaskEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	base := &runnerpb.TaskEvent{
-		TaskId:        event.TaskID,
-		SessionId:     event.SessionID,
-		StepId:        event.StepID,
+		TaskId:        safeProtoString(event.TaskID),
+		SessionId:     safeProtoString(event.SessionID),
+		StepId:        safeProtoString(event.StepID),
 		Type:          toPBEventType(event.Type),
 		Timestamp:     event.Timestamp.UTC().Format(time.RFC3339Nano),
-		RunnerId:      event.RunnerID,
-		ExecutionId:   event.ExecutionID,
+		RunnerId:      safeProtoString(event.RunnerID),
+		ExecutionId:   safeProtoString(event.ExecutionID),
 		Attempt:       event.Attempt,
 		EventSequence: event.Sequence,
 	}
@@ -388,20 +494,20 @@ func toPBTaskEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	switch event.Type {
 	case types.EventStarted:
 		base.Payload = &runnerpb.TaskEvent_Started{
-			Started: &runnerpb.StartedPayload{Message: event.Message},
+			Started: &runnerpb.StartedPayload{Message: safeProtoString(event.Message)},
 		}
 	case types.EventStdout:
 		base.Payload = &runnerpb.TaskEvent_Stdout{
-			Stdout: &runnerpb.StreamPayload{Chunk: event.Chunk, ChunkSequence: event.ChunkSequence, ByteOffset: event.ByteOffset, Truncated: event.Truncated},
+			Stdout: &runnerpb.StreamPayload{Chunk: safeProtoString(event.Chunk), ChunkSequence: event.ChunkSequence, ByteOffset: event.ByteOffset, Truncated: event.Truncated},
 		}
 	case types.EventStderr:
 		base.Payload = &runnerpb.TaskEvent_Stderr{
-			Stderr: &runnerpb.StreamPayload{Chunk: event.Chunk, ChunkSequence: event.ChunkSequence, ByteOffset: event.ByteOffset, Truncated: event.Truncated},
+			Stderr: &runnerpb.StreamPayload{Chunk: safeProtoString(event.Chunk), ChunkSequence: event.ChunkSequence, ByteOffset: event.ByteOffset, Truncated: event.Truncated},
 		}
 	case types.EventProgress:
 		base.Payload = &runnerpb.TaskEvent_Progress{
 			Progress: &runnerpb.ProgressPayload{
-				Message: event.Message,
+				Message: safeProtoString(event.Message),
 				Percent: event.Percent,
 			},
 		}
@@ -416,9 +522,9 @@ func toPBTaskEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 	case types.EventError:
 		base.Payload = &runnerpb.TaskEvent_Error{
 			Error: &runnerpb.ErrorPayload{
-				Message:     event.Message,
+				Message:     safeProtoString(event.Message),
 				Retryable:   event.Retryable,
-				FailureType: toPBFailureType(event.FailureType), Code: event.Code,
+				FailureType: toPBFailureType(event.FailureType), Code: safeProtoString(event.Code),
 			},
 		}
 	case types.EventCompleted:
@@ -427,14 +533,14 @@ func toPBTaskEvent(event types.TaskEvent) *runnerpb.TaskEvent {
 				ExitCode:   event.ExitCode,
 				DurationMs: uint64(event.Duration.Milliseconds()),
 				Status:     toPBTerminalStatus(event.TerminalStatus), FailureType: toPBFailureType(event.FailureType),
-				Message: event.Message, StdoutBytes: event.StdoutBytes, StderrBytes: event.StderrBytes,
+				Message: safeProtoString(event.Message), StdoutBytes: event.StdoutBytes, StderrBytes: event.StderrBytes,
 				OutputTruncated: event.OutputTruncated,
 			},
 		}
 	case types.EventHeartbeat:
 		base.Payload = &runnerpb.TaskEvent_Heartbeat{
 			Heartbeat: &runnerpb.HeartbeatPayload{
-				Message: event.Message,
+				Message: safeProtoString(event.Message),
 			},
 		}
 	}

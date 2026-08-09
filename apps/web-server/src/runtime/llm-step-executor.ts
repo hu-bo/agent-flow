@@ -17,7 +17,7 @@ import { ModelToolRunner } from './model-tool-runner.js';
 import { renderLlmStepPrompt, renderStructuredMarkdown } from './runtime-renderers.js';
 import { resolveMaxOutputTokens, type ModelToolCall } from './runtime-types.js';
 
-const DEFAULT_LLM_STEP_TOOL_NAMES = ['fs.list', 'fs.read', 'fs.search', 'shell.exec'] as const;
+const DEFAULT_LLM_STEP_TOOL_NAMES = ['shell.exec'] as const;
 const DEFAULT_LLM_STEP_MAX_TOOL_ROUNDS = 4;
 const DEFAULT_LLM_STEP_TIMEOUT_MS = 120_000;
 
@@ -324,6 +324,7 @@ function buildLlmStepSystemPrompt(toolsEnabled: boolean): string {
       'You may call shell_exec to inspect the workspace, read files, apply safe edits, and run verification commands when that evidence is needed.',
       'Prefer read-only shell commands for discovery. Mutating shell operations may require approval and should be used only when necessary to complete the step.',
       'After using tools, summarize the concrete evidence and continue the current step.',
+      'Do not include incidental transport metadata such as byte counts, object sizes, exit codes, or durations in user-facing step output unless the user asks for those details.',
     );
   }
 

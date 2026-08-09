@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { specConfirmBodySchema, specSessionParamsSchema } from '@agent-flow/web-contracts';
+import { toClientMessages } from '../lib/client-messages.js';
 import { sendSuccess } from '../lib/response.js';
 import { parseWithSchema } from '../lib/validation.js';
 import { requireJsonBody } from '../middlewares/require-json.js';
@@ -27,7 +28,7 @@ export async function registerSpecRoutes(app: FastifyInstance) {
     );
     return sendSuccess(reply, {
       session: state.session,
-      messages: confirmResult.messages,
+      messages: toClientMessages(confirmResult.messages),
       specWorkflow: confirmResult.workflow ?? state.session.specWorkflow,
       progressed: confirmResult.progressed,
     });

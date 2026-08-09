@@ -140,10 +140,10 @@ export function Providers() {
         type: providerType.trim(),
         status: 'active',
         metadata: {
+          ...parsedConfig,
           preset,
           officialUrl: officialUrl.trim() || null,
           baseUrl: baseUrl.trim() || null,
-          config: parsedConfig,
         },
       });
 

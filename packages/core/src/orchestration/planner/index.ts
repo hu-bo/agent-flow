@@ -17,8 +17,11 @@ const planFactory = new PlanFactory();
 
 export type { SemanticToolStep };
 
-export function detectSemanticToolStep(rawMessage: string): SemanticToolStep | undefined {
-  return semanticFsDetector.detect(rawMessage);
+export function detectSemanticToolStep(
+  rawMessage: string,
+  metadata?: Record<string, unknown>,
+): SemanticToolStep | undefined {
+  return semanticFsDetector.detect(rawMessage, metadata);
 }
 
 export interface CapabilityPlannerOptions {
@@ -38,7 +41,7 @@ export class CapabilityPlanner implements Planner {
       return planFactory.runner(request);
     }
 
-    const semanticStep = detectSemanticToolStep(extractRequestMessage(request));
+    const semanticStep = detectSemanticToolStep(extractRequestMessage(request), request.metadata);
     const intent = intentResolver.resolve(request, context, semanticStep);
     const triageDecision = await this.triageWorkflow(request, context, semanticStep, intent);
     const shouldForceCoding =

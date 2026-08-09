@@ -38,39 +38,54 @@ describe('detectSemanticToolStep', () => {
     expect(detectSemanticToolStep('   ')).toBeUndefined();
   });
 
-  it('detects fs.list intent for desktop query in chinese', () => {
+  it('detects shell list intent for desktop query in chinese', () => {
     const step = detectSemanticToolStep('\u4f60\u80fd\u770b\u770b\u684c\u9762\u6709\u4ec0\u4e48\u6587\u4ef6\u5417');
     expect(step).toMatchObject({
-      title: 'semantic-fs-list',
-      toolName: 'fs.list',
+      title: 'shell-file-list',
+      toolName: 'shell.exec',
       input: {
-        path: '.',
+        command: 'find',
       },
     });
   });
 
-  it('detects fs.read intent with explicit path', () => {
+  it('detects shell read intent with explicit path', () => {
     const step = detectSemanticToolStep('please read `packages/core/src/index.ts`');
     expect(step).toMatchObject({
-      title: 'semantic-fs-read',
-      toolName: 'fs.read',
+      title: 'shell-file-read',
+      toolName: 'shell.exec',
       input: {
-        path: 'packages/core/src/index.ts',
-        maxBytes: 200000,
+        command: 'cat',
+        args: ['packages/core/src/index.ts'],
       },
     });
   });
 
-  it('detects fs.search intent with recursive hint', () => {
+  it('detects shell search intent with recursive hint', () => {
     const step = detectSemanticToolStep('search "CapabilityPlanner" in packages/core recursively');
     expect(step).toMatchObject({
-      title: 'semantic-fs-search',
-      toolName: 'fs.search',
+      title: 'shell-file-search',
+      toolName: 'shell.exec',
       input: {
-        path: 'packages/core',
-        pattern: 'CapabilityPlanner',
-        recursive: true,
-        maxMatches: 80,
+        command: 'grep',
+        args: ['-RInI', 'CapabilityPlanner', 'packages/core'],
+      },
+    });
+  });
+
+  it('uses PowerShell for Windows runner semantic read intent', () => {
+    const step = detectSemanticToolStep('please read `E:\\Project\\app\\main.py`', {
+      runnerOs: 'windows',
+      runnerDefaultShell: 'powershell',
+      runnerPathSeparator: '\\',
+    });
+
+    expect(step).toMatchObject({
+      title: 'shell-file-read',
+      toolName: 'shell.exec',
+      input: {
+        command: 'powershell.exe',
+        args: ['-NoProfile', '-Command', "Get-Content -LiteralPath 'E:\\Project\\app\\main.py' -Raw"],
       },
     });
   });
@@ -140,9 +155,9 @@ describe('CapabilityPlanner', () => {
 
     expect(plan.steps).toHaveLength(2);
     expect(plan.steps[0]).toMatchObject({
-      title: 'semantic-fs-read',
+      title: 'shell-file-read',
       kind: 'tool',
-      toolName: 'fs.read',
+      toolName: 'shell.exec',
     });
     expect(plan.steps[1]).toMatchObject({
       title: 'task-execution',
@@ -230,9 +245,9 @@ describe('CapabilityPlanner', () => {
 
     expect(plan.steps).toHaveLength(5);
     expect(plan.steps[0]).toMatchObject({
-      title: 'semantic-fs-read',
+      title: 'shell-file-read',
       kind: 'tool',
-      toolName: 'fs.read',
+      toolName: 'shell.exec',
     });
     expect(plan.steps[1]?.title).toBe('coding-analysis');
     expect(plan.steps[2]?.title).toBe('coding-implementation');

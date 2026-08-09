@@ -1,6 +1,8 @@
-﻿{
-    "runnerId":  "",
-    "runnerToken":  "afr_bK5nADjjhz7RBShIe1SgzSOYAkvsHPWlWFOyU7BnSMg",
-    "serverAddr":  "127.0.0.1:9201",
-    "maxConcurrentTasks": 4
+{
+  "runnerId": "runner_dev_4ce2168e5348d25952cf7c81741722cd",
+  "runnerToken": "afr_bK5nADjjhz7RBShIe1SgzSOYAkvsHPWlWFOyU7BnSMg",
+  "serverAddr": "127.0.0.1:9201",
+  "grpcServerAddr": "",
+  "httpServerAddr": "",
+  "maxConcurrentTasks": 4
 }

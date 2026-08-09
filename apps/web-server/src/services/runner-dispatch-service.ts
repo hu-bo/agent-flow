@@ -44,10 +44,17 @@ interface RunnerExecution {
   dispatchLeaseHandle?: NodeJS.Timeout;
 }
 
+interface RunnerWaiter {
+  connectionId?: string;
+  resolve(task: RunnerOutboundMessage | null): void;
+  timer?: NodeJS.Timeout;
+}
+
 export interface RunnerDispatchPollInput {
   runnerId: string;
   runnerToken: string;
   waitMs?: number;
+  connectionId?: string;
 }
 
 export interface RunnerTaskEventInput {
@@ -67,6 +74,11 @@ export interface RunnerDispatchAckInput {
   state?: string;
   message?: string;
   lastEventSequence?: number;
+}
+
+export interface RunnerSessionBindingStore {
+  getBoundRunner(sessionId: string, ownerUserId: string): Promise<string | undefined>;
+  bindRunnerIfUnset(sessionId: string, runnerId: string, ownerUserId: string): Promise<string>;
 }
 
 export type RunnerOutboundMessage =
@@ -169,7 +181,8 @@ type RunnerInboundEvent =
 
 export class RunnerDispatchService {
   private readonly pendingByRunner = new Map<string, RunnerOutboundMessage[]>();
-  private readonly waitingByRunner = new Map<string, Set<(task: RunnerOutboundMessage | null) => void>>();
+  private readonly waitingByRunner = new Map<string, Set<RunnerWaiter>>();
+  private readonly activeConnectionByRunner = new Map<string, string>();
   private readonly executions = new Map<string, RunnerExecution>();
   private readonly recoveredDeadlineTimers = new Map<string, NodeJS.Timeout>();
   private readonly executionRepository: RunnerExecutionRepository;
@@ -179,6 +192,7 @@ export class RunnerDispatchService {
     private readonly runnerApprovalService: RunnerApprovalService,
     db: AppDataSource,
     private readonly logger?: StructuredLogger,
+    private readonly sessionBindingStore?: RunnerSessionBindingStore,
   ) {
     this.executionRepository = new RunnerExecutionRepository(db);
   }
@@ -202,6 +216,20 @@ export class RunnerDispatchService {
     }
   }
 
+  activateRunnerConnection(input: { runnerId: string; connectionId: string }): string | undefined {
+    const previousConnectionId = this.activeConnectionByRunner.get(input.runnerId);
+    this.activeConnectionByRunner.set(input.runnerId, input.connectionId);
+    this.rejectStaleWaiters(input.runnerId, input.connectionId);
+    return previousConnectionId === input.connectionId ? undefined : previousConnectionId;
+  }
+
+  deactivateRunnerConnection(input: { runnerId: string; connectionId: string }): void {
+    if (this.activeConnectionByRunner.get(input.runnerId) === input.connectionId) {
+      this.activeConnectionByRunner.delete(input.runnerId);
+    }
+    this.rejectWaiters(input.runnerId, (waiter) => waiter.connectionId === input.connectionId);
+  }
+
   canDispatchSync(task: RunnerTask): boolean {
     return typeof task.metadata?.userId === 'string' && task.metadata.userId.trim().length > 0;
   }
@@ -212,8 +240,7 @@ export class RunnerDispatchService {
       throw new AppError(400, 'RUNNER_USER_REQUIRED', 'runner task is missing metadata.userId');
     }
 
-    const preferredRunnerId =
-      typeof task.metadata?.preferredRunnerId === 'string' ? task.metadata.preferredRunnerId : undefined;
+    const preferredRunnerId = await this.resolvePreferredRunnerId(task, userId);
     const preferredRunnerKind =
       task.metadata?.preferredRunnerKind === 'local' ||
       task.metadata?.preferredRunnerKind === 'remote' ||
@@ -228,6 +255,7 @@ export class RunnerDispatchService {
     if (!runner) {
       throw new AppError(409, 'RUNNER_NOT_AVAILABLE', 'No online runner is available for this task');
     }
+    await this.bindSelectedRunnerIfNeeded(task, userId, runner.runnerId, preferredRunnerId);
 
     let execution: RunnerExecution | undefined;
     let abortListener: (() => void) | undefined;
@@ -455,31 +483,84 @@ export class RunnerDispatchService {
   async nextOutboundMessage(input: RunnerDispatchPollInput): Promise<RunnerOutboundMessage | null> {
     const waitMs = clampRunnerPollWait(input.waitMs);
     await this.runnerRegistryService.authorizeRunnerConnection(input.runnerId, input.runnerToken);
+    if (input.connectionId && !this.isCurrentRunnerConnection(input.runnerId, input.connectionId)) {
+      return null;
+    }
     const immediate = this.dequeueFromRunner(input.runnerId);
     if (immediate) {
       return immediate;
     }
 
     return new Promise<RunnerOutboundMessage | null>((resolve) => {
-      const resolver = (task: RunnerOutboundMessage | null) => {
-        clearTimeout(timer);
-        const waiters = this.waitingByRunner.get(input.runnerId);
-        if (waiters) {
-          waiters.delete(resolver);
-          if (waiters.size === 0) {
-            this.waitingByRunner.delete(input.runnerId);
+      const waiter: RunnerWaiter = {
+        connectionId: input.connectionId,
+        resolve: (task: RunnerOutboundMessage | null) => {
+          if (waiter.timer) {
+            clearTimeout(waiter.timer);
           }
-        }
-        resolve(task);
+          const waiters = this.waitingByRunner.get(input.runnerId);
+          if (waiters) {
+            waiters.delete(waiter);
+            if (waiters.size === 0) {
+              this.waitingByRunner.delete(input.runnerId);
+            }
+          }
+          resolve(task);
+        },
       };
+      waiter.timer = setTimeout(() => waiter.resolve(null), waitMs);
+      waiter.timer.unref?.();
 
-      const waiters = this.waitingByRunner.get(input.runnerId) ?? new Set<(task: RunnerOutboundMessage | null) => void>();
-      waiters.add(resolver);
+      if (input.connectionId && !this.isCurrentRunnerConnection(input.runnerId, input.connectionId)) {
+        waiter.resolve(null);
+        return;
+      }
+
+      const waiters = this.waitingByRunner.get(input.runnerId) ?? new Set<RunnerWaiter>();
+      waiters.add(waiter);
       this.waitingByRunner.set(input.runnerId, waiters);
-
-      const timer = setTimeout(() => resolver(null), waitMs);
-      timer.unref?.();
     });
+  }
+
+  private isCurrentRunnerConnection(runnerId: string, connectionId: string): boolean {
+    return this.activeConnectionByRunner.get(runnerId) === connectionId;
+  }
+
+  private rejectStaleWaiters(runnerId: string, currentConnectionId: string): void {
+    this.rejectWaiters(
+      runnerId,
+      (waiter) => waiter.connectionId !== undefined && waiter.connectionId !== currentConnectionId,
+    );
+  }
+
+  private rejectWaiters(runnerId: string, predicate: (waiter: RunnerWaiter) => boolean): void {
+    const waiters = this.waitingByRunner.get(runnerId);
+    if (!waiters) {
+      return;
+    }
+    for (const waiter of [...waiters]) {
+      if (predicate(waiter)) {
+        waiter.resolve(null);
+      }
+    }
+  }
+
+  private takeRunnableWaiter(runnerId: string): RunnerWaiter | undefined {
+    const waiters = this.waitingByRunner.get(runnerId);
+    if (!waiters) {
+      return undefined;
+    }
+    const activeConnectionId = this.activeConnectionByRunner.get(runnerId);
+    for (const waiter of waiters) {
+      if (!waiter.connectionId || !activeConnectionId || waiter.connectionId === activeConnectionId) {
+        waiters.delete(waiter);
+        if (waiters.size === 0) {
+          this.waitingByRunner.delete(runnerId);
+        }
+        return waiter;
+      }
+    }
+    return undefined;
   }
 
   async acceptDispatchAck(input: RunnerDispatchAckInput): Promise<void> {
@@ -672,15 +753,10 @@ export class RunnerDispatchService {
   }
 
   private enqueueForRunner(runnerId: string, task: RunnerOutboundMessage): void {
-    const waiters = this.waitingByRunner.get(runnerId);
-    const waiter = waiters?.values().next().value as ((task: RunnerOutboundMessage | null) => void) | undefined;
+    const waiter = this.takeRunnableWaiter(runnerId);
     if (waiter) {
-      waiters?.delete(waiter);
-      if (waiters && waiters.size === 0) {
-        this.waitingByRunner.delete(runnerId);
-      }
       this.markDispatched(task);
-      waiter(task);
+      waiter.resolve(task);
       return;
     }
 
@@ -788,6 +864,69 @@ export class RunnerDispatchService {
       message,
     );
   }
+
+  private async resolvePreferredRunnerId(task: RunnerTask, userId: string): Promise<string | undefined> {
+    const explicitRunnerId = normalizeMetadataString(task.metadata?.preferredRunnerId);
+    if (explicitRunnerId) {
+      return explicitRunnerId;
+    }
+
+    const sessionId = normalizeMetadataString(task.metadata?.sessionId) ?? normalizeMetadataString(task.sessionId);
+    if (!sessionId || !this.sessionBindingStore) {
+      return undefined;
+    }
+
+    try {
+      return await this.sessionBindingStore.getBoundRunner(sessionId, userId);
+    } catch (error) {
+      this.logger?.warn('runner.dispatch.binding.lookup_failed', 'failed to resolve session runner binding', {
+        attributes: {
+          sessionId,
+          userId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return undefined;
+    }
+  }
+
+  private async bindSelectedRunnerIfNeeded(
+    task: RunnerTask,
+    userId: string,
+    runnerId: string,
+    preferredRunnerId: string | undefined,
+  ): Promise<void> {
+    if (preferredRunnerId || !this.sessionBindingStore) {
+      return;
+    }
+
+    const sessionId = normalizeMetadataString(task.metadata?.sessionId) ?? normalizeMetadataString(task.sessionId);
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      const boundRunnerId = await this.sessionBindingStore.bindRunnerIfUnset(sessionId, runnerId, userId);
+      if (boundRunnerId === runnerId) {
+        this.logger?.info('runner.dispatch.binding.locked', 'runner locked to chat session', {
+          attributes: {
+            sessionId,
+            userId,
+            runnerId,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger?.warn('runner.dispatch.binding.lock_failed', 'failed to lock runner to chat session', {
+        attributes: {
+          sessionId,
+          userId,
+          runnerId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
 }
 
 const APPROVAL_WAIT_TIMEOUT_MS = 5 * 60 * 1000;
@@ -796,6 +935,10 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function executionKey(executionId: string, attempt: number): string {
   return `${executionId}:${attempt}`;
+}
+
+function normalizeMetadataString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function normalizeRunnerEvent(input: RunnerInboundEvent, task: RunnerTask, runnerId: string): RunnerEvent {

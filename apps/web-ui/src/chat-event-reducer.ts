@@ -58,8 +58,37 @@ function upsertMessage(messages: UnifiedMessage[], message: UnifiedMessage): Uni
   if (index < 0) return [...messages, message];
   if (messages[index] === message) return messages;
   const next = [...messages];
-  next[index] = message;
+  next[index] = mergeMessage(messages[index], message);
   return next;
+}
+
+function mergeMessage(previous: UnifiedMessage, incoming: UnifiedMessage): UnifiedMessage {
+  if (previous.type === 'tool_execution' && incoming.type === 'tool_execution') {
+    return {
+      ...previous,
+      ...incoming,
+      metadata: {
+        ...previous.metadata,
+        ...incoming.metadata,
+        extensions: {
+          ...(previous.metadata.extensions ?? {}),
+          ...(incoming.metadata.extensions ?? {}),
+        },
+      },
+      tool: {
+        ...previous.tool,
+        ...incoming.tool,
+        input: incoming.tool.input ?? previous.tool.input,
+        output: incoming.tool.output ?? previous.tool.output,
+        error: incoming.tool.error ?? previous.tool.error,
+      },
+      title: incoming.title ?? previous.title,
+      stepId: incoming.stepId ?? previous.stepId,
+      durationMs: incoming.durationMs ?? previous.durationMs,
+    };
+  }
+
+  return incoming;
 }
 
 function appendMessageDelta(
@@ -94,4 +123,3 @@ function extractUsageByMessageId(messages: UnifiedMessage[]): Record<string, Tok
     return result;
   }, {});
 }
-

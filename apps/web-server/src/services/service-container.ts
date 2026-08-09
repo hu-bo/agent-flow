@@ -69,14 +69,24 @@ export async function createServices(env: AppEnv, db: AppDataSource) {
   });
   const runnerRegistryService = new RunnerRegistryService(db, runnerRegistrationService);
   const runnerApprovalService = new RunnerApprovalService(db);
-  const runnerDispatchService = new RunnerDispatchService(runnerRegistryService, runnerApprovalService, db, logger);
+  const sessionService = new SessionService(db, process.cwd());
+  const runnerDispatchService = new RunnerDispatchService(
+    runnerRegistryService,
+    runnerApprovalService,
+    db,
+    logger,
+    {
+      getBoundRunner: (sessionId, ownerUserId) => sessionService.getBoundRunner(sessionId, ownerUserId),
+      bindRunnerIfUnset: (sessionId, runnerId, ownerUserId) =>
+        sessionService.bindRunnerIfUnset(sessionId, runnerId, ownerUserId),
+    },
+  );
   await runnerDispatchService.initialize();
   const runnerPackageService = new RunnerPackageService(runnerRegistrationService, {
     templateDir: env.runnerPackageTemplateDir,
     tempDir: resolve(process.cwd(), 'temp', 'runner-packages'),
   });
   const projectService = new ProjectService(db, runnerRegistryService);
-  const sessionService = new SessionService(db, process.cwd());
   const runnerDirectoryService = new RunnerDirectoryService(runnerDispatchService, runnerRegistryService);
   const remoteRunner = new RemoteRunner(runnerDispatchService);
   const coreSessionStore = new DbSessionStore(db);

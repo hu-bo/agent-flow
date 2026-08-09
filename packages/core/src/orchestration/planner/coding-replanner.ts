@@ -1,6 +1,6 @@
 import type { AgentPlan, RecoveryDecision, ReplanContext, Replanner } from '../../types/index.js';
 import { PlanningIntentResolver, extractRequestMessage } from './intent-resolver.js';
-import { SemanticFsDetector } from './semantic-detector.js';
+import { buildListInput, resolveShellStyle, SemanticFsDetector } from './semantic-detector.js';
 
 let replanCounter = 0;
 let replanStepCounter = 0;
@@ -216,7 +216,7 @@ function isCodingWorkflowPlan(ctx: ReplanContext): boolean {
 export class CodingReplanner implements Replanner {
   async replan(ctx: ReplanContext): Promise<RecoveryDecision | undefined> {
     const rawMessage = extractRequestMessage(ctx.request);
-    const semanticStep = semanticFsDetector.detect(rawMessage);
+    const semanticStep = semanticFsDetector.detect(rawMessage, ctx.request.metadata);
     const intent = intentResolver.resolve(ctx.request, ctx.context, semanticStep);
     if (!intent.isCodingTask && !isCodingWorkflowPlan(ctx)) {
       return undefined;
@@ -236,16 +236,11 @@ export class CodingReplanner implements Replanner {
         : toDiagnosticsPath((ctx.failedStep?.input ?? {}).path);
       steps.push({
         id: diagnosticsStepId,
-        title: 'replan-fs-diagnostics',
+        title: 'replan-shell-file-diagnostics',
         kind: 'tool',
         dependsOn: [],
-        toolName: 'fs.list',
-        input: {
-          path: diagnosticsPath,
-          recursive: false,
-          includeHidden: true,
-          maxEntries: 120,
-        },
+        toolName: 'shell.exec',
+        input: buildListInput(diagnosticsPath, false, resolveShellStyle(ctx.request.metadata, diagnosticsPath)),
       });
     } else if (recoveryStrategy === 'shell-diagnostics') {
       diagnosticsStepId = nextReplanStepId();

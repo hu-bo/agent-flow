@@ -5,6 +5,7 @@ import {
   CircleAlert,
   RefreshCcw,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
@@ -60,7 +61,7 @@ export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProp
           {status === 'running'
             ? (
               <span className="chat-v2-status-indicator" aria-hidden="true">
-                <span className="chat-v2-status-orbit-dot" />
+                <Sparkles size={11} strokeWidth={2.4} className="chat-v2-status-spark-icon" />
               </span>
             )
             : status === 'error'
@@ -92,9 +93,11 @@ export function ExecutionTimeline({ summary, activities }: ExecutionTimelineProp
 function RunningStatusLabel() {
   return (
     <span className="chat-v2-status-label" aria-label="working">
-      <span className="chat-v2-status-word-placeholder" aria-hidden="true">working...</span>
-      <span className="chat-v2-status-word-shell" aria-hidden="true">
-        <span className="chat-v2-status-word">working...</span>
+      <span className="chat-v2-status-word" aria-hidden="true">working</span>
+      <span className="chat-v2-status-dots" aria-hidden="true">
+        <span>.</span>
+        <span>.</span>
+        <span>.</span>
       </span>
     </span>
   );

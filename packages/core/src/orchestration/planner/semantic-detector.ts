@@ -1,8 +1,10 @@
 export interface SemanticToolStep {
   title: string;
-  toolName: 'fs.read' | 'fs.list' | 'fs.search';
+  toolName: 'shell.exec';
   input: Record<string, unknown>;
 }
+
+type ShellStyle = 'powershell' | 'posix';
 
 const ZH_READ_HINTS = ['\u67e5\u770b', '\u770b\u770b', '\u770b\u4e0b', '\u8bfb\u53d6', '\u6253\u5f00'];
 const ZH_SEARCH_HINTS = ['\u641c\u7d22', '\u67e5\u627e'];
@@ -43,7 +45,7 @@ function extractWindowsDrivePath(message: string): string | undefined {
 }
 
 export class SemanticFsDetector {
-  detect(rawMessage: string): SemanticToolStep | undefined {
+  detect(rawMessage: string, metadata?: Record<string, unknown>): SemanticToolStep | undefined {
     const message = normalizeWhitespace(rawMessage);
     if (!message) {
       return undefined;
@@ -57,12 +59,9 @@ export class SemanticFsDetector {
 
     if (this.shouldRead(message, explicitPath, hasLookVerb, hasListIntent)) {
       return {
-        title: 'semantic-fs-read',
-        toolName: 'fs.read',
-        input: {
-          path: explicitPath,
-          maxBytes: 200_000,
-        },
+        title: 'shell-file-read',
+        toolName: 'shell.exec',
+        input: buildReadInput(explicitPath, resolveShellStyle(metadata, explicitPath)),
       };
     }
 
@@ -70,27 +69,27 @@ export class SemanticFsDetector {
       const pattern = this.extractSearchPattern(message);
       if (pattern) {
         return {
-          title: 'semantic-fs-search',
-          toolName: 'fs.search',
-          input: {
-            path: candidatePath || '.',
+          title: 'shell-file-search',
+          toolName: 'shell.exec',
+          input: buildSearchInput(
+            candidatePath || '.',
             pattern,
-            recursive: /recursive/i.test(message) || includesAny(message, ZH_RECURSIVE_HINTS),
-            maxMatches: 80,
-          },
+            /recursive/i.test(message) || includesAny(message, ZH_RECURSIVE_HINTS),
+            resolveShellStyle(metadata, candidatePath),
+          ),
         };
       }
     }
 
     if (hasListIntent) {
       return {
-        title: 'semantic-fs-list',
-        toolName: 'fs.list',
-        input: {
-          path: candidatePath || '.',
-          recursive: EN_RECURSIVE_HINT.test(message) || includesAny(message, ZH_RECURSIVE_HINTS),
-          maxEntries: 200,
-        },
+        title: 'shell-file-list',
+        toolName: 'shell.exec',
+        input: buildListInput(
+          candidatePath || '.',
+          EN_RECURSIVE_HINT.test(message) || includesAny(message, ZH_RECURSIVE_HINTS),
+          resolveShellStyle(metadata, candidatePath),
+        ),
       };
     }
 
@@ -157,4 +156,97 @@ export class SemanticFsDetector {
 
     return undefined;
   }
+}
+
+export function buildReadInput(
+  path: string,
+  style: ShellStyle,
+  options: { allowMissing?: boolean } = {},
+): Record<string, unknown> {
+  if (style === 'powershell') {
+    if (options.allowMissing) {
+      return powershellInput(
+        `if (Test-Path -LiteralPath ${quotePowerShell(path)} -PathType Leaf) { Get-Content -LiteralPath ${quotePowerShell(path)} -Raw }`,
+      );
+    }
+    return powershellInput(`Get-Content -LiteralPath ${quotePowerShell(path)} -Raw`);
+  }
+  if (options.allowMissing) {
+    return {
+      command: 'sh',
+      args: ['-lc', '[ -f "$1" ] && cat "$1" || true', 'sh', path],
+      timeoutMs: 30_000,
+    };
+  }
+  return {
+    command: 'cat',
+    args: [path],
+    timeoutMs: 30_000,
+  };
+}
+
+export function buildListInput(path: string, recursive: boolean, style: ShellStyle): Record<string, unknown> {
+  if (style === 'powershell') {
+    const recurse = recursive ? ' -Recurse' : '';
+    return powershellInput(`Get-ChildItem -LiteralPath ${quotePowerShell(path)}${recurse} -Force`);
+  }
+  return {
+    command: 'find',
+    args: recursive ? [path, '-type', 'f'] : [path, '-maxdepth', '1', '-print'],
+    timeoutMs: 30_000,
+  };
+}
+
+export function buildSearchInput(
+  path: string,
+  pattern: string,
+  recursive: boolean,
+  style: ShellStyle,
+): Record<string, unknown> {
+  if (style === 'powershell') {
+    const recurse = recursive ? ' -Recurse' : '';
+    return powershellInput(
+      `Get-ChildItem -LiteralPath ${quotePowerShell(path)}${recurse} -File | Select-String -Pattern ${quotePowerShell(pattern)}`,
+    );
+  }
+  return {
+    command: 'grep',
+    args: [recursive ? '-RInI' : '-InI', pattern, path],
+    timeoutMs: 30_000,
+  };
+}
+
+export function resolveShellStyle(metadata: Record<string, unknown> | undefined, path = ''): ShellStyle {
+  const os = readMetadataString(metadata, 'runnerOs')?.toLowerCase();
+  const shell = readMetadataString(metadata, 'runnerDefaultShell')?.toLowerCase();
+  const separator = readMetadataString(metadata, 'runnerPathSeparator');
+  const cwd = readMetadataString(metadata, 'cwd') ?? readMetadataString(metadata, 'sessionCwd') ?? '';
+  if (
+    os === 'windows' ||
+    separator === '\\' ||
+    shell?.includes('powershell') ||
+    shell?.includes('pwsh') ||
+    /^[A-Za-z]:[\\/]/.test(path) ||
+    /^[A-Za-z]:[\\/]/.test(cwd)
+  ) {
+    return 'powershell';
+  }
+  return 'posix';
+}
+
+function powershellInput(script: string): Record<string, unknown> {
+  return {
+    command: 'powershell.exe',
+    args: ['-NoProfile', '-Command', script],
+    timeoutMs: 30_000,
+  };
+}
+
+function quotePowerShell(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function readMetadataString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }

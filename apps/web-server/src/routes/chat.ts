@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { TokenUsage, UnifiedMessage } from '@agent-flow/core/messages';
+import type { TokenUsage } from '@agent-flow/core/messages';
 import {
   chatTurnBodySchema,
   chatTurnParamsSchema,
@@ -8,6 +8,7 @@ import {
   type ChatStreamEvent as BrowserChatStreamEvent,
 } from '@agent-flow/web-contracts';
 import type { ChatStreamEvent } from '../contracts/api.js';
+import { toClientMessage, toClientMessages, toClientSessionState } from '../lib/client-messages.js';
 import { AppError } from '../lib/errors.js';
 import { sendSuccess } from '../lib/response.js';
 import { createSseStream, type SseStream } from '../lib/sse.js';
@@ -93,7 +94,7 @@ async function createChatTurnHandler(request: FastifyRequest, reply: FastifyRepl
     requestId: request.requestContext.requestId,
     turnId: body.turnId,
   });
-  return sendSuccess(reply, result, { statusCode: 201 });
+  return sendSuccess(reply, { ...result, messages: toClientMessages(result.messages) }, { statusCode: 201 });
 }
 
 async function cancelChatTurnHandler(request: FastifyRequest, reply: FastifyReply) {
@@ -115,7 +116,9 @@ async function retryChatMessageHandler(request: FastifyRequest, reply: FastifyRe
   });
   return sendSuccess(
     reply,
-    await request.server.services.sessionService.getSessionState(params.sessionId, request.auth.userId),
+    toClientSessionState(
+      await request.server.services.sessionService.getSessionState(params.sessionId, request.auth.userId),
+    ),
   );
 }
 
@@ -124,7 +127,9 @@ async function deleteChatMessageHandler(request: FastifyRequest, reply: FastifyR
   await request.server.services.chatService.deleteMessage(params.sessionId, params.messageId);
   return sendSuccess(
     reply,
-    await request.server.services.sessionService.getSessionState(params.sessionId, request.auth.userId),
+    toClientSessionState(
+      await request.server.services.sessionService.getSessionState(params.sessionId, request.auth.userId),
+    ),
   );
 }
 
@@ -196,19 +201,6 @@ function toBrowserEvent(event: ChatStreamEvent): BrowserChatStreamEvent | null {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function toClientMessage(message: UnifiedMessage): UnifiedMessage {
-  const metadata = message.metadata ?? {};
-  const nextMetadata: UnifiedMessage['metadata'] = {};
-  if (metadata.modelId !== undefined) nextMetadata.modelId = metadata.modelId;
-  if (metadata.turnId !== undefined) nextMetadata.turnId = metadata.turnId;
-  if (metadata.model !== undefined) nextMetadata.model = metadata.model;
-  if (metadata.provider !== undefined) nextMetadata.provider = metadata.provider;
-  if (metadata.isMeta !== undefined) nextMetadata.isMeta = metadata.isMeta;
-  if (metadata.toolDuration !== undefined) nextMetadata.toolDuration = metadata.toolDuration;
-  if (metadata.compactBoundary !== undefined) nextMetadata.compactBoundary = metadata.compactBoundary;
-  return { ...message, metadata: nextMetadata };
 }
 
 function toStreamErrorPayload(error: unknown): { code: string; message: string; details?: unknown } {

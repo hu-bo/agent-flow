@@ -15,12 +15,6 @@ import { createToolExecutionMessage } from '../lib/messages.js';
 import { isRuntimeDiagnosticMessage } from './runtime-diagnostics.js';
 
 export const MODEL_TOOL_NAME_BY_INTERNAL = new Map<string, string>([
-  ['fs.read', 'fs_read'],
-  ['fs.write', 'fs_write'],
-  ['fs.patch', 'fs_patch'],
-  ['fs.multiPatch', 'fs_multi_patch'],
-  ['fs.list', 'fs_list'],
-  ['fs.search', 'fs_search'],
   ['shell.exec', 'shell_exec'],
 ]);
 
@@ -404,6 +398,7 @@ function createProgressToolResultMessage(
   extensions: Record<string, unknown>,
 ): UnifiedMessage {
   const stepId = readString(extensions.stepId);
+  const safeOutput = sanitizeProgressOutput(toolName, output);
   return createToolExecutionMessage({
     uuid: progressMessageId(input.requestId, toolName, toolCallId),
     parentUuid,
@@ -413,7 +408,7 @@ function createProgressToolResultMessage(
     tool: {
       callId: toolCallId,
       name: toolName,
-      output,
+      output: safeOutput,
       error: isError ? readString(asRecord(output)?.error) ?? readString(output) ?? `Tool execution failed: ${toolName}` : null,
     },
     metadata: {
@@ -466,6 +461,89 @@ function isRunnerFailureEvent(eventType: string, runnerEvent: Record<string, unk
 
   const status = readString(runnerEvent.status);
   return status === 'failed' || status === 'timed_out' || status === 'rejected' || status === 'cancelled';
+}
+
+function sanitizeProgressOutput(toolName: string, output: unknown): unknown {
+  if (toolName === 'runner.approval') {
+    return output;
+  }
+  if (toolName === 'fs.read') {
+    return sanitizeRecordOutput(output, new Set(['content', 'size', 'bytesRead', 'byteOffset', 'byteLength']));
+  }
+  if (toolName === 'fs.list') {
+    return sanitizeFsListOutput(output);
+  }
+  if (toolName === 'shell.exec' || toolName === 'runner.exec') {
+    return sanitizeShellProgressOutput(output);
+  }
+  return sanitizeRecordOutput(output, new Set(['content', 'size', 'bytesRead', 'byteOffset', 'byteLength']));
+}
+
+function sanitizeShellProgressOutput(output: unknown): unknown {
+  const rec = asRecord(output);
+  if (!rec) {
+    return output;
+  }
+  const sanitized = sanitizeRecordOutput(output, new Set(['stdoutBytes', 'stderrBytes', 'byteOffset'])) as Record<string, unknown>;
+  if (isFileReadCommand(rec)) {
+    const stdout = rec.stdout;
+    if (stdout !== undefined) {
+      sanitized.stdout = summarizeHiddenStream(stdout);
+    }
+  }
+  return sanitized;
+}
+
+function sanitizeFsListOutput(output: unknown): unknown {
+  const rec = asRecord(output);
+  if (!rec || !Array.isArray(rec.entries)) {
+    return sanitizeRecordOutput(output, new Set(['size']));
+  }
+  return {
+    ...rec,
+    entries: rec.entries.map((entry) => sanitizeRecordOutput(entry, new Set(['size']))),
+  };
+}
+
+function sanitizeRecordOutput(output: unknown, hiddenKeys: Set<string>): unknown {
+  if (Array.isArray(output)) {
+    return output.map((item) => sanitizeRecordOutput(item, hiddenKeys));
+  }
+  const rec = asRecord(output);
+  if (!rec) {
+    return output;
+  }
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rec)) {
+    if (hiddenKeys.has(key)) {
+      continue;
+    }
+    next[key] = sanitizeRecordOutput(value, hiddenKeys);
+  }
+  return next;
+}
+
+function isFileReadCommand(output: Record<string, unknown>): boolean {
+  const command = readString(output.command)?.toLowerCase() ?? '';
+  const args = Array.isArray(output.args) ? output.args.map((arg) => String(arg).toLowerCase()) : [];
+  const executable = command.replace(/\\/g, '/').split('/').pop() ?? command;
+  if (executable === 'cat' || executable === 'type' || executable === 'get-content') {
+    return true;
+  }
+  if ((executable === 'powershell.exe' || executable === 'powershell' || executable === 'pwsh.exe' || executable === 'pwsh') && args.some((arg) => arg.includes('get-content'))) {
+    return true;
+  }
+  return false;
+}
+
+function summarizeHiddenStream(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value.trim() ? '[file content hidden]' : value;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? [`[file content hidden: ${value.length} chunk(s)]`] : value;
+  }
+  return '[file content hidden]';
 }
 
 function progressMessageId(requestId: string, toolName: string, toolCallId: string): string {

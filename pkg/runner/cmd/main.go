@@ -128,10 +128,11 @@ func runStart(args []string) error {
 	fs := flag.NewFlagSet("start", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 
-	cfg, err := loadRunnerConfig()
+	resolvedCfg, err := loadRunnerConfig()
 	if err != nil {
 		return err
 	}
+	cfg := resolvedCfg.Config
 	defaultToken := strings.TrimSpace(cfg.RunnerToken)
 	defaultHost := strings.TrimSpace(firstNonEmpty(cfg.GRPCServerAddr, cfg.ServerAddr))
 	if defaultHost == "" {
@@ -186,7 +187,7 @@ func runStart(args []string) error {
 			return
 		}
 		registeredRunnerID = resultRunnerID
-		saveErr := model.SaveLocalConfig(model.LocalConfig{
+		saveErr := saveResolvedRunnerConfig(resolvedCfg, model.LocalConfig{
 			RunnerID:           resultRunnerID,
 			RunnerToken:        runnerTokenValue,
 			ServerAddr:         rpcHostValue,
@@ -361,15 +362,15 @@ func newController(dockerBinary string) (runnercore.Controller, error) {
 	})
 }
 
-func loadRunnerConfig() (model.LocalConfig, error) {
-	cfg, err := model.LoadExecutableDirConfig()
-	if err != nil {
-		return cfg, err
+func loadRunnerConfig() (model.ResolvedConfig, error) {
+	return model.LoadStartConfig()
+}
+
+func saveResolvedRunnerConfig(resolved model.ResolvedConfig, cfg model.LocalConfig) error {
+	if resolved.Source == model.ConfigSourceWorkspace && strings.TrimSpace(resolved.Path) != "" {
+		return model.SaveConfigFile(resolved.Path, cfg)
 	}
-	if strings.TrimSpace(cfg.RunnerToken) != "" {
-		return cfg, nil
-	}
-	return model.LoadLocalConfig()
+	return model.SaveLocalConfig(cfg)
 }
 
 func resolveVersion() string {
@@ -428,10 +429,11 @@ func parseStartOptions(args []string) (startOptions, error) {
 	fs := flag.NewFlagSet("start", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 
-	cfg, err := loadRunnerConfig()
+	resolvedCfg, err := loadRunnerConfig()
 	if err != nil {
 		return startOptions{}, err
 	}
+	cfg := resolvedCfg.Config
 	defaultToken := strings.TrimSpace(cfg.RunnerToken)
 	defaultHost := strings.TrimSpace(firstNonEmpty(cfg.GRPCServerAddr, cfg.ServerAddr))
 	if defaultHost == "" {

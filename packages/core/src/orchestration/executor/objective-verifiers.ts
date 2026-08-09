@@ -207,8 +207,8 @@ class RepoUnderstandingObjectiveVerifier implements ObjectiveVerifier {
         .filter((tool): tool is string => Boolean(tool)),
     );
     const repoToolEvidencePresent =
-      repoToolNames.has('fs.list') &&
-      repoToolNames.has('fs.read');
+      repoToolNames.has('shell.exec') ||
+      (repoToolNames.has('fs.list') && repoToolNames.has('fs.read'));
 
     const summaryOutput = collectLlmOutputs(context.outputs).find((output) => output.title === 'repo.summary');
     const summaryText = readString(summaryOutput?.text) ?? '';
